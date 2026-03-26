@@ -1,0 +1,13 @@
+services:
+  app:
+    image: silenloc/fig
+    container_name: fig
+    ports:
+      - "8080:8080"
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
