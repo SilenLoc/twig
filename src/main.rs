@@ -4,6 +4,7 @@ use log::info;
 
 mod assets;
 mod config;
+mod git;
 
 #[get("/health")]
 async fn health() -> impl Responder {

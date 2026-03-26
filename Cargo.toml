@@ -14,5 +14,6 @@ maud = { version = "0.27.0", features = ["actix-web"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 serde = { version = "1.0", features = ["derive"] }
 
+
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
