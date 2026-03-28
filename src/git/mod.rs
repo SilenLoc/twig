@@ -1,11 +1,18 @@
-use actix_web::{HttpRequest, HttpResponse, mime::TEXT_TAB_SEPARATED_VALUES, web};
+use actix_web::{HttpRequest, HttpResponse, web};
+use log::info;
 
-async fn git_handler(
+use crate::config;
+pub mod repo;
+
+pub async fn git_handler(
     req: HttpRequest,
     body: web::Bytes,
-    path: web::Path<(String, String)>, // (repo, endpoint)
+    path: web::Path<(String, String, String)>, // (namespace,repo, endpoint)
+    server: web::Data<config::Server>,
 ) -> HttpResponse {
-    let (repo, endpoint) = path.into_inner();
+    let (namespace, repo, endpoint) = path.into_inner();
+
+    let git_backend_config = git_backend::Config::new(server.project_root());
 
     let method = req.method().as_str();
     let query = req.query_string();
@@ -19,8 +26,28 @@ async fn git_handler(
 
     let git_req = git_backend::GitRequest::new(method, path_info, query, content_type);
 
+    let kind = git_req.kind();
+
+    match kind.clone() {
+        git_backend::GitRequestKind::AdvertiseRefs(git_service) => {
+            info!(
+                "handling advertise refs {}: {} kind: {}",
+                repo, endpoint, git_service
+            );
+        }
+        git_backend::GitRequestKind::FetchClone => {
+            info!("handling fetch or clone {}: {}", repo, endpoint);
+        }
+        git_backend::GitRequestKind::Push => {
+            info!("handling push {}: {}", repo, endpoint);
+        }
+        git_backend::GitRequestKind::DumbGet => {
+            info!("handling dumb get {}: {}", repo, endpoint);
+        }
+    }
+
     // Auth gate
-    match git_req.kind() {
+    match kind {
         git_backend::GitRequestKind::Push
         | git_backend::GitRequestKind::AdvertiseRefs(git_backend::GitService::WriteRef) => {
             if !is_authenticated(&req) {
@@ -35,15 +62,24 @@ async fn git_handler(
     // Run in blocking thread — xshell/process::Command is blocking
     let req = git_req.clone();
     let body_bytes = body.to_vec();
-    let result = crate::web::block(move || git_backend::run_git_backend(&req, body_bytes)).await;
+    let result = crate::web::block(move || {
+        git_backend::run_with_config(&git_backend_config, &namespace, &req, body_bytes)
+    })
+    .await;
 
     match result {
         Ok(Ok(cgi_output)) => {
             let (headers, body) = cgi_output;
             build_response(headers, body)
         }
-        Ok(Err(e)) => actix_web::HttpResponse::InternalServerError().body(e),
-        Err(_) => actix_web::HttpResponse::InternalServerError().body("blocking task failed"),
+        Ok(Err(e)) => {
+            log::error!("{e:?}");
+            actix_web::HttpResponse::InternalServerError().body(e)
+        }
+        Err(e) => {
+            log::error!("{e:?}");
+            actix_web::HttpResponse::InternalServerError().body("blocking task failed")
+        }
     }
 }
 
@@ -70,6 +106,6 @@ fn build_response(headers: String, body: Vec<u8>) -> actix_web::HttpResponse {
     response.body(body)
 }
 
-fn is_authenticated(req: &actix_web::HttpRequest) -> bool {
+fn is_authenticated(_req: &actix_web::HttpRequest) -> bool {
     true
 }

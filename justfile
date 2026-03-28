@@ -1,6 +1,8 @@
 mod docker 'docker.just'
 mod hurl 'tests/hurl.just'
+mod git 'tests/git.just'
 
+export PROJECT_ROOT := "tests/git/srv"
 
 
 run:

@@ -22,6 +22,11 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
+
+COPY git_backend/src ./git_backend/src
+COPY git_backend/Cargo.toml ./git_backend/Cargo.toml
+COPY git_backend/Cargo.lock ./git_backend/Cargo.lock
+
 # Copy dependency manifests first for better layer caching
 COPY Cargo.toml Cargo.lock ./
 

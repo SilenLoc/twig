@@ -665,6 +665,7 @@ dependencies = [
  "reqwest",
  "serde",
  "tokio",
+ "xshell",
 ]
 
 [[package]]
@@ -797,6 +798,7 @@ dependencies = [
 name = "git_backend"
 version = "0.1.0"
 dependencies = [
+ "log",
  "xshell",
 ]
 

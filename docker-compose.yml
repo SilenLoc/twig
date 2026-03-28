@@ -11,3 +11,6 @@ networks:
   app-network:
     driver: bridge
 
+volumes:
+  git_backend:
+    driver: local

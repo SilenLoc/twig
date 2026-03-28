@@ -9,10 +9,6 @@ image_name := "silenloc/fig"
 compose-down:
     -docker compose down
 
-# Start only the clickhouse database
-@db:
-    docker compose up -d clickhouse
-
 build version="latest":
     docker build -t {{image_name}}:{{version}} .
 

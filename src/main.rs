@@ -28,6 +28,15 @@ async fn main() -> std::io::Result<()> {
             .app_data(config.clone())
             .service(health)
             .service(assets::assets)
+            .service(git::repo::init)
+            .route(
+                "/{namespace}/{repo}/{endpoint:.*}",
+                web::get().to(git::git_handler),
+            )
+            .route(
+                "/{namespace}/{repo}/{endpoint:.*}",
+                web::post().to(git::git_handler),
+            )
     })
     .bind(bind_address)?
     .run()

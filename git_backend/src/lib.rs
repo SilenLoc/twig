@@ -1,6 +1,31 @@
+use std::fmt::Display;
+
+use log::debug;
 use xshell::Shell;
 
-#[derive(Debug)]
+pub struct Config {
+    pub project_root: Option<String>,
+}
+
+impl Config {
+    pub fn new(project_root: impl Into<String>) -> Self {
+        Self {
+            project_root: Some(project_root.into()),
+        }
+    }
+
+    pub fn project_root(&self) -> String {
+        self.project_root.clone().unwrap_or("/srv/git".to_string())
+    }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self { project_root: None }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum GitRequestKind {
     AdvertiseRefs(GitService),
     FetchClone,
@@ -8,10 +33,16 @@ pub enum GitRequestKind {
     DumbGet,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum GitService {
     ReadRef,
     WriteRef,
+}
+
+impl Display for GitService {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -60,10 +91,21 @@ impl GitRequest {
     }
 }
 
-pub fn run_git_backend(req: &GitRequest, body: Vec<u8>) -> Result<(String, Vec<u8>), String> {
+pub fn run(req: &GitRequest, namespace: &str, body: Vec<u8>) -> Result<(String, Vec<u8>), String> {
+    run_with_config(&Config::default(), namespace, req, body)
+}
+
+pub fn run_with_config(
+    config: &Config,
+    namespace: &str,
+    req: &GitRequest,
+    body: Vec<u8>,
+) -> Result<(String, Vec<u8>), String> {
     let sh = sh();
 
-    let (sh, req) = prepare_cgi_env(sh, req);
+    // todo make this configurable
+    let actual_root = format!("{}/{}", config.project_root(), namespace);
+    let sh = prepare_cgi_env(&actual_root, sh, req.clone());
 
     if !req.content_type.is_empty() {
         sh.set_var("CONTENT_TYPE", req.content_type.clone());
@@ -104,12 +146,14 @@ fn parse_cgi_response(output: &[u8]) -> (String, Vec<u8>) {
     }
 }
 
-pub fn prepare_cgi_env(sh: Shell, req: &GitRequest) -> (Shell, &GitRequest) {
+pub fn prepare_cgi_env(project_root: &str, sh: Shell, req: GitRequest) -> Shell {
     sh.set_var("REQUEST_METHOD", req.method.clone());
     sh.set_var("PATH_INFO", req.path_info.clone());
     sh.set_var("QUERY_STRING", req.query_string.clone());
-    sh.set_var("GIT_PROJECT_ROOT", "/srv/git");
+    sh.set_var("GIT_PROJECT_ROOT", project_root);
     sh.set_var("GIT_HTTP_EXPORT_ALL", "1");
+
+    debug!("{req:?}");
 
     match req.kind() {
         GitRequestKind::Push => {
@@ -137,7 +181,7 @@ pub fn prepare_cgi_env(sh: Shell, req: &GitRequest) -> (Shell, &GitRequest) {
             sh.set_var("GIT_HTTP_GET_ANY_FILE", "1");
         }
     }
-    (sh, req)
+    sh
 }
 
 fn sh() -> Shell {
