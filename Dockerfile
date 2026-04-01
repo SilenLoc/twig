@@ -67,7 +67,9 @@ WORKDIR /data
 USER appuser
 
 # Document the port your app listens on.
+EXPOSE 80
 EXPOSE 8080
+ENV PORT=80
 
 # Start the application.
 CMD ["/bin/fig"]

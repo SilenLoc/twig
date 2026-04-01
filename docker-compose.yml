@@ -5,7 +5,7 @@ services:
     environment:
       PROJECT_ROOT: "tests/git/srv"
     ports:
-      - "8080:8080"
+      - "8080:80"
     volumes:
       - git_backend:/srv/git
     networks:
