@@ -11,6 +11,11 @@ async fn health() -> impl Responder {
     HttpResponse::Ok()
 }
 
+#[get("/up")]
+async fn up() -> impl Responder {
+    HttpResponse::Ok()
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let config = config::from_env();
@@ -27,6 +32,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .app_data(config.clone())
             .service(health)
+            .service(up)
             .service(assets::assets)
             .service(git::repo::init)
             .route(
