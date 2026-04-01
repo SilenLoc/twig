@@ -1,4 +1,3 @@
-
 POST {{target}}/init
 Content-Type: application/x-www-form-urlencoded
 [Form]

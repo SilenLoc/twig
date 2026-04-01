@@ -2,8 +2,12 @@ services:
   app:
     image: silenloc/fig
     container_name: fig
+    environment:
+      PROJECT_ROOT: "tests/git/srv"
     ports:
       - "8080:8080"
+    volumes:
+      - git_backend:/srv/git
     networks:
       - app-network
 
@@ -13,4 +17,3 @@ networks:
 
 volumes:
   git_backend:
-    driver: local

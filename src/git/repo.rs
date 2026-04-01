@@ -23,7 +23,6 @@ impl InitRepo {
     }
 }
 
-
 #[post("/init")]
 pub async fn init(
     init_repo: web::Form<InitRepo>,

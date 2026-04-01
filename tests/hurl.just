@@ -1,5 +1,5 @@
 
-hurl_opts := "--variables-file variables --test"
+hurl_opts := "--variables-file variables --test --very-verbose"
 
 wait-for-api:
     hurl health.hurl --retry 10 --retry-interval 1000 {{ hurl_opts }}
