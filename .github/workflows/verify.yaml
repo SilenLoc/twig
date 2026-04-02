@@ -89,9 +89,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           extra_plugins: |
-            conventional-changelog-conventionalcommits@8.0.0
-            @semantic-release/git@10.0.1
             @semantic-release/exec@6.0.3
+      - name: push
+        run: |
+            git add Cargo.toml Cargo.lock
+            git commit -m "chore(release): next version [skip ci]"
+            git push
 
   # Publish the artifacts (only if `verify` passed, and `release` created release)
   publish:
