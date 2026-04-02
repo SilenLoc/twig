@@ -2,6 +2,7 @@ use actix_web::{HttpRequest, HttpResponse, web};
 use log::info;
 
 use crate::config;
+pub mod bare;
 pub mod repo;
 
 pub async fn git_handler(

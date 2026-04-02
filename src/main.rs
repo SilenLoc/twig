@@ -1,10 +1,14 @@
-use actix_web::{App, HttpResponse, HttpServer, Responder, get, web};
+use actix_web::{
+    App, HttpResponse, HttpServer, Responder, get, guard,
+    web::{self},
+};
 use env_logger::Env;
 use log::info;
 
 mod assets;
 mod config;
 mod git;
+mod view;
 
 #[get("/health")]
 async fn health() -> impl Responder {
@@ -37,14 +41,27 @@ async fn main() -> std::io::Result<()> {
             .service(git::repo::init)
             .route(
                 "/{namespace}/{repo}/{endpoint:.*}",
-                web::get().to(git::git_handler),
+                web::get().guard(is_git()).to(git::git_handler),
             )
             .route(
                 "/{namespace}/{repo}/{endpoint:.*}",
-                web::post().to(git::git_handler),
+                web::post().guard(is_git()).to(git::git_handler),
             )
+            .service(view::repo::handler)
+            .service(view::namespace::handler)
+            .service(view::index)
     })
     .bind(bind_address)?
     .run()
     .await
+}
+
+fn is_git() -> impl guard::Guard {
+    guard::fn_guard(|ctx| {
+        ctx.head()
+            .headers
+            .get("User-Agent")
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|ua| ua.starts_with("git/"))
+    })
 }
