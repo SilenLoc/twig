@@ -37,7 +37,6 @@ pub fn render_layout(main_content: &maud::Markup) -> maud::Markup {
                 meta name="viewport" content="width=device-width, initial-scale=1";
                 title { "Fig" }
                 link rel="stylesheet" href="/assets/t.css";
-                link rel="stylesheet" href="/assets/custom.css";
                 script src="/assets/h.js" {}
             }
             body class="w-100 sans-serif ma0 bg-black white" style="height: 100vh; overflow: hidden;" {

@@ -20,6 +20,8 @@ RUN apt-get update && apt-get install -y \
     git \
     curl \
     pkg-config \
+    libssl-dev \
+    libgit2-dev \
     && rm -rf /var/lib/apt/lists/*
 
 
@@ -42,6 +44,13 @@ RUN --mount=type=cache,target=/app/target/ \
     cp ./target/release/$APP_NAME /bin/fig
 
 FROM docker.io/library/debian:bookworm-slim AS final
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    libssl3 \
+    libgit2-1.5 \
+    git \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create a non-privileged user (recommended best practice)
 ARG UID=10001

@@ -11,6 +11,12 @@ use crate::config;
 struct InitRepo {
     namespace: String,
     repo: String,
+    #[serde(default = "default_branch")]
+    branch: String,
+}
+
+fn default_branch() -> String {
+    "main".to_string()
 }
 
 impl InitRepo {
@@ -21,6 +27,10 @@ impl InitRepo {
     pub fn repo(&self) -> String {
         self.repo.clone()
     }
+
+    pub fn branch(&self) -> String {
+        self.branch.clone()
+    }
 }
 
 #[post("/init")]
@@ -30,14 +40,25 @@ pub async fn init(
 ) -> impl Responder {
     let init = init_repo;
 
-    create_repo(server.project_root(), init.namespace(), init.repo());
+    create_repo(
+        server.project_root(),
+        init.namespace(),
+        init.repo(),
+        init.branch(),
+    );
 
     HttpResponse::Ok()
 }
 
-fn create_repo(root: impl Into<String>, namespace: impl Into<String>, repo: impl Into<String>) {
+fn create_repo(
+    root: impl Into<String>,
+    namespace: impl Into<String>,
+    repo: impl Into<String>,
+    branch: impl Into<String>,
+) {
     let root: String = root.into();
     let root: &Path = Path::new(&root);
+    let branch: String = branch.into();
 
     info!("root path:{root:?}");
 
@@ -57,7 +78,7 @@ fn create_repo(root: impl Into<String>, namespace: impl Into<String>, repo: impl
 
     if !repo.exists() {
         std::fs::create_dir_all(&repo).unwrap();
-        let res = bare_init(&repo);
+        let res = bare_init(&repo, &branch);
 
         match res {
             Ok(std) => info!("{std}"),
@@ -66,12 +87,38 @@ fn create_repo(root: impl Into<String>, namespace: impl Into<String>, repo: impl
     }
 }
 
-pub fn bare_init(repo_path: &Path) -> Result<String, String> {
+pub fn bare_init(repo_path: &Path, branch: &str) -> Result<String, String> {
     let sh = sh();
     sh.change_dir(repo_path);
-    cmd!(sh, "git init --bare")
+
+    // Initialize bare repo
+    let output = cmd!(sh, "git init --bare --initial-branch={branch}")
         .read()
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    // Create initial commit with .fig file
+    // Use git plumbing commands to create a commit in a bare repo
+    let blob_content = "Created with Fig";
+    let blob_hash = cmd!(sh, "git hash-object -w --stdin")
+        .stdin(blob_content)
+        .read()
+        .map_err(|e| format!("Failed to create blob: {}", e))?;
+
+    let tree_entry = format!("100644 blob {}\t.fig\n", blob_hash);
+    let tree_hash = cmd!(sh, "git mktree")
+        .stdin(tree_entry)
+        .read()
+        .map_err(|e| format!("Failed to create tree: {}", e))?;
+
+    let commit_hash = cmd!(sh, "git commit-tree {tree_hash} -m 'Initial commit'")
+        .read()
+        .map_err(|e| format!("Failed to create commit: {}", e))?;
+
+    cmd!(sh, "git update-ref refs/heads/{branch} {commit_hash}")
+        .run()
+        .map_err(|e| format!("Failed to update ref: {}", e))?;
+
+    Ok(output)
 }
 
 fn sh() -> xshell::Shell {
