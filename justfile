@@ -3,7 +3,7 @@ mod hurl 'tests/hurl.just'
 mod git 'tests/git.just'
 
 export PROJECT_ROOT := "tests/git/srv"
-
+export API_KEY := "secure"
 
 run:
     cargo run

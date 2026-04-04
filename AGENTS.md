@@ -159,11 +159,51 @@ src/
 - `PORT`: Server port (default: 8080)
 - `LOG_LEVEL`: Logging level (default: info)
 - `PROJECT_ROOT`: Git repositories root path (default: /srv/git)
+- `DB_PATH`: Path to the SQLite database file (default: fig.db)
+- `API_KEY`: API key for user signup endpoint (auto-generated if not set)
 
 ### Git Workflow
 
 - Do not run `git commit`, `git push`, or destructive git operations unless explicitly asked
 - The project uses semantic-release for automated versioning
+
+## Authentication System
+
+Fig includes a complete authentication system. See `docs/git-auth.md` for Git authentication details.
+
+### Flow Overview
+
+1. **Get Ticket** (requires API Key) → Returns one-time signup ticket
+2. **Signup** (requires ticket) → Creates account
+3. **Login** → Sets session cookie (UI) or returns Bearer token (API)
+4. **Create Namespace** → Uses session (UI) or Bearer token (API)
+5. **Git Operations** → Uses Basic Auth with username/password
+
+### Authentication by Endpoint Type
+
+| Endpoint Type | Auth Method |
+|--------------|-------------|
+| Git operations (`git push`) | Basic Auth (username:password) |
+| Web UI pages (`/auth/*`) | Session cookies |
+| API endpoints (`/api/*`) | API Key, Basic Auth, or Bearer token |
+| Init repo (`POST /init`) | Basic Auth |
+
+### Database Schema
+
+The system uses libsql (SQLite) for storing:
+- **users**: User accounts with hashed passwords
+- **namespaces**: Namespace definitions with owners
+- **namespace_members**: Many-to-many relationship for namespace access
+- **tickets**: Single-use tickets for signup
+- **tokens**: Session tokens for API/UI authentication
+
+### Security
+
+- Passwords are hashed using Argon2 (memory-hard password hashing)
+- API key required for ticket generation to prevent unauthorized account creation
+- Tickets are single-use for signup only
+- Per-namespace access control
+- Sessions expire after 30 days of inactivity
 
 ## Dependencies
 
@@ -174,3 +214,6 @@ Key crates used:
 - `xshell`: Shell command execution
 - `serde`: Serialization
 - `chrono`: Date/time handling
+- `libsql`: SQLite database for auth data
+- `argon2`: Password hashing
+- `base64`: Base64 encoding/decoding

@@ -4,6 +4,8 @@ services:
     container_name: fig
     environment:
       PROJECT_ROOT: "tests/git/srv"
+      API_KEY: "test_api_key_for_development"
+      DB_PATH: "/srv/git/fig.db"
     ports:
       - "8080:80"
     volumes:

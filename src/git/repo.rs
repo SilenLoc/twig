@@ -1,10 +1,11 @@
 use std::path::Path;
 
-use actix_web::{HttpResponse, Responder, post, web};
+use actix_web::{HttpRequest, HttpResponse, Responder, post, web};
 use log::info;
 use serde::Deserialize;
 use xshell::cmd;
 
+use crate::auth::{AuthState, extract_basic_auth, verify_password};
 use crate::config;
 
 #[derive(Deserialize)]
@@ -35,9 +36,61 @@ impl InitRepo {
 
 #[post("/init")]
 pub async fn init(
+    req: HttpRequest,
     init_repo: web::Form<InitRepo>,
     server: web::Data<config::Server>,
+    auth_state: web::Data<AuthState>,
 ) -> impl Responder {
+    // Authenticate the request
+    let (username, password) = match extract_basic_auth(&req) {
+        Some(creds) => creds,
+        None => {
+            return HttpResponse::Unauthorized()
+                .insert_header(("WWW-Authenticate", "Basic realm=\"fig\""))
+                .body("Missing credentials");
+        }
+    };
+
+    // Get user from database
+    let user = match auth_state.db.get_user_by_username(&username).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return HttpResponse::Unauthorized().body("Invalid credentials");
+        }
+        Err(e) => {
+            log::error!("Database error: {}", e);
+            return HttpResponse::InternalServerError().body("Database error");
+        }
+    };
+
+    // Verify password
+    match verify_password(&password, &user.password_hash) {
+        Ok(true) => {}
+        Ok(false) => {
+            return HttpResponse::Unauthorized().body("Invalid credentials");
+        }
+        Err(e) => {
+            log::error!("Password verification error: {}", e);
+            return HttpResponse::InternalServerError().body("Authentication error");
+        }
+    }
+
+    // Check if user has access to namespace
+    match auth_state
+        .db
+        .user_has_namespace_access(&user.id, &init_repo.namespace)
+        .await
+    {
+        Ok(true) => {}
+        Ok(false) => {
+            return HttpResponse::Forbidden().body("Access denied to namespace");
+        }
+        Err(e) => {
+            log::error!("Database error: {}", e);
+            return HttpResponse::InternalServerError().body("Database error");
+        }
+    }
+
     let init = init_repo;
 
     create_repo(
@@ -47,7 +100,7 @@ pub async fn init(
         init.branch(),
     );
 
-    HttpResponse::Ok()
+    HttpResponse::Ok().body("Repository created")
 }
 
 fn create_repo(

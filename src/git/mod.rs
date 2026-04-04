@@ -1,6 +1,7 @@
 use actix_web::{HttpRequest, HttpResponse, web};
 use log::info;
 
+use crate::auth::{AuthState, extract_basic_auth, verify_password};
 use crate::config;
 pub mod bare;
 pub mod repo;
@@ -10,6 +11,7 @@ pub async fn git_handler(
     body: web::Bytes,
     path: web::Path<(String, String, String)>, // (namespace,repo, endpoint)
     server: web::Data<config::Server>,
+    auth_state: web::Data<AuthState>,
 ) -> HttpResponse {
     let (namespace, repo, endpoint) = path.into_inner();
 
@@ -47,14 +49,16 @@ pub async fn git_handler(
         }
     }
 
-    // Auth gate
+    // Auth gate for write operations
     match kind {
         git_backend::GitRequestKind::Push
         | git_backend::GitRequestKind::AdvertiseRefs(git_backend::GitService::WriteRef) => {
-            if !is_authenticated(&req) {
-                return actix_web::HttpResponse::Unauthorized()
-                    .insert_header(("WWW-Authenticate", "Basic realm=\"git\""))
-                    .finish();
+            match is_authenticated(&req, &auth_state, &namespace).await {
+                Ok(true) => {}
+                Ok(false) => {
+                    return actix_web::HttpResponse::Forbidden().body("Access denied to namespace");
+                }
+                Err(response) => return response,
             }
         }
         _ => {}
@@ -63,8 +67,9 @@ pub async fn git_handler(
     // Run in blocking thread — xshell/process::Command is blocking
     let req = git_req.clone();
     let body_bytes = body.to_vec();
-    let result = crate::web::block(move || {
-        git_backend::run_with_config(&git_backend_config, &namespace, &req, body_bytes)
+    let namespace_clone = namespace.clone();
+    let result = web::block(move || {
+        git_backend::run_with_config(&git_backend_config, &namespace_clone, &req, body_bytes)
     })
     .await;
 
@@ -107,6 +112,56 @@ fn build_response(headers: String, body: Vec<u8>) -> actix_web::HttpResponse {
     response.body(body)
 }
 
-fn is_authenticated(_req: &actix_web::HttpRequest) -> bool {
-    true
+async fn is_authenticated(
+    req: &actix_web::HttpRequest,
+    auth_state: &web::Data<AuthState>,
+    namespace_name: &str,
+) -> Result<bool, HttpResponse> {
+    // Extract basic auth credentials
+    let (username, password) = match extract_basic_auth(req) {
+        Some(creds) => creds,
+        None => {
+            return Err(actix_web::HttpResponse::Unauthorized()
+                .insert_header(("WWW-Authenticate", "Basic realm=\"git\""))
+                .body("Missing credentials"));
+        }
+    };
+
+    // Get user from database
+    let user = match auth_state.db.get_user_by_username(&username).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return Err(actix_web::HttpResponse::Unauthorized().body("Invalid credentials"));
+        }
+        Err(e) => {
+            log::error!("Database error: {}", e);
+            return Err(actix_web::HttpResponse::InternalServerError().body("Database error"));
+        }
+    };
+
+    // Verify password
+    match verify_password(&password, &user.password_hash) {
+        Ok(true) => {}
+        Ok(false) => {
+            return Err(actix_web::HttpResponse::Unauthorized().body("Invalid credentials"));
+        }
+        Err(e) => {
+            log::error!("Password verification error: {}", e);
+            return Err(actix_web::HttpResponse::InternalServerError().body("Authentication error"));
+        }
+    }
+
+    // Check if user has access to namespace
+    match auth_state
+        .db
+        .user_has_namespace_access(&user.id, namespace_name)
+        .await
+    {
+        Ok(true) => Ok(true),
+        Ok(false) => Ok(false),
+        Err(e) => {
+            log::error!("Database error: {}", e);
+            Err(actix_web::HttpResponse::InternalServerError().body("Database error"))
+        }
+    }
 }

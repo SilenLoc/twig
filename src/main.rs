@@ -6,7 +6,9 @@ use env_logger::Env;
 use log::info;
 
 mod assets;
+mod auth;
 mod config;
+mod db;
 mod git;
 mod view;
 
@@ -30,14 +32,48 @@ async fn main() -> std::io::Result<()> {
 
     let config = web::Data::new(config);
 
+    // Initialize auth state
+    let db_path = std::env::var("DB_PATH").unwrap_or_else(|_| "fig.db".to_string());
+    let api_key = std::env::var("API_KEY").unwrap_or_else(|_| {
+        // Generate a random API key if not provided
+        let key = auth::generate_token();
+        log::warn!("No API_KEY set, using generated key: {}", key);
+        key
+    });
+
+    let auth_state = match auth::AuthState::new(&db_path, api_key).await {
+        Ok(state) => web::Data::new(state),
+        Err(e) => {
+            log::error!("Failed to initialize auth state: {}", e);
+            return Err(std::io::Error::other(e));
+        }
+    };
+
     let bind_address = config.address();
 
     HttpServer::new(move || {
         App::new()
             .app_data(config.clone())
+            .app_data(auth_state.clone())
             .service(health)
             .service(up)
             .service(assets::assets)
+            // Auth API endpoints (JSON)
+            .service(auth::handlers::create_ticket_api)
+            .service(auth::handlers::signup)
+            .service(auth::handlers::login)
+            .service(auth::handlers::create_namespace_endpoint)
+            .service(auth::handlers::logout)
+            // Auth UI endpoints (HTML forms)
+            .service(view::auth::ticket_page)
+            .service(view::auth::signup_page)
+            .service(view::auth::login_page)
+            .service(view::auth::namespace_page)
+            .service(auth::handlers::create_ticket_ui_handler)
+            .service(auth::handlers::signup_ui_handler)
+            .service(auth::handlers::login_ui_handler)
+            .service(auth::handlers::create_namespace_ui_handler)
+            // Git endpoints with auth
             .service(git::repo::init)
             .route(
                 "/{namespace}/{repo}/{endpoint:.*}",
@@ -47,6 +83,7 @@ async fn main() -> std::io::Result<()> {
                 "/{namespace}/{repo}/{endpoint:.*}",
                 web::post().guard(is_git()).to(git::git_handler),
             )
+            // Web UI endpoints
             .service(view::repo::handler)
             .service(view::namespace::handler)
             .service(view::index)
