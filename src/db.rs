@@ -382,6 +382,19 @@ impl Database {
         Ok(rows.next().await.map_err(|e| e.to_string())?.is_some())
     }
 
+    pub async fn user_has_any_namespaces(&self, user_id: &str) -> Result<bool, String> {
+        let mut rows = self
+            .conn
+            .query(
+                "SELECT 1 FROM namespace_members WHERE user_id = ?1 LIMIT 1",
+                libsql::params![user_id],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+
+        Ok(rows.next().await.map_err(|e| e.to_string())?.is_some())
+    }
+
     // Ticket operations
     pub async fn create_ticket(&self, ticket: &Ticket) -> Result<(), String> {
         self.conn

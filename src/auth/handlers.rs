@@ -478,20 +478,40 @@ pub async fn login_ui_handler(
 
     info!("User logged in via UI: {}", form.username);
 
-    // Return HTML response with session cookie (no token shown to user)
-    // Use HX-Retarget to replace the whole form area on success
-    HttpResponse::Ok()
-        .content_type("text/html")
-        .insert_header(("HX-Retarget", "#auth-content"))
-        .insert_header(("HX-Reswap", "innerHTML"))
-        .cookie(
-            actix_web::cookie::Cookie::build("session", token)
-                .path("/")
-                .http_only(true)
-                .same_site(actix_web::cookie::SameSite::Strict)
-                .finish(),
-        )
-        .body(render_login_success(&user.username).into_string())
+    // Check if user has any namespaces
+    let has_namespaces = auth_state
+        .db
+        .user_has_any_namespaces(&user.id)
+        .await
+        .unwrap_or(false);
+
+    if has_namespaces {
+        // Redirect to home page if user already has namespaces
+        HttpResponse::Ok()
+            .insert_header(("HX-Redirect", "/"))
+            .cookie(
+                actix_web::cookie::Cookie::build("session", token)
+                    .path("/")
+                    .http_only(true)
+                    .same_site(actix_web::cookie::SameSite::Strict)
+                    .finish(),
+            )
+            .body("")
+    } else {
+        // Show create namespace page if user has no namespaces
+        HttpResponse::Ok()
+            .content_type("text/html")
+            .insert_header(("HX-Retarget", "#auth-content"))
+            .insert_header(("HX-Reswap", "innerHTML"))
+            .cookie(
+                actix_web::cookie::Cookie::build("session", token)
+                    .path("/")
+                    .http_only(true)
+                    .same_site(actix_web::cookie::SameSite::Strict)
+                    .finish(),
+            )
+            .body(render_login_success(&user.username).into_string())
+    }
 }
 
 #[post("/auth/namespace")]
