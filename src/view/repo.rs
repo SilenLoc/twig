@@ -5,12 +5,24 @@ use pulldown_cmark::{Event, Parser, html};
 use serde::Deserialize;
 
 use crate::{
+    auth::AuthState,
     config,
     git::{
         self,
         bare::{Commit, Depth},
     },
 };
+
+/// Helper function to get the username from the session cookie if logged in
+async fn get_username_from_request(
+    req: &HttpRequest,
+    auth_state: &web::Data<AuthState>,
+) -> Option<String> {
+    let token = req.cookie("session")?;
+    let user_id = auth_state.validate_token(token.value()).await?;
+    let user = auth_state.db.get_user_by_id(&user_id).await.ok()??;
+    Some(user.username)
+}
 
 #[derive(Deserialize)]
 struct Params {
@@ -22,10 +34,12 @@ struct Params {
 pub async fn handler(
     req: HttpRequest,
     server: web::Data<config::Server>,
+    auth_state: web::Data<AuthState>,
     params: web::Path<Params>,
 ) -> AwResult<Markup> {
     let namespace = &params.namespace;
     let repo = &params.repo;
+    let username = get_username_from_request(&req, &auth_state).await;
 
     // Get commits
     let commits_result =
@@ -40,7 +54,7 @@ pub async fn handler(
                 .ok()
                 .flatten()
                 .map(|(_, content)| markdown_to_html(&content));
-            render_repo(&commits, readme_html.as_deref())
+            render_repo(namespace, repo, &commits, readme_html.as_deref())
         }
         Err(e) => render_git_error(e),
     };
@@ -48,7 +62,7 @@ pub async fn handler(
     if req.headers().get("HX-Request").is_some() {
         Ok(content)
     } else {
-        Ok(super::render_layout(&content))
+        Ok(super::render_layout(&content, username.as_deref()))
     }
 }
 
@@ -80,8 +94,22 @@ fn render_git_error(e: git2::Error) -> Markup {
     }
 }
 
-fn render_repo(commits: &[Commit], readme_html: Option<&str>) -> Markup {
+fn render_repo(
+    namespace: &str,
+    repo: &str,
+    commits: &[Commit],
+    readme_html: Option<&str>,
+) -> Markup {
     maud::html! {
+        // Breadcrumb navigation
+        div class="mb4 f6 white-70" {
+            a href="/" class="link white-70 hover-white no-underline" { "Namespaces" }
+            span class="mh2" { "/" }
+            a href=(format!("/ {}", namespace)) class="link white-70 hover-white no-underline" { (namespace) }
+            span class="mh2" { "/" }
+            span class="white" { (repo) }
+        }
+
         // README section
         @if let Some(html) = readme_html {
             div class="readme pa3 mb4 bg-dark-gray br2" {

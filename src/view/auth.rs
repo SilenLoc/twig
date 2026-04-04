@@ -1,8 +1,8 @@
 use actix_web::Result as AwResult;
 use actix_web::{HttpRequest, get, web};
 
-use crate::auth::AuthState;
 use super::render_layout;
+use crate::auth::AuthState;
 
 /// Helper function to get the username from the session cookie if logged in
 async fn get_username_from_request(
@@ -82,7 +82,10 @@ pub async fn ticket_page(
     if req.headers().get("HX-Request").is_some() {
         Ok(content)
     } else {
-        Ok(render_layout(&wrap_auth_content(content), username.as_deref()))
+        Ok(render_layout(
+            &wrap_auth_content(content),
+            username.as_deref(),
+        ))
     }
 }
 
@@ -169,7 +172,10 @@ pub async fn signup_page(
     if req.headers().get("HX-Request").is_some() {
         Ok(content)
     } else {
-        Ok(render_layout(&wrap_auth_content(content), username.as_deref()))
+        Ok(render_layout(
+            &wrap_auth_content(content),
+            username.as_deref(),
+        ))
     }
 }
 
@@ -232,7 +238,10 @@ pub async fn login_page(
     if req.headers().get("HX-Request").is_some() {
         Ok(content)
     } else {
-        Ok(render_layout(&wrap_auth_content(content), username.as_deref()))
+        Ok(render_layout(
+            &wrap_auth_content(content),
+            username.as_deref(),
+        ))
     }
 }
 
@@ -293,7 +302,10 @@ pub async fn namespace_page(
     if req.headers().get("HX-Request").is_some() {
         Ok(content)
     } else {
-        Ok(render_layout(&wrap_auth_content(content), username.as_deref()))
+        Ok(render_layout(
+            &wrap_auth_content(content),
+            username.as_deref(),
+        ))
     }
 }
 

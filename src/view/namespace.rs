@@ -81,6 +81,13 @@ pub async fn handler(
     };
 
     let content = maud::html! {
+        // Breadcrumb navigation
+        div class="mb4 f6 white-70" {
+            a href="/" class="link white-70 hover-white no-underline" { "Namespaces" }
+            span class="mh2" { "/" }
+            span class="white" { (namespace) }
+        }
+
         // Header with namespace name and Create repo button
         div class="flex justify-between items-center mb4" {
             h1 class="f3 fw6 white ma0" {
