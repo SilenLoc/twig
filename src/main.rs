@@ -73,6 +73,12 @@ async fn main() -> std::io::Result<()> {
             .service(auth::handlers::signup_ui_handler)
             .service(auth::handlers::login_ui_handler)
             .service(auth::handlers::create_namespace_ui_handler)
+            // Web UI endpoints (MUST come before git routes to avoid pattern conflicts)
+            .service(view::index)
+            .service(view::namespace::handler)
+            .service(view::namespace::create_repo_form_handler)
+            .service(view::namespace::create_repo_handler)
+            .service(view::repo::handler)
             // Git endpoints with auth
             .service(git::repo::init)
             .route(
@@ -83,10 +89,6 @@ async fn main() -> std::io::Result<()> {
                 "/{namespace}/{repo}/{endpoint:.*}",
                 web::post().guard(is_git()).to(git::git_handler),
             )
-            // Web UI endpoints
-            .service(view::repo::handler)
-            .service(view::namespace::handler)
-            .service(view::index)
     })
     .bind(bind_address)?
     .run()

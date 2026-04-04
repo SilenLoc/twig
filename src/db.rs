@@ -232,6 +232,28 @@ impl Database {
         }
     }
 
+    pub async fn get_user_by_id(&self, user_id: &str) -> Result<Option<User>, String> {
+        let mut rows = self
+            .conn
+            .query(
+                "SELECT id, username, password_hash, created_at FROM users WHERE id = ?1",
+                libsql::params![user_id],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
+            Ok(Some(User {
+                id: row.get(0).map_err(|e| e.to_string())?,
+                username: row.get(1).map_err(|e| e.to_string())?,
+                password_hash: row.get(2).map_err(|e| e.to_string())?,
+                created_at: row.get(3).map_err(|e| e.to_string())?,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
     // Namespace operations
     pub async fn create_namespace(&self, namespace: &Namespace) -> Result<(), String> {
         self.conn
@@ -280,6 +302,65 @@ impl Database {
         } else {
             Ok(None)
         }
+    }
+
+    pub async fn get_all_namespaces_with_owners(&self) -> Result<Vec<(Namespace, String)>, String> {
+        let mut rows = self
+            .conn
+            .query(
+                "SELECT n.id, n.name, n.owner_id, n.created_at, u.username 
+                 FROM namespaces n 
+                 JOIN users u ON n.owner_id = u.id 
+                 ORDER BY n.name",
+                (),
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let mut result = Vec::new();
+        while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
+            let namespace = Namespace {
+                id: row.get(0).map_err(|e| e.to_string())?,
+                name: row.get(1).map_err(|e| e.to_string())?,
+                owner_id: row.get(2).map_err(|e| e.to_string())?,
+                created_at: row.get(3).map_err(|e| e.to_string())?,
+            };
+            let username: String = row.get(4).map_err(|e| e.to_string())?;
+            result.push((namespace, username));
+        }
+        Ok(result)
+    }
+
+    pub async fn search_namespaces_with_owners(
+        &self,
+        query: &str,
+    ) -> Result<Vec<(Namespace, String)>, String> {
+        let search_pattern = format!("%{}%", query);
+        let mut rows = self
+            .conn
+            .query(
+                "SELECT n.id, n.name, n.owner_id, n.created_at, u.username 
+                 FROM namespaces n 
+                 JOIN users u ON n.owner_id = u.id 
+                 WHERE n.name LIKE ?1 
+                 ORDER BY n.name",
+                libsql::params![search_pattern],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let mut result = Vec::new();
+        while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
+            let namespace = Namespace {
+                id: row.get(0).map_err(|e| e.to_string())?,
+                name: row.get(1).map_err(|e| e.to_string())?,
+                owner_id: row.get(2).map_err(|e| e.to_string())?,
+                created_at: row.get(3).map_err(|e| e.to_string())?,
+            };
+            let username: String = row.get(4).map_err(|e| e.to_string())?;
+            result.push((namespace, username));
+        }
+        Ok(result)
     }
 
     pub async fn user_has_namespace_access(

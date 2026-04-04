@@ -122,6 +122,7 @@ fn chrono(git_time: git2::Time) -> chrono::DateTime<Utc> {
     chrono::DateTime::from_timestamp(git_time.seconds(), 0).unwrap()
 }
 
+#[allow(dead_code)]
 pub fn get_namespaces(root: &str) -> Result<Vec<String>, git2::Error> {
     let path = Path::new(root);
     let entries = match std::fs::read_dir(path) {
@@ -144,6 +145,7 @@ pub fn get_namespaces(root: &str) -> Result<Vec<String>, git2::Error> {
     Ok(namespaces)
 }
 
+#[allow(dead_code)]
 pub fn get_repos(root: &str, namespace: &str) -> Result<Vec<String>, git2::Error> {
     let path = Path::new(root).join(namespace);
     let entries = match std::fs::read_dir(path) {
@@ -173,6 +175,73 @@ pub fn get_repos(root: &str, namespace: &str) -> Result<Vec<String>, git2::Error
     }
 
     Ok(repos)
+}
+
+pub struct RepoInfo {
+    pub name: String,
+    pub last_commit_date: Option<chrono::DateTime<Utc>>,
+}
+
+pub fn get_repos_with_info(root: &str, namespace: &str) -> Result<Vec<RepoInfo>, git2::Error> {
+    let path = Path::new(root).join(namespace);
+    let entries = match std::fs::read_dir(path) {
+        Ok(entries) => entries,
+        Err(_) => return Ok(Vec::new()),
+    };
+
+    let mut repos = Vec::new();
+
+    for entry in entries {
+        let Ok(entry) = entry else {
+            continue;
+        };
+
+        let Ok(repo_name) = entry.file_name().into_string() else {
+            continue;
+        };
+
+        let repo_path = Path::new(root).join(namespace).join(&repo_name);
+        let repo = match git2::Repository::open(&repo_path) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+
+        // Get last commit date
+        let last_commit_date = match repo.head() {
+            Ok(head) => match head.resolve() {
+                Ok(resolved) => match resolved.peel(git2::ObjectType::Commit) {
+                    Ok(obj) => match obj.into_commit() {
+                        Ok(commit) => Some(chrono(commit.author().when())),
+                        Err(_) => None,
+                    },
+                    Err(_) => None,
+                },
+                Err(_) => None,
+            },
+            Err(_) => None,
+        };
+
+        repos.push(RepoInfo {
+            name: repo_name,
+            last_commit_date,
+        });
+    }
+
+    Ok(repos)
+}
+
+pub fn search_repos_with_info(
+    root: &str,
+    namespace: &str,
+    query: &str,
+) -> Result<Vec<RepoInfo>, git2::Error> {
+    let all_repos = get_repos_with_info(root, namespace)?;
+    let query_lower = query.to_lowercase();
+
+    Ok(all_repos
+        .into_iter()
+        .filter(|repo| repo.name.to_lowercase().contains(&query_lower))
+        .collect())
 }
 
 /// Reads a file from the repository at the given path

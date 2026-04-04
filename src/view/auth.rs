@@ -1,7 +1,19 @@
 use actix_web::Result as AwResult;
-use actix_web::{HttpRequest, get};
+use actix_web::{HttpRequest, get, web};
 
+use crate::auth::AuthState;
 use super::render_layout;
+
+/// Helper function to get the username from the session cookie if logged in
+async fn get_username_from_request(
+    req: &HttpRequest,
+    auth_state: &web::Data<AuthState>,
+) -> Option<String> {
+    let token = req.cookie("session")?;
+    let user_id = auth_state.validate_token(token.value()).await?;
+    let user = auth_state.db.get_user_by_id(&user_id).await.ok()??;
+    Some(user.username)
+}
 
 fn wrap_auth_content(content: maud::Markup) -> maud::Markup {
     maud::html! {
@@ -14,7 +26,11 @@ fn wrap_auth_content(content: maud::Markup) -> maud::Markup {
 }
 
 #[get("/auth/ticket")]
-pub async fn ticket_page(req: HttpRequest) -> AwResult<maud::Markup> {
+pub async fn ticket_page(
+    req: HttpRequest,
+    auth_state: web::Data<AuthState>,
+) -> AwResult<maud::Markup> {
+    let username = get_username_from_request(&req, &auth_state).await;
     let content = maud::html! {
         h1 class="f3 fw6 mb4 white tc" { "Get Signup Ticket" }
 
@@ -66,12 +82,16 @@ pub async fn ticket_page(req: HttpRequest) -> AwResult<maud::Markup> {
     if req.headers().get("HX-Request").is_some() {
         Ok(content)
     } else {
-        Ok(render_layout(&wrap_auth_content(content)))
+        Ok(render_layout(&wrap_auth_content(content), username.as_deref()))
     }
 }
 
 #[get("/auth/signup")]
-pub async fn signup_page(req: HttpRequest) -> AwResult<maud::Markup> {
+pub async fn signup_page(
+    req: HttpRequest,
+    auth_state: web::Data<AuthState>,
+) -> AwResult<maud::Markup> {
+    let username = get_username_from_request(&req, &auth_state).await;
     let content = maud::html! {
         h1 class="f3 fw6 mb4 white tc" { "Create Account" }
 
@@ -149,12 +169,16 @@ pub async fn signup_page(req: HttpRequest) -> AwResult<maud::Markup> {
     if req.headers().get("HX-Request").is_some() {
         Ok(content)
     } else {
-        Ok(render_layout(&wrap_auth_content(content)))
+        Ok(render_layout(&wrap_auth_content(content), username.as_deref()))
     }
 }
 
 #[get("/auth/login")]
-pub async fn login_page(req: HttpRequest) -> AwResult<maud::Markup> {
+pub async fn login_page(
+    req: HttpRequest,
+    auth_state: web::Data<AuthState>,
+) -> AwResult<maud::Markup> {
+    let username = get_username_from_request(&req, &auth_state).await;
     let content = maud::html! {
         h1 class="f3 fw6 mb4 white tc" { "Log In" }
 
@@ -208,12 +232,16 @@ pub async fn login_page(req: HttpRequest) -> AwResult<maud::Markup> {
     if req.headers().get("HX-Request").is_some() {
         Ok(content)
     } else {
-        Ok(render_layout(&wrap_auth_content(content)))
+        Ok(render_layout(&wrap_auth_content(content), username.as_deref()))
     }
 }
 
 #[get("/auth/namespace")]
-pub async fn namespace_page(req: HttpRequest) -> AwResult<maud::Markup> {
+pub async fn namespace_page(
+    req: HttpRequest,
+    auth_state: web::Data<AuthState>,
+) -> AwResult<maud::Markup> {
+    let username = get_username_from_request(&req, &auth_state).await;
     let content = maud::html! {
         h1 class="f3 fw6 mb4 white tc" { "Create Namespace" }
 
@@ -265,7 +293,7 @@ pub async fn namespace_page(req: HttpRequest) -> AwResult<maud::Markup> {
     if req.headers().get("HX-Request").is_some() {
         Ok(content)
     } else {
-        Ok(render_layout(&wrap_auth_content(content)))
+        Ok(render_layout(&wrap_auth_content(content), username.as_deref()))
     }
 }
 
