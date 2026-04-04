@@ -281,11 +281,17 @@ pub async fn create_namespace_endpoint(
 
 #[post("/api/auth/logout")]
 pub async fn logout(_req: HttpRequest, auth_state: web::Data<AuthState>) -> impl Responder {
-    // Extract bearer token
+    // Try to extract token from Bearer header first, then from session cookie
     let token = match extract_bearer_token(&_req) {
         Some(token) => token,
         None => {
-            return HttpResponse::Unauthorized().body("Missing token");
+            // Fallback to session cookie
+            match _req.cookie("session") {
+                Some(cookie) => cookie.value().to_string(),
+                None => {
+                    return HttpResponse::Unauthorized().body("Missing token");
+                }
+            }
         }
     };
 

@@ -20,6 +20,32 @@ async fn get_username_from_request(
     Some(user.username)
 }
 
+/// Helper function to check if the current user has access to a namespace
+async fn user_has_namespace_access(
+    req: &HttpRequest,
+    auth_state: &web::Data<AuthState>,
+    namespace: &str,
+) -> bool {
+    let token = match req.cookie("session") {
+        Some(cookie) => cookie.value().to_string(),
+        None => return false,
+    };
+
+    let user_id = match auth_state.validate_token(&token).await {
+        Some(id) => id,
+        None => return false,
+    };
+
+    match auth_state
+        .db
+        .user_has_namespace_access(&user_id, namespace)
+        .await
+    {
+        Ok(has_access) => has_access,
+        Err(_) => false,
+    }
+}
+
 #[derive(Deserialize)]
 struct Params {
     namespace: String,
@@ -71,6 +97,7 @@ pub async fn handler(
     let namespace = &params.namespace;
     let search_query = query.q.as_deref().unwrap_or("");
     let username = get_username_from_request(&req, &auth_state).await;
+    let has_access = user_has_namespace_access(&req, &auth_state, namespace).await;
 
     // Get repos with info (last commit date)
     let repos = if search_query.is_empty() {
@@ -93,7 +120,7 @@ pub async fn handler(
             h1 class="f3 fw6 white ma0" {
                 "Namespace: " (namespace)
             }
-            @if username.is_some() {
+            @if has_access {
                 button
                     hx-get=(format!("/{}/create-repo-form", namespace))
                     hx-target="#create-repo-container"
