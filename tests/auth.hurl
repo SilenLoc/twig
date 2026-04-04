@@ -86,13 +86,13 @@ HTTP 409
 
 # Test 9: Login with wrong password should fail
 POST {{target}}/api/auth/login
-Authorization: Basic {{base64("testuser:wrongpassword")}}
+Authorization: Basic {{base64_testuser_wrongpassword}}
 
 HTTP 401
 
 # Test 10: Login with correct credentials should succeed
 POST {{target}}/api/auth/login
-Authorization: Basic {{base64("testuser:testpassword123")}}
+Authorization: Basic {{base64_testuser_password}}
 
 HTTP 200
 [Captures]
@@ -140,7 +140,7 @@ HTTP 401
 
 # Test 15: Init repo with auth should succeed
 POST {{target}}/init
-Authorization: Basic {{base64("testuser:testpassword123")}}
+Authorization: Basic {{base64_testuser_password}}
 Content-Type: application/x-www-form-urlencoded
 [Form]
 namespace: testnamespace

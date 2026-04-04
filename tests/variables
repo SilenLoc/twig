@@ -1,2 +1,6 @@
 target=http://0.0.0.0:8080
-api_key=test_api_key_for_development
+api_key=secure
+base64_testuser_wrongpassword=dGVzdHVzZXI6d3JvbmdwYXNzd29yZA==
+base64_testuser_password=dGVzdHVzZXI6dGVzdHBhc3N3b3JkMTIz
+base64_default_password=ZGVmYXVsdDp2ZXJ5LXNlY3VyZS1wdw==
+base64_inituser_password=aW5pdHVzZXI6aW5pdHBhc3N3b3JkMTIz

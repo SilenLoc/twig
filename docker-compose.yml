@@ -2,10 +2,11 @@ services:
   app:
     image: silenloc/fig
     container_name: fig
+    user: "root"
     environment:
-      PROJECT_ROOT: "tests/git/srv"
-      API_KEY: "test_api_key_for_development"
-      DB_PATH: "/srv/git/fig.db"
+      PROJECT_ROOT: "/srv/git"
+      API_KEY: "secure"
+      DB_PATH: "/data/fig.db"
     ports:
       - "8080:80"
     volumes:

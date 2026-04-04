@@ -127,7 +127,18 @@ HTTP 401
 [Asserts]
 body contains "Invalid credentials"
 
-# Test 12: Login form with correct credentials should succeed and set session cookie
+# Test 12: Create namespace without session cookie should fail
+# This test MUST come before login to ensure no session cookie is stored
+POST {{target}}/auth/namespace
+Content-Type: application/x-www-form-urlencoded
+[Form]
+name: shouldfail_ns
+
+HTTP 401
+[Asserts]
+body contains "Not logged in"
+
+# Test 13: Login form with correct credentials should succeed and set session cookie
 POST {{target}}/auth/login
 Content-Type: application/x-www-form-urlencoded
 [Form]
@@ -141,16 +152,6 @@ body contains "Welcome back, uiuser!"
 body contains "You are now logged in"
 [Captures]
 session_cookie: header "Set-Cookie"
-
-# Test 13: Create namespace without session cookie should fail
-POST {{target}}/auth/namespace
-Content-Type: application/x-www-form-urlencoded
-[Form]
-name: uinamespace
-
-HTTP 401
-[Asserts]
-body contains "Not logged in"
 
 # Test 14: Create namespace with session cookie should succeed
 POST {{target}}/auth/namespace

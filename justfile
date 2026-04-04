@@ -4,6 +4,7 @@ mod git 'tests/git.just'
 
 export PROJECT_ROOT := "tests/git/srv"
 export API_KEY := "secure"
+export RESET_DB := 'true'
 
 run:
     cargo run

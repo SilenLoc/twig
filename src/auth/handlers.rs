@@ -84,7 +84,14 @@ pub async fn signup(
     signup_req: web::Json<SignupRequest>,
 ) -> impl Responder {
     // Validate ticket first
-    let ticket = match auth_state.db.get_ticket(&signup_req.ticket).await {
+    let ticket_id = match &signup_req.ticket {
+        Some(ticket) => ticket,
+        None => {
+            return HttpResponse::Unauthorized().body("Missing ticket");
+        }
+    };
+
+    let ticket = match auth_state.db.get_ticket(ticket_id).await {
         Ok(Some(ticket)) => ticket,
         Ok(None) => {
             return HttpResponse::Unauthorized().body("Invalid ticket");

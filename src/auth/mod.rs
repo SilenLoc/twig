@@ -46,7 +46,7 @@ pub struct AuthToken {
 // Request/Response types
 #[derive(Debug, Deserialize)]
 pub struct SignupRequest {
-    pub ticket: String,
+    pub ticket: Option<String>,
     pub username: String,
     pub password: String,
 }

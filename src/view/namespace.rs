@@ -36,14 +36,11 @@ async fn user_has_namespace_access(
         None => return false,
     };
 
-    match auth_state
+    auth_state
         .db
         .user_has_namespace_access(&user_id, namespace)
         .await
-    {
-        Ok(has_access) => has_access,
-        Err(_) => false,
-    }
+        .unwrap_or_default()
 }
 
 #[derive(Deserialize)]
