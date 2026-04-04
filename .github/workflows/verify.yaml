@@ -31,15 +31,8 @@ jobs:
       - name: install just
         uses: rezi-labs/install-just@main
 
-      - name: Run Rust checks and tests
-        run: |
-          cargo fmt -- --check
-          cargo check
-          cargo clippy
-          cargo test
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Run verify
+        run: just verify
 
       - name: Log in to Docker Hub
         if: github.ref == 'refs/heads/main'
@@ -48,22 +41,9 @@ jobs:
           username: silenloc
           password: ${{ secrets.DOCKER_TOKEN }}
 
-      - name: Build and test Docker image
-        run: just docker build ci-${{ github.sha }}
-
-      - name: Start Docker container for testing
-        run: just docker run
-
-      - name: Run acceptance tests
-        run: just hurl test
-
-      - name: Stop Docker container
-        if: always()
-        run: just docker stop
-
-      - name: Push Docker image for release
+      - name: Push Docker image
         if: github.ref == 'refs/heads/main'
-        run: docker push silenloc/fig:ci-${{ github.sha }}
+        run: docker push silenloc/fig:latest
 
   release:
     needs: verify
@@ -112,11 +92,10 @@ jobs:
           password: ${{ secrets.DOCKER_TOKEN }}
 
       - name: Pull verified image
-        run: docker pull silenloc/fig:ci-${{ github.sha }}
+        run: docker pull silenloc/fig:latest
 
       - name: Retag and push with version and latest
         run: |
-          docker tag silenloc/fig:ci-${{ github.sha }} silenloc/fig:${{ needs.release.outputs.version }}
-          docker tag silenloc/fig:ci-${{ github.sha }} silenloc/fig:latest
+          docker tag silenloc/fig:latest silenloc/fig:${{ needs.release.outputs.version }}
           docker push silenloc/fig:${{ needs.release.outputs.version }}
           docker push silenloc/fig:latest
