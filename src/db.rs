@@ -76,7 +76,7 @@ impl Database {
             .await
             .map_err(|e| e.to_string())?;
 
-        // Tickets table (for signup)
+        // Tickets table (for signup) - user_id is nullable for pre-signup tickets
         self.conn
             .execute(
                 "CREATE TABLE IF NOT EXISTS tickets (
@@ -130,72 +130,7 @@ impl Database {
             .await
             .map_err(|e| e.to_string())?;
 
-        // Migration: Fix tickets table to allow NULL user_id for signup tickets
-        self.migrate_tickets_table().await?;
-
         Ok(())
-    }
-
-    async fn migrate_tickets_table(&self) -> Result<(), String> {
-        // Check if tickets table has NOT NULL constraint on user_id
-        // by trying to insert a test record with NULL user_id
-        let test_id = format!("__test_migration_{}", chrono::Utc::now().timestamp());
-        let result = self
-            .conn
-            .execute(
-                "INSERT INTO tickets (id, user_id, used, created_at) VALUES (?1, NULL, FALSE, ?2)",
-                libsql::params![test_id.clone(), chrono::Utc::now().to_rfc3339()],
-            )
-            .await;
-
-        match result {
-            Ok(_) => {
-                // Migration not needed - NULL is allowed, clean up test record
-                let _ = self
-                    .conn
-                    .execute(
-                        "DELETE FROM tickets WHERE id = ?1",
-                        libsql::params![test_id],
-                    )
-                    .await;
-                Ok(())
-            }
-            Err(_) => {
-                // Migration needed - recreate table with nullable user_id
-                log::info!("Migrating tickets table to allow NULL user_id");
-
-                // Drop the old table and recreate
-                self.conn
-                    .execute("DROP TABLE IF EXISTS tickets", ())
-                    .await
-                    .map_err(|e| e.to_string())?;
-
-                self.conn
-                    .execute(
-                        "CREATE TABLE tickets (
-                            id TEXT PRIMARY KEY,
-                            user_id TEXT,
-                            used BOOLEAN NOT NULL DEFAULT FALSE,
-                            created_at TEXT NOT NULL,
-                            used_at TEXT
-                        )",
-                        (),
-                    )
-                    .await
-                    .map_err(|e| e.to_string())?;
-
-                self.conn
-                    .execute(
-                        "CREATE INDEX IF NOT EXISTS idx_tickets_user ON tickets(user_id)",
-                        (),
-                    )
-                    .await
-                    .map_err(|e| e.to_string())?;
-
-                log::info!("Tickets table migration complete");
-                Ok(())
-            }
-        }
     }
 
     // User operations

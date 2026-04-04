@@ -34,6 +34,22 @@ async fn main() -> std::io::Result<()> {
 
     // Initialize auth state
     let db_path = std::env::var("DB_PATH").unwrap_or_else(|_| "fig.db".to_string());
+
+    // Check if we should reset the database
+    if std::env::var("RESET_DB").unwrap_or_default() == "true" {
+        log::warn!(
+            "RESET_DB is set to true, deleting database file: {}",
+            db_path
+        );
+        if std::path::Path::new(&db_path).exists() {
+            if let Err(e) = std::fs::remove_file(&db_path) {
+                log::error!("Failed to delete database file: {}", e);
+            } else {
+                log::info!("Database file deleted successfully");
+            }
+        }
+    }
+
     let api_key = std::env::var("API_KEY").unwrap_or_else(|_| {
         // Generate a random API key if not provided
         let key = auth::generate_token();
