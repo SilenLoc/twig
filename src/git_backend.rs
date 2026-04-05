@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use log::debug;
+use log::{debug, info, warn};
 use xshell::Shell;
 
 #[derive(Default)]
@@ -96,6 +96,12 @@ pub fn run_with_config(
 
     // todo make this configurable
     let actual_root = format!("{}/{}", config.project_root(), namespace);
+
+    info!(
+        "Git backend HTTP: method='{}' path='{}' namespace='{}' project_root='{}'",
+        req.method, req.path_info, namespace, actual_root
+    );
+
     let sh = prepare_cgi_env(&actual_root, sh, req.clone());
 
     if !req.content_type.is_empty() {
@@ -103,21 +109,61 @@ pub fn run_with_config(
     }
     if !body.is_empty() {
         sh.set_var("CONTENT_LENGTH", body.len().to_string());
+        debug!(
+            "Git backend HTTP: body size={} bytes for path='{}'",
+            body.len(),
+            req.path_info
+        );
     }
 
     // Run with or without stdin body
+    debug!(
+        "Git backend HTTP: executing 'git http-backend' for path='{}'",
+        req.path_info
+    );
+
     let output = if body.is_empty() {
         xshell::cmd!(sh, "git http-backend").output()
     } else {
         xshell::cmd!(sh, "git http-backend").stdin(body).output()
     };
 
-    if let Ok(out) = output {
-        let stdout = out.stdout;
-        let parsed = parse_cgi_response(&stdout);
-        Ok(parsed)
-    } else {
-        Err(output.unwrap_err().to_string())
+    match output {
+        Ok(out) => {
+            let stdout = out.stdout;
+            let stderr = String::from_utf8_lossy(&out.stderr);
+
+            if !stderr.is_empty() {
+                warn!(
+                    "Git backend HTTP stderr for path='{}': {}",
+                    req.path_info, stderr
+                );
+            }
+
+            let parsed = parse_cgi_response(&stdout);
+            let (headers, body_bytes) = &parsed;
+
+            info!(
+                "Git backend HTTP: completed path='{}' response_headers_size={} response_body_size={}",
+                req.path_info,
+                headers.len(),
+                body_bytes.len()
+            );
+
+            debug!(
+                "Git backend HTTP: response headers for path='{}': {:?}",
+                req.path_info, headers
+            );
+
+            Ok(parsed)
+        }
+        Err(e) => {
+            warn!(
+                "Git backend HTTP failed for path='{}': {}",
+                req.path_info, e
+            );
+            Err(e.to_string())
+        }
     }
 }
 
@@ -144,32 +190,55 @@ pub fn prepare_cgi_env(project_root: &str, sh: Shell, req: GitRequest) -> Shell 
     sh.set_var("GIT_PROJECT_ROOT", project_root);
     sh.set_var("GIT_HTTP_EXPORT_ALL", "1");
 
-    debug!("{req:?}");
+    info!(
+        "Git backend HTTP: preparing CGI env method='{}' path='{}' query='{}' project_root='{}'",
+        req.method, req.path_info, req.query_string, project_root
+    );
 
     match req.kind() {
         GitRequestKind::Push => {
             // Pushes need write access — enforce auth here before proceeding
             sh.set_var("CONTENT_TYPE", req.content_type.clone());
             sh.set_var("REMOTE_USER", "authenticated_user"); // must be set to allow push
+            info!(
+                "Git backend HTTP: push operation detected for path='{}'",
+                req.path_info
+            );
         }
         GitRequestKind::FetchClone => {
             // needs read access — enforce auth here before proceeding
             sh.set_var("CONTENT_TYPE", req.content_type.clone());
+            info!(
+                "Git backend HTTP: fetch/clone operation detected for path='{}'",
+                req.path_info
+            );
         }
         GitRequestKind::AdvertiseRefs(service) => {
             match service {
                 GitService::ReadRef => {
                     // needs read access — enforce auth here before proceeding
+                    debug!(
+                        "Git backend HTTP: advertise-refs (read) for path='{}'",
+                        req.path_info
+                    );
                 }
 
                 GitService::WriteRef => {
                     // needs write access — enforce auth here before proceeding
+                    debug!(
+                        "Git backend HTTP: advertise-refs (write) for path='{}'",
+                        req.path_info
+                    );
                 }
             }
             // No body, just env vars needed
         }
         GitRequestKind::DumbGet => {
             sh.set_var("GIT_HTTP_GET_ANY_FILE", "1");
+            debug!(
+                "Git backend HTTP: dumb HTTP GET for path='{}'",
+                req.path_info
+            );
         }
     }
     sh

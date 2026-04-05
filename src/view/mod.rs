@@ -171,11 +171,13 @@ pub fn render_layout(main_content: &maud::Markup, username: Option<&str>) -> mau
                                 a href="/settings" class="link white-70 hover-white no-underline f6 mr3" {
                                     "Settings"
                                 }
-                                a href="/auth/logout"
-                                    class="link white-70 hover-white no-underline f6"
-                                    onclick="event.preventDefault(); fetch('/api/auth/logout', {method: 'POST', credentials: 'same-origin'}).then(() => window.location.href='/');"
-                                {
-                                    "Logout"
+                                form method="POST" action="/auth/logout" class="dib ma0" {
+                                    button
+                                        type="submit"
+                                        class="link white-70 hover-white no-underline f6 bg-transparent bn pointer pa0"
+                                    {
+                                        "Logout"
+                                    }
                                 }
                             }
                             None => {

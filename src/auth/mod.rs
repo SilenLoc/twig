@@ -4,7 +4,6 @@ use actix_web::HttpRequest;
 use argon2::password_hash::{SaltString, rand_core::RngCore};
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use rand::rngs::OsRng;
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::db::Database;
@@ -35,40 +34,6 @@ pub struct Ticket {
     pub used: bool,
     pub created_at: String,
     pub used_at: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct AuthToken {
-    pub token: String,
-    pub user_id: String,
-    pub username: String,
-}
-
-// Request/Response types
-#[derive(Debug, Deserialize)]
-pub struct SignupRequest {
-    pub ticket: Option<String>,
-    pub username: String,
-    pub email: String,
-    pub password: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct SignupResponse {
-    pub user_id: String,
-    pub username: String,
-    pub ticket: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct CreateNamespaceRequest {
-    pub name: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct CreateNamespaceResponse {
-    pub namespace_id: String,
-    pub name: String,
 }
 
 // Password hashing
@@ -159,18 +124,6 @@ pub fn extract_basic_auth(req: &HttpRequest) -> Option<(String, String)> {
     }
 
     Some((parts[0].to_string(), parts[1].to_string()))
-}
-
-// Extract bearer token from request
-pub fn extract_bearer_token(req: &HttpRequest) -> Option<String> {
-    let auth_header = req.headers().get("Authorization")?;
-    let auth_str = auth_header.to_str().ok()?;
-
-    if !auth_str.starts_with("Bearer ") {
-        return None;
-    }
-
-    Some(auth_str[7..].to_string())
 }
 
 // Extract API key from request

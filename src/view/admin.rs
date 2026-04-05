@@ -1,23 +1,101 @@
-use actix_web::{HttpRequest, HttpResponse, Responder, get, web};
+use actix_web::{HttpRequest, HttpResponse, Responder, get, post, web};
 use maud::DOCTYPE;
+use serde::Deserialize;
 
 use crate::auth::{AuthState, extract_api_key};
 
-/// Admin page handler - requires API key
+#[derive(Debug, Deserialize)]
+pub struct AdminKeyForm {
+    api_key: String,
+}
+
+/// Admin page handler - shows form or dashboard based on API key validation
 #[get("/admin")]
-pub async fn admin_page(req: HttpRequest, auth_state: web::Data<AuthState>) -> impl Responder {
-    // Validate API key
-    let api_key = match extract_api_key(&req) {
-        Some(key) => key,
-        None => {
-            return HttpResponse::Unauthorized().body("Access denied: Missing API key");
+pub async fn admin_page_get(req: HttpRequest, auth_state: web::Data<AuthState>) -> impl Responder {
+    // Check if API key is already provided via header or query
+    if let Some(api_key) = extract_api_key(&req) {
+        if auth_state.validate_api_key(&api_key) {
+            return render_dashboard(&req, &auth_state).await;
+        }
+    }
+
+    // Show the login form
+    render_key_form(None)
+}
+
+/// Admin page POST handler - validates API key from form
+#[post("/admin")]
+pub async fn admin_page_post(
+    req: HttpRequest,
+    auth_state: web::Data<AuthState>,
+    form: web::Form<AdminKeyForm>,
+) -> impl Responder {
+    // Validate the API key from form
+    if !auth_state.validate_api_key(&form.api_key) {
+        return render_key_form(Some("Invalid API key"));
+    }
+
+    // Key is valid, render dashboard
+    render_dashboard(&req, &auth_state).await
+}
+
+fn render_key_form(error: Option<&str>) -> HttpResponse {
+    let content = maud::html! {
+        div class="flex items-center justify-center" style="min-height: 60vh;" {
+            div class="w-100" style="max-width: 400px;" {
+                h1 class="f3 fw6 white ma0 mb4 tc" { "Admin Access" }
+
+                div class="ba b--white-20 br2 bg-black-20 pa4" {
+                    p class="f6 white-70 mb3 tc" {
+                        "Enter your API key to access the admin dashboard."
+                    }
+
+                    @if let Some(err) = error {
+                        div class="pa2 mb3 br1 bg-red-30 white f6 tc" {
+                            (err)
+                        }
+                    }
+
+                    form
+                        method="POST"
+                        action="/admin"
+                        hx-post="/admin"
+                        hx-target="#admin-content"
+                        hx-swap="innerHTML"
+                    {
+                        div class="mb3" {
+                            label class="db f6 white-70 mb1" { "API Key" }
+                            input
+                                type="password"
+                                name="api_key"
+                                placeholder="Enter API key..."
+                                class="w-100 pa2 bg-black white ba b--white-30 br1"
+                                style="outline: none;"
+                                required;
+                        }
+
+                        button
+                            type="submit"
+                            class="w-100 pa2 bg-white black bn br1 pointer hover-bg-white-90 f6 fw6"
+                        {
+                            "Access Admin Dashboard"
+                        }
+                    }
+                }
+            }
+        }
+
+        style {
+            ".bg-red-30 { background-color: rgba(255, 0, 0, 0.3); }"
         }
     };
 
-    if !auth_state.validate_api_key(&api_key) {
-        return HttpResponse::Unauthorized().body("Access denied: Invalid API key");
-    }
+    HttpResponse::Ok()
+        .content_type("text/html")
+        .body(render_admin_layout(&content, false).into_string())
+}
 
+async fn render_dashboard(req: &HttpRequest, auth_state: &web::Data<AuthState>) -> HttpResponse {
     // Fetch data for all tabs
     let tables = auth_state.db.get_all_tables().await.unwrap_or_default();
     let namespaces = auth_state
@@ -227,11 +305,11 @@ pub async fn admin_page(req: HttpRequest, auth_state: web::Data<AuthState>) -> i
     } else {
         HttpResponse::Ok()
             .content_type("text/html")
-            .body(render_admin_layout(&content).into_string())
+            .body(render_admin_layout(&content, true).into_string())
     }
 }
 
-fn render_admin_layout(main_content: &maud::Markup) -> maud::Markup {
+fn render_admin_layout(main_content: &maud::Markup, is_authenticated: bool) -> maud::Markup {
     maud::html! {
         (DOCTYPE)
         html class="h-100" {
@@ -249,7 +327,9 @@ fn render_admin_layout(main_content: &maud::Markup) -> maud::Markup {
                         a href="/" class="link white-90 hover-white no-underline fw6 f4" {
                             "Fig"
                         }
-                        span class="white-50 ml2" { "/ Admin" }
+                        @if is_authenticated {
+                            span class="white-50 ml2" { "/ Admin" }
+                        }
                     }
                     div class="dtc v-mid tr pa3" {
                         a href="/" class="link white-70 hover-white no-underline f6" {
@@ -257,7 +337,7 @@ fn render_admin_layout(main_content: &maud::Markup) -> maud::Markup {
                         }
                     }
                 }
-                main id="feature" class="flex flex-column" style="padding-top: 5rem; padding-left: 10px; padding-right: 10px; padding-bottom: 10px; height: 100vh; overflow: hidden;" {
+                main id="admin-content" class="flex flex-column" style="padding-top: 5rem; padding-left: 10px; padding-right: 10px; padding-bottom: 10px; height: 100vh; overflow: hidden;" {
                     div class="w-100 flex-auto" style="overflow: hidden; display: flex; flex-direction: column;" {
                         (main_content)
                     }
