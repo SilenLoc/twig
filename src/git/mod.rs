@@ -121,14 +121,21 @@ async fn is_authenticated(
     let (username, password) = match extract_basic_auth(req) {
         Some(creds) => creds,
         None => {
-            log::warn!("Git auth failed: No basic auth credentials for namespace '{}'", namespace_name);
+            log::warn!(
+                "Git auth failed: No basic auth credentials for namespace '{}'",
+                namespace_name
+            );
             return Err(actix_web::HttpResponse::Unauthorized()
                 .insert_header(("WWW-Authenticate", "Basic realm=\"git\""))
                 .body("Missing credentials"));
         }
     };
 
-    log::debug!("Git auth attempt: user='{}' namespace='{}'", username, namespace_name);
+    log::debug!(
+        "Git auth attempt: user='{}' namespace='{}'",
+        username,
+        namespace_name
+    );
 
     // Get user from database
     let user = match auth_state.db.get_user_by_username(&username).await {
@@ -168,16 +175,28 @@ async fn is_authenticated(
         .await
     {
         Ok(true) => {
-            log::info!("Git auth success: user='{}' has access to namespace='{}'", username, namespace_name);
+            log::info!(
+                "Git auth success: user='{}' has access to namespace='{}'",
+                username,
+                namespace_name
+            );
             Ok(true)
         }
         Ok(false) => {
-            log::warn!("Git auth failed: user='{}' does NOT have access to namespace='{}' (user_id='{}')", 
-                username, namespace_name, user.id);
+            log::warn!(
+                "Git auth failed: user='{}' does NOT have access to namespace='{}' (user_id='{}')",
+                username,
+                namespace_name,
+                user.id
+            );
             Ok(false)
         }
         Err(e) => {
-            log::error!("Database error checking namespace access for user '{}': {}", username, e);
+            log::error!(
+                "Database error checking namespace access for user '{}': {}",
+                username,
+                e
+            );
             Err(actix_web::HttpResponse::InternalServerError().body("Database error"))
         }
     }

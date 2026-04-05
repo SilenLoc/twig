@@ -12,6 +12,7 @@ Content-Type: application/json
 {
     "ticket": "{{ticket}}",
     "username": "inituser",
+    "email": "inituser@example.com",
     "password": "initpassword123"
 }
 

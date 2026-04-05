@@ -25,6 +25,7 @@ POST {{target}}/api/auth/signup
 Content-Type: application/json
 {
     "username": "testuser",
+    "email": "testuser@example.com",
     "password": "testpassword123"
 }
 
@@ -36,6 +37,7 @@ Content-Type: application/json
 {
     "ticket": "invalid-ticket",
     "username": "testuser",
+    "email": "testuser@example.com",
     "password": "testpassword123"
 }
 
@@ -47,6 +49,7 @@ Content-Type: application/json
 {
     "ticket": "{{ticket}}",
     "username": "testuser",
+    "email": "testuser@example.com",
     "password": "testpassword123"
 }
 
@@ -61,6 +64,7 @@ Content-Type: application/json
 {
     "ticket": "{{ticket}}",
     "username": "testuser2",
+    "email": "testuser2@example.com",
     "password": "testpassword123"
 }
 
@@ -79,6 +83,7 @@ Content-Type: application/json
 {
     "ticket": "{{ticket2}}",
     "username": "testuser",
+    "email": "testuser2@example.com",
     "password": "testpassword123"
 }
 

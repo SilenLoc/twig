@@ -15,6 +15,7 @@ Content-Type: application/json
 {
     "ticket": "{{ticket}}",
     "username": "default",
+    "email": "default@example.com",
     "password": "very-secure-pw"
 }
 

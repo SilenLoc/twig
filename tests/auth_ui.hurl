@@ -62,6 +62,7 @@ Content-Type: application/x-www-form-urlencoded
 [Form]
 ticket: invalid-ticket-code
 username: uiuser
+email: uiuser@example.com
 password: password123
 
 HTTP 401
@@ -74,6 +75,7 @@ Content-Type: application/x-www-form-urlencoded
 [Form]
 ticket: {{uiticket}}
 username: uiuser
+email: uiuser@example.com
 password: password123
 
 HTTP 200
@@ -87,6 +89,7 @@ Content-Type: application/x-www-form-urlencoded
 [Form]
 ticket: {{uiticket}}
 username: uiuser2
+email: uiuser2@example.com
 password: password123
 
 HTTP 401
@@ -110,6 +113,7 @@ Content-Type: application/x-www-form-urlencoded
 [Form]
 ticket: {{uiticket2}}
 username: uiuser
+email: uiuser2@example.com
 password: password123
 
 HTTP 409

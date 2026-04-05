@@ -122,61 +122,6 @@ fn chrono(git_time: git2::Time) -> chrono::DateTime<Utc> {
     chrono::DateTime::from_timestamp(git_time.seconds(), 0).unwrap()
 }
 
-#[allow(dead_code)]
-pub fn get_namespaces(root: &str) -> Result<Vec<String>, git2::Error> {
-    let path = Path::new(root);
-    let entries = match std::fs::read_dir(path) {
-        Ok(entries) => entries,
-        Err(_) => return Ok(Vec::new()), // Directory doesn't exist or can't be read
-    };
-    let mut namespaces = Vec::new();
-
-    for entry in entries {
-        let Ok(entry) = entry else {
-            continue;
-        };
-
-        let Ok(namespace) = entry.file_name().into_string() else {
-            continue;
-        };
-        namespaces.push(namespace);
-    }
-
-    Ok(namespaces)
-}
-
-#[allow(dead_code)]
-pub fn get_repos(root: &str, namespace: &str) -> Result<Vec<String>, git2::Error> {
-    let path = Path::new(root).join(namespace);
-    let entries = match std::fs::read_dir(path) {
-        Ok(entries) => entries,
-        Err(_) => return Ok(Vec::new()), // Directory doesn't exist or can't be read
-    };
-    let mut repos = Vec::new();
-
-    for entry in entries {
-        let Ok(entry) = entry else {
-            continue;
-        };
-
-        let Ok(repo) = entry.file_name().into_string() else {
-            continue;
-        };
-
-        // check if they are repos
-        let repo_path = Path::new(root).join(namespace).join(&repo);
-        let is_repo = git2::Repository::open(&repo_path).is_ok();
-
-        if !is_repo {
-            continue;
-        }
-
-        repos.push(repo);
-    }
-
-    Ok(repos)
-}
-
 pub struct RepoInfo {
     pub name: String,
     pub last_commit_date: Option<chrono::DateTime<Utc>>,

@@ -334,7 +334,12 @@ impl Database {
             .await
             .map_err(|e| e.to_string())?;
 
-        if owner_rows.next().await.map_err(|e| e.to_string())?.is_some() {
+        if owner_rows
+            .next()
+            .await
+            .map_err(|e| e.to_string())?
+            .is_some()
+        {
             return Ok(true);
         }
 
