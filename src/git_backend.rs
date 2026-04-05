@@ -3,6 +3,7 @@ use std::fmt::Display;
 use log::debug;
 use xshell::Shell;
 
+#[derive(Default)]
 pub struct Config {
     pub project_root: Option<String>,
 }
@@ -19,11 +20,6 @@ impl Config {
     }
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self { project_root: None }
-    }
-}
 
 #[derive(Debug, Clone)]
 pub enum GitRequestKind {
@@ -124,9 +120,9 @@ pub fn run_with_config(
     if let Ok(out) = output {
         let stdout = out.stdout;
         let parsed = parse_cgi_response(&stdout);
-        return Ok(parsed);
+        Ok(parsed)
     } else {
-        return Err(output.unwrap_err().to_string());
+        Err(output.unwrap_err().to_string())
     }
 }
 

@@ -52,15 +52,15 @@ pub async fn git_handler(
     // Auth gate for write operations
     match kind {
         crate::git_backend::GitRequestKind::Push
-        | crate::git_backend::GitRequestKind::AdvertiseRefs(crate::git_backend::GitService::WriteRef) => {
-            match is_authenticated(&req, &auth_state, &namespace).await {
-                Ok(true) => {}
-                Ok(false) => {
-                    return actix_web::HttpResponse::Forbidden().body("Access denied to namespace");
-                }
-                Err(response) => return response,
+        | crate::git_backend::GitRequestKind::AdvertiseRefs(
+            crate::git_backend::GitService::WriteRef,
+        ) => match is_authenticated(&req, &auth_state, &namespace).await {
+            Ok(true) => {}
+            Ok(false) => {
+                return actix_web::HttpResponse::Forbidden().body("Access denied to namespace");
             }
-        }
+            Err(response) => return response,
+        },
         _ => {}
     }
 
