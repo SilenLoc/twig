@@ -169,6 +169,11 @@ async fn is_authenticated(
     }
 
     // Check if user has access to namespace
+    log::debug!(
+        "Checking namespace access: user_id='{}' namespace='{}'",
+        user.id,
+        namespace_name
+    );
     match auth_state
         .db
         .user_has_namespace_access(&user.id, namespace_name)
@@ -184,10 +189,10 @@ async fn is_authenticated(
         }
         Ok(false) => {
             log::warn!(
-                "Git auth failed: user='{}' does NOT have access to namespace='{}' (user_id='{}')",
+                "Git auth failed: user='{}' (id='{}') does NOT have access to namespace='{}'",
                 username,
-                namespace_name,
-                user.id
+                user.id,
+                namespace_name
             );
             Ok(false)
         }

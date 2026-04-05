@@ -8,6 +8,7 @@ use serde::Deserialize;
 use crate::auth::AuthState;
 use crate::config;
 
+pub mod admin;
 pub mod auth;
 pub mod namespace;
 pub mod repo;

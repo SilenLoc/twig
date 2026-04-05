@@ -464,4 +464,95 @@ impl Database {
             .map_err(|e| e.to_string())?;
         Ok(())
     }
+
+    // Admin operations
+
+    /// Get all users from the database
+    pub async fn get_all_users(&self) -> Result<Vec<User>, String> {
+        let mut rows = self
+            .conn
+            .query(
+                "SELECT id, username, email, password_hash, created_at FROM users ORDER BY created_at DESC",
+                (),
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let mut result = Vec::new();
+        while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
+            result.push(User {
+                id: row.get(0).map_err(|e| e.to_string())?,
+                username: row.get(1).map_err(|e| e.to_string())?,
+                email: row.get(2).map_err(|e| e.to_string())?,
+                password_hash: row.get(3).map_err(|e| e.to_string())?,
+                created_at: row.get(4).map_err(|e| e.to_string())?,
+            });
+        }
+        Ok(result)
+    }
+
+    /// Get namespace members with their usernames
+    pub async fn get_namespace_members(
+        &self,
+    ) -> Result<Vec<(String, String, String, String)>, String> {
+        let mut rows = self
+            .conn
+            .query(
+                "SELECT n.name, u.username, nm.role, nm.added_at 
+                 FROM namespace_members nm
+                 JOIN namespaces n ON nm.namespace_id = n.id
+                 JOIN users u ON nm.user_id = u.id
+                 ORDER BY n.name, u.username",
+                (),
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let mut result = Vec::new();
+        while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
+            let namespace: String = row.get(0).map_err(|e| e.to_string())?;
+            let username: String = row.get(1).map_err(|e| e.to_string())?;
+            let role: String = row.get(2).map_err(|e| e.to_string())?;
+            let added_at: String = row.get(3).map_err(|e| e.to_string())?;
+            result.push((namespace, username, role, added_at));
+        }
+        Ok(result)
+    }
+
+    /// Get all database table names and their row counts
+    pub async fn get_all_tables(&self) -> Result<Vec<(String, i64)>, String> {
+        // Get all table names from sqlite_master
+        let mut rows = self
+            .conn
+            .query(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_%' ORDER BY name",
+                (),
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let mut tables = Vec::new();
+        while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
+            let table_name: String = row.get(0).map_err(|e| e.to_string())?;
+            tables.push(table_name);
+        }
+
+        // Get row count for each table
+        let mut result = Vec::new();
+        for table_name in tables {
+            let count_query = format!("SELECT COUNT(*) FROM {}", table_name);
+            let mut count_rows = self
+                .conn
+                .query(&count_query, ())
+                .await
+                .map_err(|e| e.to_string())?;
+
+            if let Some(row) = count_rows.next().await.map_err(|e| e.to_string())? {
+                let count: i64 = row.get(0).map_err(|e| e.to_string())?;
+                result.push((table_name, count));
+            }
+        }
+
+        Ok(result)
+    }
 }

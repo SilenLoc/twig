@@ -90,6 +90,8 @@ async fn main() -> std::io::Result<()> {
             .service(auth::handlers::signup_ui_handler)
             .service(auth::handlers::login_ui_handler)
             .service(auth::handlers::create_namespace_ui_handler)
+            // Admin page (requires API key)
+            .service(view::admin::admin_page)
             // Web UI endpoints (MUST come before git routes to avoid pattern conflicts)
             .service(view::index)
             // Settings page MUST come before namespace handler (which matches /{namespace})
