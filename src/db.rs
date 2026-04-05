@@ -324,6 +324,21 @@ impl Database {
         user_id: &str,
         namespace_name: &str,
     ) -> Result<bool, String> {
+        // Check if user is the owner of the namespace
+        let mut owner_rows = self
+            .conn
+            .query(
+                "SELECT 1 FROM namespaces WHERE name = ?1 AND owner_id = ?2",
+                libsql::params![namespace_name, user_id],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if owner_rows.next().await.map_err(|e| e.to_string())?.is_some() {
+            return Ok(true);
+        }
+
+        // Check if user is a member of the namespace
         let mut rows = self
             .conn
             .query(
