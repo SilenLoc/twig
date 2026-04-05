@@ -45,6 +45,13 @@ impl Database {
             .await
             .map_err(|e| e.to_string())?;
 
+        // Migration: Add email column to existing users table (if it doesn't exist)
+        // SQLite doesn't support IF NOT EXISTS for columns, so we use ALTER TABLE
+        self.conn
+            .execute("ALTER TABLE users ADD COLUMN email TEXT", ())
+            .await
+            .ok(); // Ignore error if column already exists
+
         // Namespaces table
         self.conn
             .execute(
