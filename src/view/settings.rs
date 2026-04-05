@@ -52,7 +52,7 @@ pub async fn settings_page(
     let content = maud::html! {
         // Breadcrumb navigation
         div class="mb4 f6 white-70" {
-            a href="/" class="link white-70 hover-white no-underline" { "Namespaces" }
+            a href="/" class="link white-70 hover-white no-underline" { "Home" }
             span class="mh2" { "/" }
             span class="white" { "Settings" }
         }

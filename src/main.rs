@@ -92,12 +92,13 @@ async fn main() -> std::io::Result<()> {
             .service(auth::handlers::create_namespace_ui_handler)
             // Web UI endpoints (MUST come before git routes to avoid pattern conflicts)
             .service(view::index)
+            // Settings page MUST come before namespace handler (which matches /{namespace})
+            .service(view::settings::settings_page)
+            .service(view::settings::update_email)
             .service(view::namespace::handler)
             .service(view::namespace::create_repo_form_handler)
             .service(view::namespace::create_repo_handler)
             .service(view::repo::handler)
-            .service(view::settings::settings_page)
-            .service(view::settings::update_email)
             // Git endpoints with auth
             .service(git::repo::init)
             .route(

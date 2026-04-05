@@ -166,8 +166,9 @@ pub fn render_layout(main_content: &maud::Markup, username: Option<&str>) -> mau
                     div class="dtc v-mid tr pa3" {
                         @match username {
                             Some(name) => {
+                                span class="white-70 f6 mr3" { (name) }
                                 a href="/settings" class="link white-70 hover-white no-underline f6 mr3" {
-                                    (name)
+                                    "Settings"
                                 }
                                 a href="/auth/logout"
                                     class="link white-70 hover-white no-underline f6"
