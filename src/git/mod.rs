@@ -121,32 +121,42 @@ async fn is_authenticated(
     let (username, password) = match extract_basic_auth(req) {
         Some(creds) => creds,
         None => {
+            log::warn!("Git auth failed: No basic auth credentials for namespace '{}'", namespace_name);
             return Err(actix_web::HttpResponse::Unauthorized()
                 .insert_header(("WWW-Authenticate", "Basic realm=\"git\""))
                 .body("Missing credentials"));
         }
     };
 
+    log::debug!("Git auth attempt: user='{}' namespace='{}'", username, namespace_name);
+
     // Get user from database
     let user = match auth_state.db.get_user_by_username(&username).await {
-        Ok(Some(user)) => user,
+        Ok(Some(user)) => {
+            log::debug!("Git auth: Found user '{}' with id '{}'", username, user.id);
+            user
+        }
         Ok(None) => {
+            log::warn!("Git auth failed: User '{}' not found in database", username);
             return Err(actix_web::HttpResponse::Unauthorized().body("Invalid credentials"));
         }
         Err(e) => {
-            log::error!("Database error: {}", e);
+            log::error!("Database error looking up user '{}': {}", username, e);
             return Err(actix_web::HttpResponse::InternalServerError().body("Database error"));
         }
     };
 
     // Verify password
     match verify_password(&password, &user.password_hash) {
-        Ok(true) => {}
+        Ok(true) => {
+            log::debug!("Git auth: Password verified for user '{}'", username);
+        }
         Ok(false) => {
+            log::warn!("Git auth failed: Invalid password for user '{}'", username);
             return Err(actix_web::HttpResponse::Unauthorized().body("Invalid credentials"));
         }
         Err(e) => {
-            log::error!("Password verification error: {}", e);
+            log::error!("Password verification error for user '{}': {}", username, e);
             return Err(actix_web::HttpResponse::InternalServerError().body("Authentication error"));
         }
     }
@@ -157,10 +167,17 @@ async fn is_authenticated(
         .user_has_namespace_access(&user.id, namespace_name)
         .await
     {
-        Ok(true) => Ok(true),
-        Ok(false) => Ok(false),
+        Ok(true) => {
+            log::info!("Git auth success: user='{}' has access to namespace='{}'", username, namespace_name);
+            Ok(true)
+        }
+        Ok(false) => {
+            log::warn!("Git auth failed: user='{}' does NOT have access to namespace='{}' (user_id='{}')", 
+                username, namespace_name, user.id);
+            Ok(false)
+        }
         Err(e) => {
-            log::error!("Database error: {}", e);
+            log::error!("Database error checking namespace access for user '{}': {}", username, e);
             Err(actix_web::HttpResponse::InternalServerError().body("Database error"))
         }
     }

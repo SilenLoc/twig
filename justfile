@@ -42,3 +42,5 @@ fmt:
 dp:
     spruce build
     spruce push
+    git add .
+    git commit -m "chore: version"
