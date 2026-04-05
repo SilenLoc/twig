@@ -38,3 +38,7 @@ verify:
 fmt:
     cargo fmt
     cargo clippy --fix --allow-dirty
+
+dp:
+    spruce build
+    spruce push
