@@ -1,8 +1,0 @@
-[package]
-name = "git_backend"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-xshell = "0.2.7"
-log = "0.4"

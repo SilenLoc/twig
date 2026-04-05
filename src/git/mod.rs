@@ -15,7 +15,7 @@ pub async fn git_handler(
 ) -> HttpResponse {
     let (namespace, repo, endpoint) = path.into_inner();
 
-    let git_backend_config = git_backend::Config::new(server.project_root());
+    let git_backend_config = crate::git_backend::Config::new(server.project_root());
 
     let method = req.method().as_str();
     let query = req.query_string();
@@ -27,32 +27,32 @@ pub async fn git_handler(
 
     let path_info = format!("/{repo}/{endpoint}");
 
-    let git_req = git_backend::GitRequest::new(method, path_info, query, content_type);
+    let git_req = crate::git_backend::GitRequest::new(method, path_info, query, content_type);
 
     let kind = git_req.kind();
 
     match kind.clone() {
-        git_backend::GitRequestKind::AdvertiseRefs(git_service) => {
+        crate::git_backend::GitRequestKind::AdvertiseRefs(git_service) => {
             info!(
                 "handling advertise refs {}: {} kind: {}",
                 repo, endpoint, git_service
             );
         }
-        git_backend::GitRequestKind::FetchClone => {
+        crate::git_backend::GitRequestKind::FetchClone => {
             info!("handling fetch or clone {}: {}", repo, endpoint);
         }
-        git_backend::GitRequestKind::Push => {
+        crate::git_backend::GitRequestKind::Push => {
             info!("handling push {}: {}", repo, endpoint);
         }
-        git_backend::GitRequestKind::DumbGet => {
+        crate::git_backend::GitRequestKind::DumbGet => {
             info!("handling dumb get {}: {}", repo, endpoint);
         }
     }
 
     // Auth gate for write operations
     match kind {
-        git_backend::GitRequestKind::Push
-        | git_backend::GitRequestKind::AdvertiseRefs(git_backend::GitService::WriteRef) => {
+        crate::git_backend::GitRequestKind::Push
+        | crate::git_backend::GitRequestKind::AdvertiseRefs(crate::git_backend::GitService::WriteRef) => {
             match is_authenticated(&req, &auth_state, &namespace).await {
                 Ok(true) => {}
                 Ok(false) => {
@@ -69,7 +69,7 @@ pub async fn git_handler(
     let body_bytes = body.to_vec();
     let namespace_clone = namespace.clone();
     let result = web::block(move || {
-        git_backend::run_with_config(&git_backend_config, &namespace_clone, &req, body_bytes)
+        crate::git_backend::run_with_config(&git_backend_config, &namespace_clone, &req, body_bytes)
     })
     .await;
 

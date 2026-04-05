@@ -1,84 +1,38 @@
-# Pin the Rust toolchain version used in the build stage.
-ARG RUST_VERSION=1.92
+# Build stage
+FROM rust:slim-bookworm AS builder
 
-# Name of the compiled binary produced by Cargo (must match Cargo.toml package name).
-ARG APP_NAME=fig
-
-
-# Use Debian-based Rust image for building (glibc) to get prebuilt V8 binaries
-FROM docker.io/library/rust:${RUST_VERSION}-slim-bookworm AS build
-
-# Re-declare args inside the stage if you want to use them here.
-ARG APP_NAME
-
-# All build steps happen inside /app.
 WORKDIR /app
 
-# Install build dependencies needed to compile Rust crates on Debian
+# Install dependencies
 RUN apt-get update && apt-get install -y \
-    build-essential \
-    git \
-    curl \
     pkg-config \
     libssl-dev \
-    libgit2-dev \
     && rm -rf /var/lib/apt/lists/*
 
-
-COPY git_backend/src ./git_backend/src
-COPY git_backend/Cargo.toml ./git_backend/Cargo.toml
-COPY git_backend/Cargo.lock ./git_backend/Cargo.lock
-
-# Copy dependency manifests first for better layer caching
+# Copy dependency files first for better caching
 COPY Cargo.toml Cargo.lock ./
 
-# Copy source code
-COPY src ./src
+# Copy included files and directories
+COPY Cargo.toml ./Cargo.toml
 COPY assets ./assets
+COPY src ./src
 
-# Build the application with glibc target (fast V8 prebuilt download)
-RUN --mount=type=cache,target=/app/target/ \
-    --mount=type=cache,target=/usr/local/cargo/git/db \
-    --mount=type=cache,target=/usr/local/cargo/registry/ \
-    cargo build --locked --release && \
-    cp ./target/release/$APP_NAME /bin/fig
+# Build the project
+RUN cargo build --release
 
-FROM docker.io/library/debian:bookworm-slim AS final
+# Runtime stage
+FROM debian:bookworm-slim
+
+WORKDIR /app
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
+    ca-certificates \
     libssl3 \
-    libgit2-1.5 \
-    git \
     && rm -rf /var/lib/apt/lists/*
 
-# Create a non-privileged user (recommended best practice)
-ARG UID=10001
-RUN adduser \
-    --disabled-password \
-    --gecos "" \
-    --home "/nonexistent" \
-    --shell "/sbin/nologin" \
-    --no-create-home \
-    --uid "${UID}" \
-    appuser
+# Copy the binary from builder
+COPY --from=builder /app/target/release/fig /app/
 
-# Copy only the compiled binary from the build stage.
-COPY --from=build /bin/fig /bin/
-
-# Create working directory for file storage that appuser can write to
-RUN mkdir -p /data && chown -R appuser:appuser /data
-
-# Set working directory
-WORKDIR /data
-
-# Drop privileges for runtime.
-USER appuser
-
-# Document the port your app listens on.
-EXPOSE 80
-EXPOSE 8080
-ENV PORT=80
-
-# Start the application.
-CMD ["/bin/fig"]
+# Run the binary
+ENTRYPOINT ["./fig"]
