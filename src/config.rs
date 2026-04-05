@@ -34,9 +34,9 @@ impl std::fmt::Display for Server {
 
 pub fn from_env() -> Server {
     let port = std::env::var("PORT")
-        .unwrap_or_else(|_| "8080".to_string())
+        .unwrap_or_else(|_| "80".to_string())
         .parse()
-        .unwrap_or(8080);
+        .unwrap_or(80);
     let log_level = std::env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string());
 
     let project_root = std::env::var("PROJECT_ROOT").unwrap_or_else(|_| "/srv/git".to_string());

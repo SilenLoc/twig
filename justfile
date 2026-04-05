@@ -5,6 +5,7 @@ mod git 'tests/git.just'
 export PROJECT_ROOT := "tests/git/srv"
 export API_KEY := "secure"
 export RESET_DB := 'true'
+export PORT := "8080"
 
 run:
     cargo run
