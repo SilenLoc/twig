@@ -52,3 +52,4 @@ includes = [
 ]
 mode = "alpha"
 namespace = "silenloc"
+runtime_deps = ["git"]
