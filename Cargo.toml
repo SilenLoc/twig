@@ -41,9 +41,10 @@ version = "1"
 [package]
 edition = "2024"
 name = "fig"
-version = "0.1.14"
+version = "0.1.15"
 
 [spruce]
+additional_tools = ["git"]
 includes = [
     "Cargo.toml",
     "assets",
