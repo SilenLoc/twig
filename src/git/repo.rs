@@ -131,7 +131,8 @@ fn create_repo(
 
     if !repo.exists() {
         std::fs::create_dir_all(&repo).unwrap();
-        let res = bare_init(&repo, &branch);
+        // Use default author info for API endpoint (username: Fig, email: fig@localhost)
+        let res = bare_init(&repo, &branch, "Fig", "fig@localhost");
 
         match res {
             Ok(std) => info!("{std}"),
@@ -140,7 +141,12 @@ fn create_repo(
     }
 }
 
-pub fn bare_init(repo_path: &Path, branch: &str) -> Result<String, String> {
+pub fn bare_init(
+    repo_path: &Path,
+    branch: &str,
+    author_name: &str,
+    author_email: &str,
+) -> Result<String, String> {
     let sh = sh();
     sh.change_dir(repo_path);
 
@@ -163,7 +169,12 @@ pub fn bare_init(repo_path: &Path, branch: &str) -> Result<String, String> {
         .read()
         .map_err(|e| format!("Failed to create tree: {}", e))?;
 
+    // Set author and committer info from user to avoid "Author unknown" error
     let commit_hash = cmd!(sh, "git commit-tree {tree_hash} -m 'Initial commit'")
+        .env("GIT_AUTHOR_NAME", author_name)
+        .env("GIT_AUTHOR_EMAIL", author_email)
+        .env("GIT_COMMITTER_NAME", author_name)
+        .env("GIT_COMMITTER_EMAIL", author_email)
         .read()
         .map_err(|e| format!("Failed to create commit: {}", e))?;
 

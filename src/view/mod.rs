@@ -11,6 +11,7 @@ use crate::config;
 pub mod auth;
 pub mod namespace;
 pub mod repo;
+pub mod settings;
 
 #[derive(Deserialize)]
 struct SearchQuery {
@@ -165,7 +166,9 @@ pub fn render_layout(main_content: &maud::Markup, username: Option<&str>) -> mau
                     div class="dtc v-mid tr pa3" {
                         @match username {
                             Some(name) => {
-                                span class="white-70 f6 mr3" { (name) }
+                                a href="/settings" class="link white-70 hover-white no-underline f6 mr3" {
+                                    (name)
+                                }
                                 a href="/auth/logout"
                                     class="link white-70 hover-white no-underline f6"
                                     onclick="event.preventDefault(); fetch('/api/auth/logout', {method: 'POST', credentials: 'same-origin'}).then(() => window.location.href='/');"

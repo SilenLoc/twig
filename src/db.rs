@@ -36,6 +36,7 @@ impl Database {
                 "CREATE TABLE IF NOT EXISTS users (
                     id TEXT PRIMARY KEY,
                     username TEXT UNIQUE NOT NULL,
+                    email TEXT,
                     password_hash TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 )",
@@ -137,8 +138,8 @@ impl Database {
     pub async fn create_user(&self, user: &User) -> Result<(), String> {
         self.conn
             .execute(
-                "INSERT INTO users (id, username, password_hash, created_at) VALUES (?1, ?2, ?3, ?4)",
-                libsql::params![user.id.clone(), user.username.clone(), user.password_hash.clone(), user.created_at.clone()],
+                "INSERT INTO users (id, username, email, password_hash, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+                libsql::params![user.id.clone(), user.username.clone(), user.email.clone(), user.password_hash.clone(), user.created_at.clone()],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -149,7 +150,7 @@ impl Database {
         let mut rows = self
             .conn
             .query(
-                "SELECT id, username, password_hash, created_at FROM users WHERE username = ?1",
+                "SELECT id, username, email, password_hash, created_at FROM users WHERE username = ?1",
                 libsql::params![username],
             )
             .await
@@ -159,8 +160,9 @@ impl Database {
             Ok(Some(User {
                 id: row.get(0).map_err(|e| e.to_string())?,
                 username: row.get(1).map_err(|e| e.to_string())?,
-                password_hash: row.get(2).map_err(|e| e.to_string())?,
-                created_at: row.get(3).map_err(|e| e.to_string())?,
+                email: row.get(2).map_err(|e| e.to_string())?,
+                password_hash: row.get(3).map_err(|e| e.to_string())?,
+                created_at: row.get(4).map_err(|e| e.to_string())?,
             }))
         } else {
             Ok(None)
@@ -171,7 +173,7 @@ impl Database {
         let mut rows = self
             .conn
             .query(
-                "SELECT id, username, password_hash, created_at FROM users WHERE id = ?1",
+                "SELECT id, username, email, password_hash, created_at FROM users WHERE id = ?1",
                 libsql::params![user_id],
             )
             .await
@@ -181,12 +183,24 @@ impl Database {
             Ok(Some(User {
                 id: row.get(0).map_err(|e| e.to_string())?,
                 username: row.get(1).map_err(|e| e.to_string())?,
-                password_hash: row.get(2).map_err(|e| e.to_string())?,
-                created_at: row.get(3).map_err(|e| e.to_string())?,
+                email: row.get(2).map_err(|e| e.to_string())?,
+                password_hash: row.get(3).map_err(|e| e.to_string())?,
+                created_at: row.get(4).map_err(|e| e.to_string())?,
             }))
         } else {
             Ok(None)
         }
+    }
+
+    pub async fn update_user_email(&self, user_id: &str, email: &str) -> Result<(), String> {
+        self.conn
+            .execute(
+                "UPDATE users SET email = ?1 WHERE id = ?2",
+                libsql::params![email, user_id],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     // Namespace operations

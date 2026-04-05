@@ -134,6 +134,17 @@ pub async fn signup_page(
                     placeholder="Choose a username (min 3 characters)";
             }
 
+            div class="mb3" {
+                label class="db f6 white-70 mb2" for="email" { "Email" }
+                input
+                    type="email"
+                    name="email"
+                    id="email"
+                    required
+                    class="db w-100 pa2 bg-black white ba b--white-30 br1"
+                    placeholder="Enter your email address";
+            }
+
             div class="mb4" {
                 label class="db f6 white-70 mb2" for="password" { "Password" }
                 input

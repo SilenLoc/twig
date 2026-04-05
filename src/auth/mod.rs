@@ -15,6 +15,7 @@ pub mod handlers;
 pub struct User {
     pub id: String,
     pub username: String,
+    pub email: Option<String>,
     pub password_hash: String,
     pub created_at: String,
 }
@@ -48,6 +49,7 @@ pub struct AuthToken {
 pub struct SignupRequest {
     pub ticket: Option<String>,
     pub username: String,
+    pub email: String,
     pub password: String,
 }
 
@@ -98,7 +100,11 @@ pub fn generate_token() -> String {
 }
 
 // Create new user
-pub fn create_user(username: String, password: String) -> Result<(User, String), String> {
+pub fn create_user(
+    username: String,
+    email: String,
+    password: String,
+) -> Result<(User, String), String> {
     let password_hash = hash_password(&password)?;
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
@@ -106,6 +112,7 @@ pub fn create_user(username: String, password: String) -> Result<(User, String),
     let user = User {
         id,
         username,
+        email: Some(email),
         password_hash,
         created_at: now,
     };

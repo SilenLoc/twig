@@ -18,6 +18,7 @@ pub struct TicketForm {
 pub struct SignupForm {
     pub ticket: String,
     pub username: String,
+    pub email: String,
     pub password: String,
 }
 
@@ -130,8 +131,17 @@ pub async fn signup(
         }
     }
 
+    // Validate email format
+    if signup_req.email.is_empty() || !signup_req.email.contains('@') {
+        return HttpResponse::BadRequest().body("Please enter a valid email address");
+    }
+
     // Create user
-    let (user, _) = match create_user(signup_req.username.clone(), signup_req.password.clone()) {
+    let (user, _) = match create_user(
+        signup_req.username.clone(),
+        signup_req.email.clone(),
+        signup_req.password.clone(),
+    ) {
         Ok((user, _)) => (user, ""),
         Err(e) => {
             log::error!("Failed to create user: {}", e);
@@ -386,6 +396,10 @@ pub async fn signup_ui_handler(
         return HttpResponse::BadRequest()
             .body(render_error("Username must be at least 3 characters").into_string());
     }
+    if form.email.is_empty() || !form.email.contains('@') {
+        return HttpResponse::BadRequest()
+            .body(render_error("Please enter a valid email address").into_string());
+    }
     if form.password.len() < 8 {
         return HttpResponse::BadRequest()
             .body(render_error("Password must be at least 8 characters").into_string());
@@ -406,7 +420,11 @@ pub async fn signup_ui_handler(
     }
 
     // Create user
-    let (user, _) = match create_user(form.username.clone(), form.password.clone()) {
+    let (user, _) = match create_user(
+        form.username.clone(),
+        form.email.clone(),
+        form.password.clone(),
+    ) {
         Ok((user, _)) => (user, ""),
         Err(e) => {
             log::error!("Failed to create user: {}", e);

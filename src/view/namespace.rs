@@ -340,8 +340,27 @@ pub async fn create_repo_handler(
             .body(render_error("Failed to create repository directory").into_string());
     }
 
-    // Initialize bare repository
-    match bare_init(&repo_path, &form.branch) {
+    // Get user details for git author info
+    let user = match auth_state.db.get_user_by_id(&user_id).await {
+        Ok(Some(user)) => user,
+        _ => {
+            return HttpResponse::InternalServerError()
+                .body(render_error("Failed to load user").into_string());
+        }
+    };
+
+    // Require user to have set an email before creating repositories
+    let author_email = match &user.email {
+        Some(email) => email.as_str(),
+        None => {
+            let _ = std::fs::remove_dir_all(&repo_path);
+            return HttpResponse::BadRequest()
+                .body(render_error("Please set your email in settings before creating a repository. <a href='/settings' class='link white underline'>Go to Settings</a>").into_string());
+        }
+    };
+
+    // Initialize bare repository with user info
+    match bare_init(&repo_path, &form.branch, &user.username, author_email) {
         Ok(_) => {
             info!(
                 "Created repository '{}/{}' via UI for user: {}",
