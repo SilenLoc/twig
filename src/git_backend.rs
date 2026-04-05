@@ -20,7 +20,6 @@ impl Config {
     }
 }
 
-
 #[derive(Debug, Clone)]
 pub enum GitRequestKind {
     AdvertiseRefs(GitService),
@@ -85,10 +84,6 @@ impl GitRequest {
             content_type: content_type.into(),
         }
     }
-}
-
-pub fn run(req: &GitRequest, namespace: &str, body: Vec<u8>) -> Result<(String, Vec<u8>), String> {
-    run_with_config(&Config::default(), namespace, req, body)
 }
 
 pub fn run_with_config(
