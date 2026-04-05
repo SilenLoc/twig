@@ -105,7 +105,7 @@ fn render_repo(
         div class="mb4 f6 white-70" {
             a href="/" class="link white-70 hover-white no-underline" { "Namespaces" }
             span class="mh2" { "/" }
-            a href=(format!("/ {}", namespace)) class="link white-70 hover-white no-underline" { (namespace) }
+            a href=(format!("/{}", namespace)) class="link white-70 hover-white no-underline" { (namespace) }
             span class="mh2" { "/" }
             span class="white" { (repo) }
         }
