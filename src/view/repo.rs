@@ -37,6 +37,13 @@ struct TabParams {
     tab: String,
 }
 
+#[derive(Deserialize)]
+struct MarkdownParams {
+    namespace: String,
+    repo: String,
+    file_path: String,
+}
+
 #[get("/{namespace}/{repo}")]
 pub async fn handler(
     req: HttpRequest,
@@ -52,16 +59,30 @@ pub async fn handler(
     let commits_result =
         git::bare::get_commits(server.project_root(), namespace, repo, Depth::default());
 
-    // Get README
-    let readme_result = git::bare::read_readme(server.project_root(), namespace, repo);
+    // Get all markdown files
+    let markdown_files_result =
+        git::bare::list_markdown_files(server.project_root(), namespace, repo);
 
     let content = match commits_result {
         Ok(commits) => {
-            let readme_html = readme_result
-                .ok()
-                .flatten()
-                .map(|(_, content)| markdown_to_html(&content));
-            render_repo(namespace, repo, &commits, readme_html.as_deref())
+            let markdown_files = markdown_files_result.unwrap_or_default();
+            // Get default markdown file content for initial view
+            let default_file = get_default_markdown_file(&markdown_files);
+            let default_content = if let Some(file) = default_file {
+                git::bare::read_file(server.project_root(), namespace, repo, file)
+                    .ok()
+                    .flatten()
+            } else {
+                None
+            };
+            render_repo(
+                namespace,
+                repo,
+                &commits,
+                &markdown_files,
+                default_file,
+                default_content.as_deref(),
+            )
         }
         Err(e) => render_git_error(e),
     };
@@ -89,28 +110,47 @@ pub async fn tab_handler(
     let commits_result =
         git::bare::get_commits(server.project_root(), namespace, repo, Depth::default());
 
-    // Get README
-    let readme_result = git::bare::read_readme(server.project_root(), namespace, repo);
+    // Get all markdown files
+    let markdown_files_result =
+        git::bare::list_markdown_files(server.project_root(), namespace, repo);
 
     match commits_result {
         Ok(commits) => {
-            let readme_html = readme_result
-                .ok()
-                .flatten()
-                .map(|(_, content)| markdown_to_html(&content));
+            let markdown_files = markdown_files_result.unwrap_or_default();
+
+            // Get default markdown file content
+            let default_file = get_default_markdown_file(&markdown_files);
+            let default_content = if let Some(file) = default_file {
+                git::bare::read_file(server.project_root(), namespace, repo, file)
+                    .ok()
+                    .flatten()
+            } else {
+                None
+            };
 
             if req.headers().get("HX-Request").is_some() {
                 // For HTMX requests, only return the scrollable content (not tabs)
                 let content = scrollable_container(render_tab_content_inner(
+                    namespace,
+                    repo,
                     tab,
                     &commits,
-                    readme_html.as_deref(),
+                    &markdown_files,
+                    default_file,
+                    default_content.as_deref(),
                 ));
                 Ok(content)
             } else {
                 // For full page loads, return tabs + content
-                let content =
-                    render_tab_content(namespace, repo, tab, &commits, readme_html.as_deref());
+                let content = render_tab_content(
+                    namespace,
+                    repo,
+                    tab,
+                    &commits,
+                    &markdown_files,
+                    default_file,
+                    default_content.as_deref(),
+                );
                 Ok(super::render_layout(&content, username.as_deref()))
             }
         }
@@ -125,13 +165,112 @@ pub async fn tab_handler(
     }
 }
 
-/// Converts markdown to HTML
-fn markdown_to_html(markdown: &str) -> String {
+#[get("/{namespace}/{repo}/md/{file_path:.*}")]
+pub async fn markdown_handler(
+    req: HttpRequest,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<AuthState>,
+    params: web::Path<MarkdownParams>,
+) -> AwResult<Markup> {
+    let namespace = &params.namespace;
+    let repo = &params.repo;
+    let file_path = &params.file_path;
+    let username = get_username_from_request(&req, &auth_state).await;
+
+    // Get commits
+    let commits_result =
+        git::bare::get_commits(server.project_root(), namespace, repo, Depth::default());
+
+    // Get all markdown files
+    let markdown_files_result =
+        git::bare::list_markdown_files(server.project_root(), namespace, repo);
+
+    // Get the requested markdown file content
+    let file_result = git::bare::read_file(server.project_root(), namespace, repo, file_path);
+
+    match commits_result {
+        Ok(commits) => {
+            let markdown_files = markdown_files_result.unwrap_or_default();
+
+            if req.headers().get("HX-Request").is_some() {
+                // For HTMX requests, return just the markdown content (not the full view with sidebar)
+                let content = render_markdown_content_only(
+                    namespace,
+                    repo,
+                    file_path,
+                    file_result.ok().flatten().as_deref(),
+                );
+                Ok(content)
+            } else {
+                // For full page loads, show the markdown tab with the selected file
+                let content = render_tab_content(
+                    namespace,
+                    repo,
+                    "markdown",
+                    &commits,
+                    &markdown_files,
+                    Some(file_path),
+                    file_result.ok().flatten().as_deref(),
+                );
+                Ok(super::render_layout(&content, username.as_deref()))
+            }
+        }
+        Err(e) => {
+            let content = render_git_error(e);
+            if req.headers().get("HX-Request").is_some() {
+                Ok(content)
+            } else {
+                Ok(super::render_layout(&content, username.as_deref()))
+            }
+        }
+    }
+}
+
+/// Converts markdown to HTML, fixing relative links to point to repo root
+fn markdown_to_html(markdown: &str, namespace: &str, repo: &str) -> String {
     let parser = Parser::new(markdown);
 
-    // Sanitize raw HTML by escaping it
+    // Process events to fix relative links
     let parser = parser.map(|event| match event {
         Event::Html(text) | Event::InlineHtml(text) => Event::Text(text),
+        Event::Start(tag) => {
+            // Fix relative links in markdown
+            let fixed_tag = match tag {
+                pulldown_cmark::Tag::Link {
+                    link_type,
+                    dest_url,
+                    title,
+                    id,
+                } => {
+                    let dest_str = dest_url.to_string();
+                    // If it's a relative link (doesn't start with http/https or /)
+                    let fixed_dest = if !dest_str.starts_with("http://")
+                        && !dest_str.starts_with("https://")
+                        && !dest_str.starts_with('/')
+                        && !dest_str.starts_with('#')
+                    {
+                        // Check if it's a markdown file
+                        if dest_str.ends_with(".md") || dest_str.ends_with(".markdown") {
+                            // Link to the markdown viewer
+                            format!("/{}/{}/md/{}", namespace, repo, dest_str).into()
+                        } else {
+                            // Link to the raw file via repo root
+                            format!("/{}/{}/{}", namespace, repo, dest_str).into()
+                        }
+                    } else {
+                        dest_url
+                    };
+                    pulldown_cmark::Tag::Link {
+                        link_type,
+                        dest_url: fixed_dest,
+                        title,
+                        id,
+                    }
+                }
+                _ => tag,
+            };
+            Event::Start(fixed_tag)
+        }
         _ => event,
     });
 
@@ -164,20 +303,16 @@ fn scrollable_container(content: Markup) -> Markup {
 
 /// Renders a tab navigation bar
 fn render_tabs(namespace: &str, repo: &str, active_tab: &str) -> Markup {
-    let tabs = vec![("readme", "README"), ("commits", "Commits")];
+    let tabs = vec![("markdown", "Markdown"), ("commits", "Commits")];
 
     maud::html! {
         div class="flex bb b--white-20 mb3" {
             @for (tab_id, tab_label) in tabs {
                 @let is_active = tab_id == active_tab;
-                @let classes = if is_active {
-                    "tab-active pa2 ph3 white fw6 no-underline pointer bg-white-10"
-                } else {
-                    "tab pa2 ph3 white-70 hover-white no-underline pointer hover-bg-white-10"
-                };
+                @let active_classes = if is_active { "white fw6 bg-white-10" } else { "white-70 hover-white" };
                 a
                     href=(format!("/{}/{}/tab/{}", namespace, repo, tab_id))
-                    class=(classes)
+                    class=(format!("pa2 ph3 {} no-underline pointer hover-bg-white-10", active_classes))
                     hx-get=(format!("/{}/{}/tab/{}", namespace, repo, tab_id))
                     hx-target="#tab-content"
                     hx-push-url=(format!("/{}/{}", namespace, repo))
@@ -193,11 +328,13 @@ fn render_repo(
     namespace: &str,
     repo: &str,
     commits: &[Commit],
-    readme_html: Option<&str>,
+    markdown_files: &[String],
+    default_file: Option<&str>,
+    default_content: Option<&str>,
 ) -> Markup {
-    // Default to "readme" tab if README exists, otherwise "commits"
-    let default_tab = if readme_html.is_some() {
-        "readme"
+    // Default to "markdown" tab if markdown files exist, otherwise "commits"
+    let default_tab = if !markdown_files.is_empty() {
+        "markdown"
     } else {
         "commits"
     };
@@ -217,7 +354,15 @@ fn render_repo(
 
         // Tab content container (scrollable)
         div id="tab-content" {
-            (scrollable_container(render_tab_content_inner(default_tab, commits, readme_html)))
+            (scrollable_container(render_tab_content_inner(
+                namespace,
+                repo,
+                default_tab,
+                commits,
+                markdown_files,
+                default_file,
+                default_content,
+            )))
         }
     }
 }
@@ -227,7 +372,9 @@ fn render_tab_content(
     repo: &str,
     tab: &str,
     commits: &[Commit],
-    readme_html: Option<&str>,
+    markdown_files: &[String],
+    selected_md_file: Option<&str>,
+    selected_content: Option<&str>,
 ) -> Markup {
     maud::html! {
         // Tab navigation (update active state)
@@ -235,30 +382,62 @@ fn render_tab_content(
 
         // Tab content container (scrollable)
         div id="tab-content" {
-            (scrollable_container(render_tab_content_inner(tab, commits, readme_html)))
+            (scrollable_container(render_tab_content_inner(
+                namespace,
+                repo,
+                tab,
+                commits,
+                markdown_files,
+                selected_md_file,
+                selected_content,
+            )))
         }
     }
 }
 
-fn render_tab_content_inner(tab: &str, commits: &[Commit], readme_html: Option<&str>) -> Markup {
+/// Get the default markdown file to show - prefers README.md if it exists
+fn get_default_markdown_file(markdown_files: &[String]) -> Option<&str> {
+    // First try to find README.md (case-insensitive)
+    let readme = markdown_files
+        .iter()
+        .find(|f| f.eq_ignore_ascii_case("README.md"));
+    if readme.is_some() {
+        return readme.map(|s| s.as_str());
+    }
+    // Then try any README variant
+    let readme = markdown_files
+        .iter()
+        .find(|f| f.to_lowercase().starts_with("readme"));
+    if readme.is_some() {
+        return readme.map(|s| s.as_str());
+    }
+    // Fall back to first file
+    markdown_files.first().map(|s| s.as_str())
+}
+
+fn render_tab_content_inner(
+    namespace: &str,
+    repo: &str,
+    tab: &str,
+    commits: &[Commit],
+    markdown_files: &[String],
+    selected_md_file: Option<&str>,
+    selected_content: Option<&str>,
+) -> Markup {
     match tab {
-        "readme" => {
-            if let Some(html) = readme_html {
-                maud::html! {
-                    div class="readme pa3 mb4 bg-dark-gray br2" {
-                        h2 class="f4 fw6 mb3 white" { "README" }
-                        div class="markdown-body white lh-copy" {
-                            (maud::PreEscaped(html))
-                        }
-                    }
-                }
-            } else {
-                maud::html! {
-                    div class="pa3 white-50" {
-                        "No README file found."
-                    }
-                }
-            }
+        "markdown" => {
+            // Use selected file or find default (README.md preferred)
+            let file_to_show = selected_md_file
+                .or_else(|| get_default_markdown_file(markdown_files))
+                .unwrap_or("README.md");
+
+            render_markdown_view(
+                namespace,
+                repo,
+                file_to_show,
+                selected_content,
+                markdown_files,
+            )
         }
         "commits" => {
             maud::html! {
@@ -275,16 +454,92 @@ fn render_tab_content_inner(tab: &str, commits: &[Commit], readme_html: Option<&
             }
         }
         _ => {
-            // Unknown tab - show README by default if available
+            // Unknown tab - show Markdown by default if available
             render_tab_content_inner(
-                if readme_html.is_some() {
-                    "readme"
+                namespace,
+                repo,
+                if !markdown_files.is_empty() {
+                    "markdown"
                 } else {
                     "commits"
                 },
                 commits,
-                readme_html,
+                markdown_files,
+                selected_md_file,
+                selected_content,
             )
+        }
+    }
+}
+
+fn render_markdown_view(
+    namespace: &str,
+    repo: &str,
+    current_file: &str,
+    content: Option<&str>,
+    markdown_files: &[String],
+) -> Markup {
+    maud::html! {
+        div class="flex" style="height: 100%;" {
+            // Left sidebar with markdown files
+            div class="w4 w5-ns br b--white-20 pr3 overflow-y-auto" style="max-height: calc(100vh - 14rem); min-width: 200px;" {
+                h3 class="f5 fw6 mb2 white" { "Markdown Files" }
+                ul class="list pl0" {
+                    @for file in markdown_files {
+                        @let is_active = file == current_file;
+                        li class="mb1" {
+                            @if is_active {
+                                a
+                                    href=(format!("/{}/{}/md/{}", namespace, repo, file))
+                                    class="white fw6 no-underline db pa1"
+                                    hx-get=(format!("/{}/{}/md/{}", namespace, repo, file))
+                                    hx-target="#markdown-view"
+                                {
+                                    (file)
+                                }
+                            }
+                            @if !is_active {
+                                a
+                                    href=(format!("/{}/{}/md/{}", namespace, repo, file))
+                                    class="white-70 hover-white no-underline db pa1"
+                                    hx-get=(format!("/{}/{}/md/{}", namespace, repo, file))
+                                    hx-target="#markdown-view"
+                                {
+                                    (file)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Right content area
+            div id="markdown-view" class="flex-auto pl3 overflow-y-auto" style="max-height: calc(100vh - 14rem);" {
+                (render_markdown_content_only(namespace, repo, current_file, content))
+            }
+        }
+    }
+}
+
+/// Renders just the markdown content without the sidebar (for HTMX updates)
+fn render_markdown_content_only(
+    _namespace: &str,
+    _repo: &str,
+    _current_file: &str,
+    content: Option<&str>,
+) -> Markup {
+    let html_content = content.map(|md| markdown_to_html(md, _namespace, _repo));
+
+    maud::html! {
+        @if let Some(ref html) = html_content {
+            div class="markdown-body white lh-copy" {
+                (maud::PreEscaped(html))
+            }
+        }
+        @if html_content.is_none() {
+            div class="pa3 white-50" {
+                "File not found or empty."
+            }
         }
     }
 }
@@ -315,8 +570,37 @@ mod tests {
     #[test]
     fn test_markdown_to_html() {
         let md = "# Hello\n\nThis is **bold** text.";
-        let html = markdown_to_html(md);
+        let html = markdown_to_html(md, "test", "repo");
         assert!(html.contains("<h1>Hello</h1>"));
         assert!(html.contains("<strong>bold</strong>"));
+    }
+
+    #[test]
+    fn test_markdown_link_fixing() {
+        let md = "[Link](./other.md) and [External](https://example.com)";
+        let html = markdown_to_html(md, "ns", "repo");
+        // Internal markdown links should be fixed
+        assert!(html.contains("/ns/repo/md/./other.md"));
+        // External links should remain unchanged
+        assert!(html.contains("https://example.com"));
+    }
+
+    #[test]
+    fn test_get_default_markdown_file() {
+        let files = vec![
+            "docs/guide.md".to_string(),
+            "README.md".to_string(),
+            "CHANGELOG.md".to_string(),
+        ];
+        assert_eq!(get_default_markdown_file(&files), Some("README.md"));
+
+        let files = vec!["docs/guide.md".to_string(), "readme.md".to_string()];
+        assert_eq!(get_default_markdown_file(&files), Some("readme.md"));
+
+        let files = vec!["guide.md".to_string(), "docs/help.md".to_string()];
+        assert_eq!(get_default_markdown_file(&files), Some("guide.md"));
+
+        let files: Vec<String> = vec![];
+        assert_eq!(get_default_markdown_file(&files), None);
     }
 }

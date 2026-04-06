@@ -97,6 +97,7 @@ async fn main() -> std::io::Result<()> {
             .service(view::namespace::create_repo_handler)
             .service(view::repo::handler)
             .service(view::repo::tab_handler)
+            .service(view::repo::markdown_handler)
             // Git endpoints with auth
             .service(git::repo::init)
             .route(

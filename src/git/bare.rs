@@ -235,29 +235,74 @@ pub fn read_file(
     Ok(Some(content.to_string()))
 }
 
-/// Reads README file from the repository (tries common README filenames)
-pub fn read_readme(
+/// Lists all markdown files in the repository
+pub fn list_markdown_files(
     root: &str,
     namespace: &str,
     repo: &str,
-) -> Result<Option<(String, String)>, git2::Error> {
-    let readme_names = [
-        "README.md",
-        "Readme.md",
-        "readme.md",
-        "README.markdown",
-        "README",
-        "Readme",
-        "readme",
-    ];
+) -> Result<Vec<String>, git2::Error> {
+    let path = Path::new(root).join(namespace).join(repo);
+    let repo = git2::Repository::open(&path)?;
 
-    for name in &readme_names {
-        if let Some(content) = read_file(root, namespace, repo, name)? {
-            return Ok(Some((name.to_string(), content)));
+    // Get HEAD commit (handle unborn branch - no commits yet)
+    let head = match repo.head() {
+        Ok(head) => head,
+        Err(_) => return Ok(Vec::new()), // No HEAD yet (empty repo)
+    };
+
+    // Check if this is an unborn branch (HEAD exists but points to non-existent ref)
+    let obj = match head.resolve() {
+        Ok(resolved) => match resolved.peel(git2::ObjectType::Commit) {
+            Ok(obj) => obj,
+            Err(_) => return Ok(Vec::new()), // Can't peel to commit
+        },
+        Err(_) => return Ok(Vec::new()), // Unborn branch - no commits yet
+    };
+
+    let commit = obj
+        .into_commit()
+        .map_err(|_| git2::Error::from_str("Couldn't find commit"))?;
+
+    let tree = commit.tree()?;
+    let mut markdown_files = Vec::new();
+
+    // Walk the tree recursively to find all .md files
+    fn walk_tree(
+        repo: &git2::Repository,
+        tree: &git2::Tree,
+        prefix: &str,
+        files: &mut Vec<String>,
+    ) -> Result<(), git2::Error> {
+        for entry in tree {
+            let name = entry.name().unwrap_or("");
+            let path = if prefix.is_empty() {
+                name.to_string()
+            } else {
+                format!("{}/{}", prefix, name)
+            };
+
+            match entry.kind() {
+                Some(git2::ObjectType::Tree) => {
+                    let obj = entry.to_object(repo)?;
+                    if let Ok(subtree) = obj.into_tree() {
+                        walk_tree(repo, &subtree, &path, files)?;
+                    }
+                }
+                Some(git2::ObjectType::Blob) => {
+                    if name.ends_with(".md") || name.ends_with(".markdown") {
+                        files.push(path);
+                    }
+                }
+                _ => {}
+            }
         }
+        Ok(())
     }
 
-    Ok(None)
+    walk_tree(&repo, &tree, "", &mut markdown_files)?;
+    markdown_files.sort();
+
+    Ok(markdown_files)
 }
 
 /// Commits a file to a non-bare repository (used for testing)
@@ -421,14 +466,13 @@ mod tests {
         push_to_bare(&local_path, &bare_path, "main").expect("Failed to push");
 
         // Read the README from bare repo (bare.git is at root of temp, no namespace)
-        let result = read_readme(temp.to_str().unwrap(), "", "bare.git");
+        let result = read_file(temp.to_str().unwrap(), "", "bare.git", "README.md");
 
         assert!(result.is_ok(), "Failed to read README: {:?}", result.err());
-        let readme = result.unwrap();
-        assert!(readme.is_some(), "README should be found");
+        let content = result.unwrap();
+        assert!(content.is_some(), "README should be found");
 
-        let (filename, content) = readme.unwrap();
-        assert_eq!(filename, "README.md");
+        let content = content.unwrap();
         assert!(
             content.contains("# Test Repository"),
             "Content should contain '# Test Repository', but got: {}",
@@ -484,10 +528,11 @@ mod tests {
         .unwrap();
 
         // Verify we can read it back
-        let result = read_readme(temp.to_str().unwrap(), "", "local");
+        let result = read_file(temp.to_str().unwrap(), "", "local", "readme.md");
         assert!(result.is_ok());
-        let readme = result.unwrap();
-        assert!(readme.is_some());
-        assert_eq!(readme.unwrap().0, "readme.md");
+        let content = result.unwrap();
+        assert!(content.is_some());
+        let content = content.unwrap();
+        assert!(content.contains("# lowercase readme"));
     }
 }
