@@ -33,7 +33,8 @@ Fig is a self-hosted Git backend that provides:
 Deploy with the [once project] (https://github.com/basecamp/once)
 Be sure to set follwoing environment variables:
 
-todo: add the specific ones
+DB_PATH=/storage/<your_choice>
+PROJECT_ROOT=/storage/<your_choice>
 
 ## Documentation
 
