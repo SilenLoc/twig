@@ -1,6 +1,6 @@
 # Fig
 
-A Git server and web UI built with Rust (Actix-web). Fig serves Git repositories over HTTP and provides a web interface for browsing repositories.
+Fig serves Git repositories over HTTP and provides a web interface for browsing repositories.
 
 ## What This Is
 
@@ -8,7 +8,6 @@ Fig is a self-hosted Git backend that provides:
 
 - **Git HTTP Backend**: Host Git repositories over HTTP with support for clone, fetch, and push operations
 - **Web UI**: Browse namespaces, repositories, commits, and README files through a clean web interface
-- **API**: RESTful API for user management, authentication, and repository operations
 
 ## Features
 
