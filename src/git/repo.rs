@@ -155,6 +155,11 @@ pub fn bare_init(
         .read()
         .map_err(|e| e.to_string())?;
 
+    // Enable http.receivepack to allow pushes via HTTP
+    cmd!(sh, "git config http.receivepack true")
+        .run()
+        .map_err(|e| format!("Failed to enable http.receivepack: {}", e))?;
+
     // Create initial commit with .fig file
     // Use git plumbing commands to create a commit in a bare repo
     let blob_content = "Created with Fig";

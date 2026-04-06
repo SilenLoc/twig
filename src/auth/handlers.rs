@@ -2,8 +2,9 @@ use actix_web::{HttpRequest, HttpResponse, Responder, post, web};
 use log::info;
 use serde::Deserialize;
 
-use crate::auth::{
-    AuthState, Ticket, create_namespace, create_user, generate_token, verify_password,
+use crate::{
+    auth::{AuthState, Ticket, create_namespace, create_user, generate_token, verify_password},
+    config,
 };
 
 // Form data types for HTMX UI submissions
@@ -339,11 +340,14 @@ pub async fn create_namespace_ui_handler(
         namespace.name, namespace.owner_id
     );
 
+    // Get project root from config
+    let project_root = req
+        .app_data::<web::Data<config::Server>>()
+        .map(|cfg| cfg.project_root().to_string())
+        .unwrap_or_else(|| "/srv/git".to_string());
+
     // Create the namespace directory
-    let namespace_path = std::path::Path::new(
-        &std::env::var("PROJECT_ROOT").unwrap_or_else(|_| "/srv/git".to_string()),
-    )
-    .join(&namespace.name);
+    let namespace_path = std::path::Path::new(&project_root).join(&namespace.name);
 
     if let Err(e) = std::fs::create_dir_all(&namespace_path) {
         log::error!("Failed to create namespace directory: {}", e);

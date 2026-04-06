@@ -189,6 +189,7 @@ pub fn prepare_cgi_env(project_root: &str, sh: Shell, req: GitRequest) -> Shell 
     sh.set_var("QUERY_STRING", req.query_string.clone());
     sh.set_var("GIT_PROJECT_ROOT", project_root);
     sh.set_var("GIT_HTTP_EXPORT_ALL", "1");
+    sh.set_var("GIT_HTTP_RECEIVE_PACK", "true"); // enables push operations
 
     info!(
         "Git backend HTTP: preparing CGI env method='{}' path='{}' query='{}' project_root='{}'",

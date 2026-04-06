@@ -34,10 +34,10 @@ async fn main() -> std::io::Result<()> {
     let config = web::Data::new(config);
 
     // Initialize auth state
-    let db_path = std::env::var("DB_PATH").unwrap_or_else(|_| "fig.db".to_string());
+    let db_path = config.db_path().to_string();
 
     // Check if we should reset the database
-    if std::env::var("RESET_DB").unwrap_or_default() == "true" {
+    if config.reset_db() {
         log::warn!(
             "RESET_DB is set to true, deleting database file: {}",
             db_path
@@ -51,12 +51,14 @@ async fn main() -> std::io::Result<()> {
         }
     }
 
-    let api_key = std::env::var("API_KEY").unwrap_or_else(|_| {
+    let api_key = if config.api_key().is_empty() {
         // Generate a random API key if not provided
         let key = auth::generate_token();
         log::warn!("No API_KEY set, using generated key: {}", key);
         key
-    });
+    } else {
+        config.api_key().to_string()
+    };
 
     let auth_state = match auth::AuthState::new(&db_path, api_key).await {
         Ok(state) => web::Data::new(state),
