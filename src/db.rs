@@ -1,11 +1,11 @@
 use std::path::Path;
 
-use libsql::Builder;
+use turso::Builder;
 
 use crate::auth::{Namespace, Ticket, User};
 
 pub struct Database {
-    conn: libsql::Connection,
+    conn: turso::Connection,
 }
 
 impl Database {
@@ -16,7 +16,7 @@ impl Database {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
 
-        let db = Builder::new_local(db_path)
+        let db = Builder::new_local(db_path.to_str().unwrap())
             .build()
             .await
             .map_err(|e| e.to_string())?;
@@ -146,7 +146,7 @@ impl Database {
         self.conn
             .execute(
                 "INSERT INTO users (id, username, email, password_hash, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-                libsql::params![user.id.clone(), user.username.clone(), user.email.clone(), user.password_hash.clone(), user.created_at.clone()],
+                turso::params![user.id.clone(), user.username.clone(), user.email.clone(), user.password_hash.clone(), user.created_at.clone()],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -158,7 +158,7 @@ impl Database {
             .conn
             .query(
                 "SELECT id, username, email, password_hash, created_at FROM users WHERE username = ?1",
-                libsql::params![username],
+                turso::params![username],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -181,7 +181,7 @@ impl Database {
             .conn
             .query(
                 "SELECT id, username, email, password_hash, created_at FROM users WHERE id = ?1",
-                libsql::params![user_id],
+                turso::params![user_id],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -203,7 +203,7 @@ impl Database {
         self.conn
             .execute(
                 "UPDATE users SET email = ?1 WHERE id = ?2",
-                libsql::params![email, user_id],
+                turso::params![email, user_id],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -215,7 +215,7 @@ impl Database {
         self.conn
             .execute(
                 "INSERT INTO namespaces (id, name, owner_id, created_at) VALUES (?1, ?2, ?3, ?4)",
-                libsql::params![
+                turso::params![
                     namespace.id.clone(),
                     namespace.name.clone(),
                     namespace.owner_id.clone(),
@@ -230,7 +230,7 @@ impl Database {
         self.conn
             .execute(
                 "INSERT INTO namespace_members (namespace_id, user_id, role, added_at) VALUES (?1, ?2, ?3, ?4)",
-                libsql::params![namespace.id.clone(), namespace.owner_id.clone(), "owner", now],
+                turso::params![namespace.id.clone(), namespace.owner_id.clone(), "owner", now],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -243,7 +243,7 @@ impl Database {
             .conn
             .query(
                 "SELECT id, name, owner_id, created_at FROM namespaces WHERE name = ?1",
-                libsql::params![name],
+                turso::params![name],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -264,9 +264,9 @@ impl Database {
         let mut rows = self
             .conn
             .query(
-                "SELECT n.id, n.name, n.owner_id, n.created_at, u.username 
-                 FROM namespaces n 
-                 JOIN users u ON n.owner_id = u.id 
+                "SELECT n.id, n.name, n.owner_id, n.created_at, u.username
+                 FROM namespaces n
+                 JOIN users u ON n.owner_id = u.id
                  ORDER BY n.name",
                 (),
             )
@@ -295,12 +295,12 @@ impl Database {
         let mut rows = self
             .conn
             .query(
-                "SELECT n.id, n.name, n.owner_id, n.created_at, u.username 
-                 FROM namespaces n 
-                 JOIN users u ON n.owner_id = u.id 
-                 WHERE n.name LIKE ?1 
+                "SELECT n.id, n.name, n.owner_id, n.created_at, u.username
+                 FROM namespaces n
+                 JOIN users u ON n.owner_id = u.id
+                 WHERE n.name LIKE ?1
                  ORDER BY n.name",
-                libsql::params![search_pattern],
+                turso::params![search_pattern],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -329,7 +329,7 @@ impl Database {
             .conn
             .query(
                 "SELECT 1 FROM namespaces WHERE name = ?1 AND owner_id = ?2",
-                libsql::params![namespace_name, user_id],
+                turso::params![namespace_name, user_id],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -350,7 +350,7 @@ impl Database {
                 "SELECT 1 FROM namespace_members nm
                  JOIN namespaces n ON nm.namespace_id = n.id
                  WHERE nm.user_id = ?1 AND n.name = ?2",
-                libsql::params![user_id, namespace_name],
+                turso::params![user_id, namespace_name],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -363,7 +363,7 @@ impl Database {
             .conn
             .query(
                 "SELECT 1 FROM namespace_members WHERE user_id = ?1 LIMIT 1",
-                libsql::params![user_id],
+                turso::params![user_id],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -376,7 +376,7 @@ impl Database {
         self.conn
             .execute(
                 "INSERT INTO tickets (id, user_id, used, created_at, used_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-                libsql::params![
+                turso::params![
                     ticket.id.clone(),
                     ticket.user_id.clone(),
                     ticket.used,
@@ -394,7 +394,7 @@ impl Database {
             .conn
             .query(
                 "SELECT id, user_id, used, created_at, used_at FROM tickets WHERE id = ?1",
-                libsql::params![ticket_id],
+                turso::params![ticket_id],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -417,7 +417,7 @@ impl Database {
         self.conn
             .execute(
                 "UPDATE tickets SET used = TRUE, used_at = ?1 WHERE id = ?2",
-                libsql::params![now, ticket_id],
+                turso::params![now, ticket_id],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -430,7 +430,7 @@ impl Database {
         self.conn
             .execute(
                 "INSERT INTO tokens (token, user_id, created_at) VALUES (?1, ?2, ?3)",
-                libsql::params![token, user_id, now],
+                turso::params![token, user_id, now],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -442,7 +442,7 @@ impl Database {
             .conn
             .query(
                 "SELECT user_id FROM tokens WHERE token = ?1 AND created_at > datetime('now', '-30 days')",
-                libsql::params![token],
+                turso::params![token],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -456,103 +456,9 @@ impl Database {
 
     pub async fn delete_token(&self, token: &str) -> Result<(), String> {
         self.conn
-            .execute(
-                "DELETE FROM tokens WHERE token = ?1",
-                libsql::params![token],
-            )
+            .execute("DELETE FROM tokens WHERE token = ?1", turso::params![token])
             .await
             .map_err(|e| e.to_string())?;
         Ok(())
-    }
-
-    // Admin operations
-
-    /// Get all users from the database
-    pub async fn get_all_users(&self) -> Result<Vec<User>, String> {
-        let mut rows = self
-            .conn
-            .query(
-                "SELECT id, username, email, password_hash, created_at FROM users ORDER BY created_at DESC",
-                (),
-            )
-            .await
-            .map_err(|e| e.to_string())?;
-
-        let mut result = Vec::new();
-        while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
-            result.push(User {
-                id: row.get(0).map_err(|e| e.to_string())?,
-                username: row.get(1).map_err(|e| e.to_string())?,
-                email: row.get(2).map_err(|e| e.to_string())?,
-                password_hash: row.get(3).map_err(|e| e.to_string())?,
-                created_at: row.get(4).map_err(|e| e.to_string())?,
-            });
-        }
-        Ok(result)
-    }
-
-    /// Get namespace members with their usernames
-    pub async fn get_namespace_members(
-        &self,
-    ) -> Result<Vec<(String, String, String, String)>, String> {
-        let mut rows = self
-            .conn
-            .query(
-                "SELECT n.name, u.username, nm.role, nm.added_at 
-                 FROM namespace_members nm
-                 JOIN namespaces n ON nm.namespace_id = n.id
-                 JOIN users u ON nm.user_id = u.id
-                 ORDER BY n.name, u.username",
-                (),
-            )
-            .await
-            .map_err(|e| e.to_string())?;
-
-        let mut result = Vec::new();
-        while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
-            let namespace: String = row.get(0).map_err(|e| e.to_string())?;
-            let username: String = row.get(1).map_err(|e| e.to_string())?;
-            let role: String = row.get(2).map_err(|e| e.to_string())?;
-            let added_at: String = row.get(3).map_err(|e| e.to_string())?;
-            result.push((namespace, username, role, added_at));
-        }
-        Ok(result)
-    }
-
-    /// Get all database table names and their row counts
-    pub async fn get_all_tables(&self) -> Result<Vec<(String, i64)>, String> {
-        // Get all table names from sqlite_master
-        let mut rows = self
-            .conn
-            .query(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_%' ORDER BY name",
-                (),
-            )
-            .await
-            .map_err(|e| e.to_string())?;
-
-        let mut tables = Vec::new();
-        while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
-            let table_name: String = row.get(0).map_err(|e| e.to_string())?;
-            tables.push(table_name);
-        }
-
-        // Get row count for each table
-        let mut result = Vec::new();
-        for table_name in tables {
-            let count_query = format!("SELECT COUNT(*) FROM {}", table_name);
-            let mut count_rows = self
-                .conn
-                .query(&count_query, ())
-                .await
-                .map_err(|e| e.to_string())?;
-
-            if let Some(row) = count_rows.next().await.map_err(|e| e.to_string())? {
-                let count: i64 = row.get(0).map_err(|e| e.to_string())?;
-                result.push((table_name, count));
-            }
-        }
-
-        Ok(result)
     }
 }

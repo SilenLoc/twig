@@ -2,7 +2,9 @@ use actix_web::{HttpRequest, HttpResponse, Responder, post, web};
 use log::info;
 use serde::Deserialize;
 
-use crate::auth::{AuthState, Ticket, create_namespace, create_user, generate_token, verify_password};
+use crate::auth::{
+    AuthState, Ticket, create_namespace, create_user, generate_token, verify_password,
+};
 
 // Form data types for HTMX UI submissions
 #[derive(Debug, Deserialize)]
@@ -30,13 +32,15 @@ pub struct CreateNamespaceForm {
 }
 
 #[post("/auth/logout")]
-pub async fn logout_ui_handler(req: HttpRequest, auth_state: web::Data<AuthState>) -> impl Responder {
+pub async fn logout_ui_handler(
+    req: HttpRequest,
+    auth_state: web::Data<AuthState>,
+) -> impl Responder {
     // Extract token from session cookie
     let token = match req.cookie("session") {
         Some(cookie) => cookie.value().to_string(),
         None => {
-            return HttpResponse::Unauthorized()
-                .body("Not logged in");
+            return HttpResponse::Unauthorized().body("Not logged in");
         }
     };
 

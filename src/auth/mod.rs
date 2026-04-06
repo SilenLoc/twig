@@ -36,7 +36,6 @@ pub struct Ticket {
     pub used_at: Option<String>,
 }
 
-// Password hashing
 pub fn hash_password(password: &str) -> Result<String, String> {
     let argon2 = Argon2::default();
     let salt = SaltString::generate(&mut OsRng);
@@ -57,14 +56,12 @@ pub fn verify_password(password: &str, hash: &str) -> Result<bool, String> {
         .is_ok())
 }
 
-// Generate random token
 pub fn generate_token() -> String {
     let mut bytes = [0u8; 32];
     OsRng.fill_bytes(&mut bytes);
     hex::encode(bytes)
 }
 
-// Create new user
 pub fn create_user(
     username: String,
     email: String,
@@ -87,13 +84,10 @@ pub fn create_user(
     Ok((user, ticket))
 }
 
-// Create ticket for namespace creation
 pub fn create_ticket(_user_id: &str) -> String {
-    // Return just the UUID part for easier use
     Uuid::new_v4().to_string()
 }
 
-// Create namespace
 pub fn create_namespace(name: String, owner_id: String) -> Namespace {
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
@@ -106,7 +100,6 @@ pub fn create_namespace(name: String, owner_id: String) -> Namespace {
     }
 }
 
-// Extract basic auth credentials from request
 pub fn extract_basic_auth(req: &HttpRequest) -> Option<(String, String)> {
     let auth_header = req.headers().get("Authorization")?;
     let auth_str = auth_header.to_str().ok()?;
@@ -124,29 +117,6 @@ pub fn extract_basic_auth(req: &HttpRequest) -> Option<(String, String)> {
     }
 
     Some((parts[0].to_string(), parts[1].to_string()))
-}
-
-// Extract API key from request
-pub fn extract_api_key(req: &HttpRequest) -> Option<String> {
-    // Check X-API-Key header first
-    if let Some(key) = req.headers().get("X-API-Key")
-        && let Ok(key_str) = key.to_str()
-    {
-        return Some(key_str.to_string());
-    }
-
-    // Fallback to query parameter
-    if let Some(query) = req.uri().query() {
-        for param in query.split('&') {
-            if let Some((key, value)) = param.split_once('=')
-                && key == "api_key"
-            {
-                return Some(value.to_string());
-            }
-        }
-    }
-
-    None
 }
 
 fn base64_decode(input: &str) -> Option<String> {
