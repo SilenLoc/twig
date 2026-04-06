@@ -284,14 +284,7 @@ async fn ensure_repo_exists(
     namespace: &str,
     repo_name: &str,
 ) -> Result<(), String> {
-    // Ensure repo name has .git suffix
-    let repo_name = if repo_name.ends_with(".git") {
-        repo_name.to_string()
-    } else {
-        format!("{}.git", repo_name)
-    };
-
-    let repo_path = Path::new(project_root).join(namespace).join(&repo_name);
+    let repo_path = Path::new(project_root).join(namespace).join(repo_name);
 
     if repo_path.exists() {
         // Repo already exists
