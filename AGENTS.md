@@ -129,23 +129,6 @@ just docker release <version>
 - Extract path params with `web::Path<Params>` using a `#[derive(Deserialize)]` struct
 - Access config via `web::Data<config::Server>`
 
-### Project Structure
-
-```
-src/
-├── main.rs           # Application entry, route setup
-├── config.rs         # Configuration and env vars
-├── assets.rs         # Static assets (CSS, JS)
-├── git/              # Git-related modules
-│   ├── mod.rs        # Git HTTP handlers
-│   ├── repo.rs       # Repository management
-│   └── bare.rs       # Bare repo operations
-└── view/             # Web UI views
-    ├── mod.rs        # Layout and index
-    ├── repo.rs       # Repository view
-    └── namespace.rs  # Namespace view
-```
-
 ### Testing
 
 - **Always use hurl commands/recipes to run format and test**

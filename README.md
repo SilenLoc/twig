@@ -28,27 +28,20 @@ Fig is a self-hosted Git backend that provides:
 
 [UI Documentation](docs/ui.md)
 
-### API
-- Health check endpoints
-- User signup with ticket-based registration
-- Login with Basic Auth returning Bearer tokens
-- Namespace creation
-- Repository initialization
-- Logout to invalidate sessions
-
-[API Documentation](docs/api.md)
-
 ## Quick Start
 
-```bash
-# Run the server
-just run
+Deploy with the [once project] (https://github.com/basecamp/once)
+Be sure to set follwoing environment variables:
 
-# Or with Docker
-just up
-```
+todo: add the specific ones
 
-The server starts on port 8080 by default.
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Git Backend](docs/git-backend.md) | Git HTTP backend usage and workflows |
+| [UI Documentation](docs/ui.md) | Web interface guide and page descriptions |
+| [Environment Variables](docs/environment-variables.md) | Configuration options reference |
 
 ## Authentication Overview
 
@@ -58,19 +51,18 @@ Fig uses multiple authentication methods depending on the action:
 |--------|----------------------|
 | Generate signup ticket | API Key (admin only) |
 | Create account | Single-use ticket |
-| Log in (API) | Basic Auth → returns Bearer token |
 | Log in (UI) | Form submission → sets session cookie |
-| Create namespace | Bearer token (API) or session cookie (UI) |
+| Create namespace | session cookie (UI) |
 | Create repository | Basic Auth |
 | Git clone/fetch | None (public read) |
-| Git push | Basic Auth |
-| Log out | Bearer token or session cookie |
+| Git push | Basic Auth via git |
+| Log out |session cookie |
 
 ### Registration Flow
 
 1. **Admin** generates a signup ticket using the API Key
 2. **User** creates an account with the ticket (single-use, consumed on signup)
-3. **User** logs in to receive a Bearer token (API) or session cookie (UI)
+3. **User** logs in
 4. **User** can now create namespaces and repositories
 
 See the individual documentation files for detailed authentication flows.

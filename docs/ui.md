@@ -13,12 +13,12 @@ The UI uses **session cookies** for authentication. After logging in, the server
 | View namespaces | No | Public read access |
 | View repositories | No | Public read access |
 | View commits/README | No | Public read access |
-| Create namespace | Yes | Session cookie |
-| Create repository | Yes | Session cookie |
+| Create namespace | Yes | logged in |
+| Create repository | Yes | logged in |
 | Generate signup ticket | Yes | API key (admin only) |
 | Signup | Yes | Valid ticket (one-time use) |
-| Login | Yes | Username/password form → sets cookie |
-| Logout | Yes | Clears session cookie |
+| Login | Yes | Username/password form |
+| Logout | Yes | Clears session |
 
 ### Authentication Flow
 
@@ -64,7 +64,7 @@ Displays repository details.
 
 **Features:**
 - Breadcrumb navigation
-- Rendered README (if present)
+- Rendered Markdown (if present)
 - Commit history with:
   - Short commit hash
   - Author name
@@ -103,21 +103,3 @@ The UI shows different content based on authentication state:
 - Username display and "Logout" link in navigation
 - Can create namespaces
 - Can create repositories in namespaces you own
-
-## Error Handling
-
-The UI displays error messages for:
-- Invalid credentials
-- Expired sessions
-- Duplicate usernames
-- Duplicate namespace names
-- Duplicate repository names
-- Invalid or used tickets
-- Access denied to namespace
-
-## HTMX Integration
-
-The UI uses HTMX for dynamic content:
-- Repository creation form loads inline
-- Form submissions update parts of the page without reload
-- Navigation can be partial page updates

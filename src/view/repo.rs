@@ -1,7 +1,7 @@
 use actix_web::Result as AwResult;
 use actix_web::{HttpRequest, get, web};
 use maud::Markup;
-use pulldown_cmark::{Event, Parser, html};
+use pulldown_cmark::{Event, Options, Parser, html};
 use serde::Deserialize;
 
 use crate::{
@@ -228,7 +228,9 @@ pub async fn markdown_handler(
 
 /// Converts markdown to HTML, fixing relative links to point to repo root
 fn markdown_to_html(markdown: &str, namespace: &str, repo: &str) -> String {
-    let parser = Parser::new(markdown);
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_TABLES);
+    let parser = Parser::new_ext(markdown, options);
 
     // Process events to fix relative links
     let parser = parser.map(|event| match event {
@@ -602,5 +604,27 @@ mod tests {
 
         let files: Vec<String> = vec![];
         assert_eq!(get_default_markdown_file(&files), None);
+    }
+
+    #[test]
+    fn test_markdown_tables_rendering() {
+        let md = "| Header 1 | Header 2 |\n|----------|----------|\n| Cell 1   | Cell 2   |";
+        let html = markdown_to_html(md, "test", "repo");
+        // Tables should be rendered as HTML table elements
+        assert!(
+            html.contains("<table>"),
+            "Expected <table> tag in output: {}",
+            html
+        );
+        assert!(
+            html.contains("<th>"),
+            "Expected <th> tag in output: {}",
+            html
+        );
+        assert!(
+            html.contains("<td>"),
+            "Expected <td> tag in output: {}",
+            html
+        );
     }
 }
