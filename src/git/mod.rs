@@ -1,8 +1,11 @@
+use std::path::Path;
+
 use actix_web::{HttpRequest, HttpResponse, web};
 use log::info;
 
-use crate::auth::{AuthState, extract_basic_auth, verify_password};
+use crate::auth::{AuthState, User, extract_basic_auth, verify_password};
 use crate::config;
+use crate::git::repo::bare_init;
 pub mod bare;
 pub mod repo;
 
@@ -50,19 +53,33 @@ pub async fn git_handler(
     }
 
     // Auth gate for write operations
-    match kind {
+    let _authenticated_user = match kind {
         crate::git_backend::GitRequestKind::Push
         | crate::git_backend::GitRequestKind::AdvertiseRefs(
             crate::git_backend::GitService::WriteRef,
         ) => match is_authenticated(&req, &auth_state, &namespace).await {
-            Ok(true) => {}
-            Ok(false) => {
+            Ok(Some(user)) => {
+                // Auto-create namespace if it doesn't exist
+                if let Err(e) = ensure_namespace_exists(&auth_state, &user, &namespace).await {
+                    log::error!("Failed to ensure namespace exists: {}", e);
+                    return actix_web::HttpResponse::InternalServerError()
+                        .body("Failed to create namespace");
+                }
+                // Auto-create repo if it doesn't exist
+                if let Err(e) = ensure_repo_exists(server.project_root(), &namespace, &repo).await {
+                    log::error!("Failed to ensure repo exists: {}", e);
+                    return actix_web::HttpResponse::InternalServerError()
+                        .body("Failed to create repository");
+                }
+                Some(user)
+            }
+            Ok(None) => {
                 return actix_web::HttpResponse::Forbidden().body("Access denied to namespace");
             }
             Err(response) => return response,
         },
-        _ => {}
-    }
+        _ => None,
+    };
 
     // Run in blocking thread — xshell/process::Command is blocking
     let req = git_req.clone();
@@ -116,7 +133,7 @@ async fn is_authenticated(
     req: &actix_web::HttpRequest,
     auth_state: &web::Data<AuthState>,
     namespace_name: &str,
-) -> Result<bool, HttpResponse> {
+) -> Result<Option<User>, HttpResponse> {
     // Extract basic auth credentials
     let (username, password) = match extract_basic_auth(req) {
         Some(creds) => creds,
@@ -168,7 +185,7 @@ async fn is_authenticated(
         }
     }
 
-    // Check if user has access to namespace
+    // Check if user has access to namespace (or if namespace doesn't exist yet, allow creation)
     log::debug!(
         "Checking namespace access: user_id='{}' namespace='{}'",
         user.id,
@@ -185,16 +202,39 @@ async fn is_authenticated(
                 username,
                 namespace_name
             );
-            Ok(true)
+            Ok(Some(user))
         }
         Ok(false) => {
-            log::warn!(
-                "Git auth failed: user='{}' (id='{}') does NOT have access to namespace='{}'",
-                username,
-                user.id,
-                namespace_name
-            );
-            Ok(false)
+            // Check if namespace exists at all
+            match auth_state.db.get_namespace_by_name(namespace_name).await {
+                Ok(Some(_)) => {
+                    // Namespace exists but user doesn't have access
+                    log::warn!(
+                        "Git auth failed: user='{}' (id='{}') does NOT have access to namespace='{}'",
+                        username,
+                        user.id,
+                        namespace_name
+                    );
+                    Ok(None)
+                }
+                Ok(None) => {
+                    // Namespace doesn't exist - allow auto-creation by returning the user
+                    log::info!(
+                        "Git auth success: user='{}' can create namespace='{}' (doesn't exist)",
+                        username,
+                        namespace_name
+                    );
+                    Ok(Some(user))
+                }
+                Err(e) => {
+                    log::error!(
+                        "Database error checking namespace existence for user '{}': {}",
+                        username,
+                        e
+                    );
+                    Err(actix_web::HttpResponse::InternalServerError().body("Database error"))
+                }
+            }
         }
         Err(e) => {
             log::error!(
@@ -205,4 +245,74 @@ async fn is_authenticated(
             Err(actix_web::HttpResponse::InternalServerError().body("Database error"))
         }
     }
+}
+
+/// Ensures a namespace exists in the database, creating it if necessary
+async fn ensure_namespace_exists(
+    auth_state: &web::Data<AuthState>,
+    user: &User,
+    namespace_name: &str,
+) -> Result<(), String> {
+    // Check if namespace exists
+    match auth_state.db.get_namespace_by_name(namespace_name).await {
+        Ok(Some(_)) => {
+            // Namespace already exists
+            Ok(())
+        }
+        Ok(None) => {
+            // Create the namespace
+            log::info!(
+                "Auto-creating namespace '{}' for user '{}'",
+                namespace_name,
+                user.username
+            );
+            let namespace =
+                crate::auth::create_namespace(namespace_name.to_string(), user.id.clone());
+            auth_state
+                .db
+                .create_namespace(&namespace)
+                .await
+                .map_err(|e| format!("Failed to create namespace: {}", e))
+        }
+        Err(e) => Err(format!("Database error checking namespace: {}", e)),
+    }
+}
+
+/// Ensures a bare repository exists on disk, creating it if necessary
+async fn ensure_repo_exists(
+    project_root: &str,
+    namespace: &str,
+    repo_name: &str,
+) -> Result<(), String> {
+    // Ensure repo name has .git suffix
+    let repo_name = if repo_name.ends_with(".git") {
+        repo_name.to_string()
+    } else {
+        format!("{}.git", repo_name)
+    };
+
+    let repo_path = Path::new(project_root).join(namespace).join(&repo_name);
+
+    if repo_path.exists() {
+        // Repo already exists
+        return Ok(());
+    }
+
+    // Create namespace directory if needed
+    let ns_path = Path::new(project_root).join(namespace);
+    if !ns_path.exists() {
+        std::fs::create_dir_all(&ns_path)
+            .map_err(|e| format!("Failed to create namespace directory: {}", e))?;
+    }
+
+    // Create the bare repository
+    log::info!("Auto-creating repository '{}/{}'", namespace, repo_name);
+
+    std::fs::create_dir_all(&repo_path)
+        .map_err(|e| format!("Failed to create repo directory: {}", e))?;
+
+    bare_init(&repo_path, "main", "Fig", "fig@localhost")
+        .map_err(|e| format!("Failed to initialize bare repo: {}", e))?;
+
+    Ok(())
 }
