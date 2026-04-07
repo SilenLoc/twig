@@ -9,7 +9,7 @@ use crate::{
     config,
     git::{
         self,
-        bare::{Commit, Depth},
+        bare::{Commit, Depth, FigConfig},
     },
 };
 
@@ -55,13 +55,16 @@ pub async fn handler(
     let repo = &params.repo;
     let username = get_username_from_request(&req, &auth_state).await;
 
+    // Load .fig config
+    let fig_config = FigConfig::load(server.project_root(), namespace, repo);
+
     // Get commits
     let commits_result =
         git::bare::get_commits(server.project_root(), namespace, repo, Depth::default());
 
-    // Get all markdown files
+    // Get all markdown files (filtered by config)
     let markdown_files_result =
-        git::bare::list_markdown_files(server.project_root(), namespace, repo);
+        git::bare::list_markdown_files(server.project_root(), namespace, repo, Some(&fig_config));
 
     let content = match commits_result {
         Ok(commits) => {
@@ -106,13 +109,16 @@ pub async fn tab_handler(
     let tab = &params.tab;
     let username = get_username_from_request(&req, &auth_state).await;
 
+    // Load .fig config
+    let fig_config = FigConfig::load(server.project_root(), namespace, repo);
+
     // Get commits
     let commits_result =
         git::bare::get_commits(server.project_root(), namespace, repo, Depth::default());
 
-    // Get all markdown files
+    // Get all markdown files (filtered by config)
     let markdown_files_result =
-        git::bare::list_markdown_files(server.project_root(), namespace, repo);
+        git::bare::list_markdown_files(server.project_root(), namespace, repo, Some(&fig_config));
 
     match commits_result {
         Ok(commits) => {
@@ -177,13 +183,16 @@ pub async fn markdown_handler(
     let file_path = &params.file_path;
     let username = get_username_from_request(&req, &auth_state).await;
 
+    // Load .fig config
+    let fig_config = FigConfig::load(server.project_root(), namespace, repo);
+
     // Get commits
     let commits_result =
         git::bare::get_commits(server.project_root(), namespace, repo, Depth::default());
 
-    // Get all markdown files
+    // Get all markdown files (filtered by config)
     let markdown_files_result =
-        git::bare::list_markdown_files(server.project_root(), namespace, repo);
+        git::bare::list_markdown_files(server.project_root(), namespace, repo, Some(&fig_config));
 
     // Get the requested markdown file content
     let file_result = git::bare::read_file(server.project_root(), namespace, repo, file_path);
