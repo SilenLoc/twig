@@ -74,6 +74,8 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .app_data(config.clone())
             .app_data(auth_state.clone())
+            // Increase payload limit to 512MB for large git pushes
+            .app_data(web::PayloadConfig::new(1 << 29))
             .service(health)
             .service(up)
             .service(assets::assets)
