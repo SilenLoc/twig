@@ -1,1 +1,1 @@
-ignore_for_view=["skills", "AGENTS.md]
+ignore_for_view=["skills/", "AGENTS.md"]
