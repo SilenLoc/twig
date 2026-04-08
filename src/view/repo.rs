@@ -58,6 +58,9 @@ pub async fn handler(
     // Load .fig.toml config
     let fig_config = FigConfig::load(server.project_root(), namespace, repo);
 
+    // Get fig config file content for display
+    let fig_content = FigConfig::read_raw(server.project_root(), namespace, repo);
+
     // Get commits
     let commits_result =
         git::bare::get_commits(server.project_root(), namespace, repo, Depth::default());
@@ -85,6 +88,7 @@ pub async fn handler(
                 &markdown_files,
                 default_file,
                 default_content.as_deref(),
+                fig_content.as_deref(),
             )
         }
         Err(e) => render_git_error(e),
@@ -111,6 +115,9 @@ pub async fn tab_handler(
 
     // Load .fig.toml config
     let fig_config = FigConfig::load(server.project_root(), namespace, repo);
+
+    // Get fig config file content for display
+    let fig_content = FigConfig::read_raw(server.project_root(), namespace, repo);
 
     // Get commits
     let commits_result =
@@ -144,6 +151,7 @@ pub async fn tab_handler(
                     &markdown_files,
                     default_file,
                     default_content.as_deref(),
+                    fig_content.as_deref(),
                 ));
                 Ok(content)
             } else {
@@ -156,6 +164,7 @@ pub async fn tab_handler(
                     &markdown_files,
                     default_file,
                     default_content.as_deref(),
+                    fig_content.as_deref(),
                 );
                 Ok(super::render_layout(&content, username.as_deref()))
             }
@@ -185,6 +194,9 @@ pub async fn markdown_handler(
 
     // Load .fig.toml config
     let fig_config = FigConfig::load(server.project_root(), namespace, repo);
+
+    // Get fig config file content for display
+    let fig_content = FigConfig::read_raw(server.project_root(), namespace, repo);
 
     // Get commits
     let commits_result =
@@ -220,6 +232,7 @@ pub async fn markdown_handler(
                     &markdown_files,
                     Some(file_path),
                     file_result.ok().flatten().as_deref(),
+                    fig_content.as_deref(),
                 );
                 Ok(super::render_layout(&content, username.as_deref()))
             }
@@ -313,8 +326,11 @@ fn scrollable_container(content: Markup) -> Markup {
 }
 
 /// Renders a tab navigation bar
-fn render_tabs(namespace: &str, repo: &str, active_tab: &str) -> Markup {
-    let tabs = vec![("markdown", "Markdown"), ("commits", "Commits")];
+fn render_tabs(namespace: &str, repo: &str, active_tab: &str, has_config: bool) -> Markup {
+    let mut tabs = vec![("markdown", "Markdown"), ("commits", "Commits")];
+    if has_config {
+        tabs.push(("config", "Config"));
+    }
 
     maud::html! {
         div class="flex bb b--white-20 mb3" {
@@ -342,6 +358,7 @@ fn render_repo(
     markdown_files: &[String],
     default_file: Option<&str>,
     default_content: Option<&str>,
+    fig_content: Option<&str>,
 ) -> Markup {
     // Default to "markdown" tab if markdown files exist, otherwise "commits"
     let default_tab = if !markdown_files.is_empty() {
@@ -349,6 +366,7 @@ fn render_repo(
     } else {
         "commits"
     };
+    let has_config = fig_content.is_some();
 
     maud::html! {
         // Breadcrumb navigation
@@ -361,7 +379,7 @@ fn render_repo(
         }
 
         // Tab navigation
-        (render_tabs(namespace, repo, default_tab))
+        (render_tabs(namespace, repo, default_tab, has_config))
 
         // Tab content container (scrollable)
         div id="tab-content" {
@@ -373,6 +391,7 @@ fn render_repo(
                 markdown_files,
                 default_file,
                 default_content,
+                fig_content,
             )))
         }
     }
@@ -386,10 +405,12 @@ fn render_tab_content(
     markdown_files: &[String],
     selected_md_file: Option<&str>,
     selected_content: Option<&str>,
+    fig_content: Option<&str>,
 ) -> Markup {
+    let has_config = fig_content.is_some();
     maud::html! {
         // Tab navigation (update active state)
-        (render_tabs(namespace, repo, tab))
+        (render_tabs(namespace, repo, tab, has_config))
 
         // Tab content container (scrollable)
         div id="tab-content" {
@@ -401,6 +422,7 @@ fn render_tab_content(
                 markdown_files,
                 selected_md_file,
                 selected_content,
+                fig_content,
             )))
         }
     }
@@ -434,6 +456,7 @@ fn render_tab_content_inner(
     markdown_files: &[String],
     selected_md_file: Option<&str>,
     selected_content: Option<&str>,
+    fig_content: Option<&str>,
 ) -> Markup {
     match tab {
         "markdown" => {
@@ -464,6 +487,7 @@ fn render_tab_content_inner(
                 }
             }
         }
+        "config" => render_config_view(namespace, repo, fig_content),
         _ => {
             // Unknown tab - show Markdown by default if available
             render_tab_content_inner(
@@ -478,7 +502,31 @@ fn render_tab_content_inner(
                 markdown_files,
                 selected_md_file,
                 selected_content,
+                fig_content,
             )
+        }
+    }
+}
+
+fn render_config_view(_namespace: &str, _repo: &str, fig_content: Option<&str>) -> Markup {
+    let config_filename = FigConfig::config_filename(_namespace, _repo, _repo)
+        .unwrap_or_else(|| ".fig.toml".to_string());
+
+    maud::html! {
+        div {
+            h2 class="f4 fw6 mb3 white" { "Configuration" }
+            p class="f6 white-70 mb3" {
+                "Repository configuration from " (config_filename)
+            }
+            @if let Some(content) = fig_content {
+                pre class="pa3 bg-black-20 br2 overflow-x-auto" {
+                    code class="f6 white lh-copy" { (content) }
+                }
+            } @else {
+                div class="pa3 white-50 bg-black-20 br2" {
+                    "No configuration file found. Create a .fig.toml file in the repository root to configure ignore patterns."
+                }
+            }
         }
     }
 }

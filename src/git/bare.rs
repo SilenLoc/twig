@@ -12,16 +12,46 @@ pub struct FigConfig {
 
 impl FigConfig {
     /// Load config from `.fig.toml` file in the repository
+    /// Falls back to `.fig` for backwards compatibility
     pub fn load(root: &str, namespace: &str, repo: &str) -> Self {
-        match read_file(root, namespace, repo, ".fig.toml") {
-            Ok(Some(content)) => Self::parse(&content),
-            _ => Self::default(),
+        // Try .fig.toml first (new format)
+        if let Ok(Some(content)) = read_file(root, namespace, repo, ".fig.toml") {
+            return Self::parse(&content);
         }
+        // Fall back to .fig (legacy format)
+        if let Ok(Some(content)) = read_file(root, namespace, repo, ".fig") {
+            return Self::parse(&content);
+        }
+        Self::default()
     }
 
     /// Parse config from TOML content
     fn parse(content: &str) -> Self {
         toml::from_str(content).unwrap_or_default()
+    }
+
+    /// Read the raw config file content (.fig.toml or .fig)
+    pub fn read_raw(root: &str, namespace: &str, repo: &str) -> Option<String> {
+        // Try .fig.toml first (new format)
+        if let Ok(Some(content)) = read_file(root, namespace, repo, ".fig.toml") {
+            return Some(content);
+        }
+        // Fall back to .fig (legacy format)
+        if let Ok(Some(content)) = read_file(root, namespace, repo, ".fig") {
+            return Some(content);
+        }
+        None
+    }
+
+    /// Get the config filename that was found (for display purposes)
+    pub fn config_filename(root: &str, namespace: &str, repo: &str) -> Option<String> {
+        if let Ok(Some(_)) = read_file(root, namespace, repo, ".fig.toml") {
+            return Some(".fig.toml".to_string());
+        }
+        if let Ok(Some(_)) = read_file(root, namespace, repo, ".fig") {
+            return Some(".fig".to_string());
+        }
+        None
     }
 
     /// Check if a file path matches any of the ignore patterns
@@ -751,5 +781,64 @@ ignore_for_view = ["skills", "temp", "drafts/"]
         assert!(files.contains(&"docs/guide.md".to_string()));
         assert!(!files.contains(&"skills/rust.md".to_string()));
         assert!(!files.contains(&"skills/python.md".to_string()));
+    }
+
+    #[test]
+    fn test_fig_config_should_ignore_folder_with_trailing_slash() {
+        // Test that "skills/" pattern correctly ignores the skills folder
+        let config = FigConfig {
+            ignore_for_view: vec!["skills/".to_string()],
+        };
+
+        // The folder itself should be ignored
+        assert!(config.should_ignore("skills"));
+
+        // Files in the folder should be ignored
+        assert!(config.should_ignore("skills/README.md"));
+        assert!(config.should_ignore("skills/nested/file.md"));
+
+        // Files outside should not be ignored
+        assert!(!config.should_ignore("README.md"));
+        assert!(!config.should_ignore("my-skills.md"));
+        assert!(!config.should_ignore("other/skills/file.md")); // 'skills' is not at root
+    }
+
+    #[test]
+    fn test_fig_config_should_ignore_exact_file() {
+        // Test that "AGENTS.md" pattern correctly ignores any file with that name
+        // (simple patterns match any path component)
+        let config = FigConfig {
+            ignore_for_view: vec!["AGENTS.md".to_string()],
+        };
+
+        // Root level AGENTS.md should be ignored
+        assert!(config.should_ignore("AGENTS.md"));
+
+        // AGENTS.md in subfolders SHOULD also be ignored (simple pattern matches any component)
+        assert!(config.should_ignore("docs/AGENTS.md"));
+        assert!(config.should_ignore("a/b/c/AGENTS.md"));
+
+        // Other files should not be ignored
+        assert!(!config.should_ignore("README.md"));
+        assert!(!config.should_ignore("OTHER_AGENTS.md"));
+    }
+
+    #[test]
+    fn test_fig_config_toml_format_parsing() {
+        // Test the exact format from .fig.toml file
+        let toml_content = r#"
+# Fig Configuration File
+ignore_for_view = ["skills/", "AGENTS.md"]
+"#;
+        let config = FigConfig::parse(toml_content);
+        assert_eq!(config.ignore_for_view.len(), 2);
+        assert!(config.ignore_for_view.contains(&"skills/".to_string()));
+        assert!(config.ignore_for_view.contains(&"AGENTS.md".to_string()));
+
+        // Verify the patterns work
+        assert!(config.should_ignore("skills"));
+        assert!(config.should_ignore("skills/file.md"));
+        assert!(config.should_ignore("AGENTS.md"));
+        assert!(!config.should_ignore("README.md"));
     }
 }
