@@ -55,7 +55,7 @@ pub async fn handler(
     let repo = &params.repo;
     let username = get_username_from_request(&req, &auth_state).await;
 
-    // Load .fig config
+    // Load .fig.toml config
     let fig_config = FigConfig::load(server.project_root(), namespace, repo);
 
     // Get commits
@@ -109,7 +109,7 @@ pub async fn tab_handler(
     let tab = &params.tab;
     let username = get_username_from_request(&req, &auth_state).await;
 
-    // Load .fig config
+    // Load .fig.toml config
     let fig_config = FigConfig::load(server.project_root(), namespace, repo);
 
     // Get commits
@@ -183,7 +183,7 @@ pub async fn markdown_handler(
     let file_path = &params.file_path;
     let username = get_username_from_request(&req, &auth_state).await;
 
-    // Load .fig config
+    // Load .fig.toml config
     let fig_config = FigConfig::load(server.project_root(), namespace, repo);
 
     // Get commits

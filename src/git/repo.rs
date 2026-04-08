@@ -160,15 +160,15 @@ pub fn bare_init(
         .run()
         .map_err(|e| format!("Failed to enable http.receivepack: {}", e))?;
 
-    // Create initial commit with .fig file
+    // Create initial commit with .fig.toml file
     // Use git plumbing commands to create a commit in a bare repo
-    let blob_content = "Created with Fig";
+    let blob_content = "# Created with Fig\n\nignore_for_view = []\n";
     let blob_hash = cmd!(sh, "git hash-object -w --stdin")
         .stdin(blob_content)
         .read()
         .map_err(|e| format!("Failed to create blob: {}", e))?;
 
-    let tree_entry = format!("100644 blob {}\t.fig\n", blob_hash);
+    let tree_entry = format!("100644 blob {}\t.fig.toml\n", blob_hash);
     let tree_hash = cmd!(sh, "git mktree")
         .stdin(tree_entry)
         .read()

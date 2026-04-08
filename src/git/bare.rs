@@ -3,7 +3,7 @@ use std::path::Path;
 use chrono::Utc;
 use serde::Deserialize;
 
-/// Configuration from `.fig` file in repository
+/// Configuration from `.fig.toml` file in repository
 #[derive(Debug, Deserialize, Default)]
 pub struct FigConfig {
     #[serde(default)]
@@ -11,9 +11,9 @@ pub struct FigConfig {
 }
 
 impl FigConfig {
-    /// Load config from `.fig` file in the repository
+    /// Load config from `.fig.toml` file in the repository
     pub fn load(root: &str, namespace: &str, repo: &str) -> Self {
-        match read_file(root, namespace, repo, ".fig") {
+        match read_file(root, namespace, repo, ".fig.toml") {
             Ok(Some(content)) => Self::parse(&content),
             _ => Self::default(),
         }
