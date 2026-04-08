@@ -43,7 +43,7 @@ version = "1"
 [package]
 edition = "2024"
 name = "fig"
-version = "0.1.30"
+version = "0.1.31"
 
 [spruce]
 additional_tools = ["git"]

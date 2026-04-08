@@ -26,6 +26,9 @@ up:
 down:
     just docker stop
 
+test:
+    cargo test
+
 verify:
     cargo fmt -- --check
     cargo check

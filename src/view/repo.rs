@@ -44,6 +44,18 @@ struct MarkdownParams {
     file_path: String,
 }
 
+/// Context for rendering tab content to reduce parameter count
+struct TabContentContext<'a> {
+    namespace: &'a str,
+    repo: &'a str,
+    tab: &'a str,
+    commits: &'a [Commit],
+    markdown_files: &'a [String],
+    selected_md_file: Option<&'a str>,
+    selected_content: Option<&'a str>,
+    fig_content: Option<&'a str>,
+}
+
 #[get("/{namespace}/{repo}")]
 pub async fn handler(
     req: HttpRequest,
@@ -141,31 +153,23 @@ pub async fn tab_handler(
                 None
             };
 
+            let ctx = TabContentContext {
+                namespace,
+                repo,
+                tab,
+                commits: &commits,
+                markdown_files: &markdown_files,
+                selected_md_file: default_file,
+                selected_content: default_content.as_deref(),
+                fig_content: fig_content.as_deref(),
+            };
             if req.headers().get("HX-Request").is_some() {
-                // For HTMX requests, only return the scrollable content (not tabs)
-                let content = scrollable_container(render_tab_content_inner(
-                    namespace,
-                    repo,
-                    tab,
-                    &commits,
-                    &markdown_files,
-                    default_file,
-                    default_content.as_deref(),
-                    fig_content.as_deref(),
-                ));
+                // HTMX request - return only the inner tab content for swapping
+                let content = render_tab_content_inner(ctx);
                 Ok(content)
             } else {
                 // For full page loads, return tabs + content
-                let content = render_tab_content(
-                    namespace,
-                    repo,
-                    tab,
-                    &commits,
-                    &markdown_files,
-                    default_file,
-                    default_content.as_deref(),
-                    fig_content.as_deref(),
-                );
+                let content = render_tab_content(ctx);
                 Ok(super::render_layout(&content, username.as_deref()))
             }
         }
@@ -224,16 +228,18 @@ pub async fn markdown_handler(
                 Ok(content)
             } else {
                 // For full page loads, show the markdown tab with the selected file
-                let content = render_tab_content(
+                let selected_content = file_result.ok().flatten();
+                let ctx = TabContentContext {
                     namespace,
                     repo,
-                    "markdown",
-                    &commits,
-                    &markdown_files,
-                    Some(file_path),
-                    file_result.ok().flatten().as_deref(),
-                    fig_content.as_deref(),
-                );
+                    tab: "markdown",
+                    commits: &commits,
+                    markdown_files: &markdown_files,
+                    selected_md_file: Some(file_path),
+                    selected_content: selected_content.as_deref(),
+                    fig_content: fig_content.as_deref(),
+                };
+                let content = render_tab_content(ctx);
                 Ok(super::render_layout(&content, username.as_deref()))
             }
         }
@@ -368,6 +374,17 @@ fn render_repo(
     };
     let has_config = fig_content.is_some();
 
+    let ctx = TabContentContext {
+        namespace,
+        repo,
+        tab: default_tab,
+        commits,
+        markdown_files,
+        selected_md_file: default_file,
+        selected_content: default_content,
+        fig_content,
+    };
+
     maud::html! {
         // Breadcrumb navigation
         div class="mb4 f6 white-70" {
@@ -383,47 +400,20 @@ fn render_repo(
 
         // Tab content container (scrollable)
         div id="tab-content" {
-            (scrollable_container(render_tab_content_inner(
-                namespace,
-                repo,
-                default_tab,
-                commits,
-                markdown_files,
-                default_file,
-                default_content,
-                fig_content,
-            )))
+            (scrollable_container(render_tab_content_inner(ctx)))
         }
     }
 }
 
-fn render_tab_content(
-    namespace: &str,
-    repo: &str,
-    tab: &str,
-    commits: &[Commit],
-    markdown_files: &[String],
-    selected_md_file: Option<&str>,
-    selected_content: Option<&str>,
-    fig_content: Option<&str>,
-) -> Markup {
-    let has_config = fig_content.is_some();
+fn render_tab_content(ctx: TabContentContext<'_>) -> Markup {
+    let has_config = ctx.fig_content.is_some();
     maud::html! {
         // Tab navigation (update active state)
-        (render_tabs(namespace, repo, tab, has_config))
+        (render_tabs(ctx.namespace, ctx.repo, ctx.tab, has_config))
 
         // Tab content container (scrollable)
         div id="tab-content" {
-            (scrollable_container(render_tab_content_inner(
-                namespace,
-                repo,
-                tab,
-                commits,
-                markdown_files,
-                selected_md_file,
-                selected_content,
-                fig_content,
-            )))
+            (scrollable_container(render_tab_content_inner(ctx)))
         }
     }
 }
@@ -448,29 +438,21 @@ fn get_default_markdown_file(markdown_files: &[String]) -> Option<&str> {
     markdown_files.first().map(|s| s.as_str())
 }
 
-fn render_tab_content_inner(
-    namespace: &str,
-    repo: &str,
-    tab: &str,
-    commits: &[Commit],
-    markdown_files: &[String],
-    selected_md_file: Option<&str>,
-    selected_content: Option<&str>,
-    fig_content: Option<&str>,
-) -> Markup {
-    match tab {
+fn render_tab_content_inner(ctx: TabContentContext<'_>) -> Markup {
+    match ctx.tab {
         "markdown" => {
             // Use selected file or find default (README.md preferred)
-            let file_to_show = selected_md_file
-                .or_else(|| get_default_markdown_file(markdown_files))
+            let file_to_show = ctx
+                .selected_md_file
+                .or_else(|| get_default_markdown_file(ctx.markdown_files))
                 .unwrap_or("README.md");
 
             render_markdown_view(
-                namespace,
-                repo,
+                ctx.namespace,
+                ctx.repo,
                 file_to_show,
-                selected_content,
-                markdown_files,
+                ctx.selected_content,
+                ctx.markdown_files,
             )
         }
         "commits" => {
@@ -478,7 +460,7 @@ fn render_tab_content_inner(
                 div {
                     h2 class="f4 fw6 mb3 white" { "Commits" }
                     ol class="list pl0" {
-                        @for commit in commits {
+                        @for commit in ctx.commits {
                             li class="mb3" {
                                 (render_commit(commit))
                             }
@@ -487,23 +469,24 @@ fn render_tab_content_inner(
                 }
             }
         }
-        "config" => render_config_view(namespace, repo, fig_content),
+        "config" => render_config_view(ctx.namespace, ctx.repo, ctx.fig_content),
         _ => {
             // Unknown tab - show Markdown by default if available
-            render_tab_content_inner(
-                namespace,
-                repo,
-                if !markdown_files.is_empty() {
+            let new_ctx = TabContentContext {
+                namespace: ctx.namespace,
+                repo: ctx.repo,
+                tab: if !ctx.markdown_files.is_empty() {
                     "markdown"
                 } else {
                     "commits"
                 },
-                commits,
-                markdown_files,
-                selected_md_file,
-                selected_content,
-                fig_content,
-            )
+                commits: ctx.commits,
+                markdown_files: ctx.markdown_files,
+                selected_md_file: ctx.selected_md_file,
+                selected_content: ctx.selected_content,
+                fig_content: ctx.fig_content,
+            };
+            render_tab_content_inner(new_ctx)
         }
     }
 }

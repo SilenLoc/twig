@@ -2,6 +2,15 @@ use crate::db::Database;
 
 impl Database {
     pub async fn init_tables(&self) -> Result<(), String> {
+        // Enable WAL mode for better concurrent access
+        // This allows multiple readers and avoids file lock issues on startup
+        // PRAGMA returns a row, so we use query() instead of execute()
+        let _ = self
+            .conn()
+            .query("PRAGMA journal_mode = WAL;", ())
+            .await
+            .map_err(|e| e.to_string())?;
+
         // Users table
         self.conn()
             .execute(
