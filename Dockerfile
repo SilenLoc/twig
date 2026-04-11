@@ -1,24 +1,42 @@
-# Build stage
-FROM rust:slim-bookworm AS builder
+# Base builder stage with cargo-chef for dependency caching
+FROM rust:slim-bookworm AS base-builder
 
 WORKDIR /app
 
-# Install dependencies
+# Install cargo-chef for dependency caching
+RUN cargo install cargo-chef
+
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy dependency files first for better caching
-COPY Cargo.toml Cargo.lock ./
+# Planner stage - analyzes dependencies
+FROM base-builder AS planner
 
-# Copy included files and directories
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+# Builder stage - builds with cached dependencies
+FROM base-builder AS builder
+
+# Copy dependency recipe (cached layer if dependencies haven't changed)
+COPY --from=planner /app/recipe.json recipe.json
+
+# Build dependencies (cached if recipe.json is unchanged)
+RUN cargo chef cook --release --recipe-path recipe.json
+
+# Copy source files (invalidates cache only when source changes)
 COPY Cargo.toml ./Cargo.toml
 COPY assets ./assets
 COPY src ./src
 
-# Build the project
+# Copy dependency files
+COPY Cargo.toml Cargo.lock ./
+
+# Build the project (only compiles project code, not dependencies)
 RUN cargo build --release
 
 # Runtime stage

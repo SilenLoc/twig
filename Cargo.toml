@@ -43,10 +43,23 @@ version = "1"
 [package]
 edition = "2024"
 name = "fig"
-version = "0.1.31"
+version = "0.1.37"
 
 [spruce]
 additional_tools = ["git"]
+excludes = [
+    "AGENTS.md",
+    "Cargo.lock",
+    "LICENSE",
+    "README.md",
+    "docker.just",
+    "docs",
+    "fig.db",
+    "fig.db-wal",
+    "justfile",
+    "skills",
+    "tests",
+]
 includes = [
     "Cargo.toml",
     "assets",
