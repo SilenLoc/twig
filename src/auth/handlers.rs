@@ -414,6 +414,11 @@ mod tests {
             .await
             .expect("Failed to create database");
 
+        // Initialize tables for testing
+        db.init_tables()
+            .await
+            .expect("Failed to initialize database tables");
+
         // Create a ticket with NULL user_id (for signup)
         let ticket = Ticket {
             id: generate_token(),

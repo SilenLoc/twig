@@ -42,12 +42,37 @@ impl Server {
         &self.db_path
     }
 
-    pub fn api_key(&self) -> &str {
-        &self.api_key
+    /// Deletes the database file if RESET_DB is set to true.
+    /// Logs warnings and results appropriately.
+    pub fn maybe_reset_database(&self) {
+        if !self.reset_db {
+            return;
+        }
+
+        log::warn!(
+            "RESET_DB is set to true, deleting database file: {}",
+            self.db_path
+        );
+
+        if std::path::Path::new(&self.db_path).exists() {
+            if let Err(e) = std::fs::remove_file(&self.db_path) {
+                log::error!("Failed to delete database file: {}", e);
+            } else {
+                log::info!("Database file deleted successfully");
+            }
+        }
     }
 
-    pub fn reset_db(&self) -> bool {
-        self.reset_db
+    /// Returns the API key, generating a random one if not provided.
+    /// Logs a warning when generating a random key.
+    pub fn effective_api_key(&self) -> String {
+        if self.api_key.is_empty() {
+            let key = crate::auth::generate_token();
+            log::warn!("No API_KEY set, using generated key: {}", key);
+            key
+        } else {
+            self.api_key.clone()
+        }
     }
 }
 

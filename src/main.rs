@@ -4,6 +4,7 @@ use actix_web::{
 };
 use env_logger::Env;
 use log::info;
+use std::time::Duration;
 
 mod assets;
 mod auth;
@@ -19,8 +20,12 @@ async fn health() -> impl Responder {
 }
 
 #[get("/up")]
-async fn up() -> impl Responder {
-    HttpResponse::Ok()
+async fn up(auth_state: web::Data<auth::AuthState>) -> impl Responder {
+    if auth_state.db.is_initialized() {
+        HttpResponse::Ok().finish()
+    } else {
+        HttpResponse::ServiceUnavailable().finish()
+    }
 }
 
 #[actix_web::main]
@@ -37,32 +42,12 @@ async fn main() -> std::io::Result<()> {
 
     let config = web::Data::new(config);
 
+    // Check if we should reset the database
+    config.maybe_reset_database();
+
     // Initialize auth state
     let db_path = config.db_path().to_string();
-
-    // Check if we should reset the database
-    if config.reset_db() {
-        log::warn!(
-            "RESET_DB is set to true, deleting database file: {}",
-            db_path
-        );
-        if std::path::Path::new(&db_path).exists() {
-            if let Err(e) = std::fs::remove_file(&db_path) {
-                log::error!("Failed to delete database file: {}", e);
-            } else {
-                log::info!("Database file deleted successfully");
-            }
-        }
-    }
-
-    let api_key = if config.api_key().is_empty() {
-        // Generate a random API key if not provided
-        let key = auth::generate_token();
-        log::warn!("No API_KEY set, using generated key: {}", key);
-        key
-    } else {
-        config.api_key().to_string()
-    };
+    let api_key = config.effective_api_key();
 
     let auth_state = match auth::AuthState::new(&db_path, api_key).await {
         Ok(state) => web::Data::new(state),
@@ -71,6 +56,19 @@ async fn main() -> std::io::Result<()> {
             return Err(std::io::Error::other(e));
         }
     };
+
+    // Clone auth_state for the background task
+    let auth_state_for_init = auth_state.clone();
+
+    // Spawn background task to initialize database tables after a delay
+    // This allows the server to start and pass health checks first
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        log::info!("Initializing database tables...");
+        if let Err(e) = auth_state_for_init.db.init_tables().await {
+            log::error!("Failed to initialize database tables: {}", e);
+        }
+    });
 
     let bind_address = config.address();
 
