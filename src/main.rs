@@ -63,7 +63,7 @@ async fn main() -> std::io::Result<()> {
     // Spawn background task to initialize database tables after a delay
     // This allows the server to start and pass health checks first
     tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(4)).await;
         log::info!("Initializing database tables...");
         if let Err(e) = auth_state_for_init.db.init_tables().await {
             log::error!("Failed to initialize database tables: {}", e);

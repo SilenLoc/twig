@@ -5,6 +5,7 @@ pub struct Server {
     db_path: String,
     api_key: String,
     reset_db: bool,
+    migrate: bool,
 }
 
 impl Server {
@@ -15,6 +16,7 @@ impl Server {
         db_path: String,
         api_key: String,
         reset_db: bool,
+        migrate: bool,
     ) -> Self {
         Server {
             address,
@@ -23,6 +25,7 @@ impl Server {
             db_path,
             api_key,
             reset_db,
+            migrate,
         }
     }
 
@@ -40,6 +43,11 @@ impl Server {
 
     pub fn db_path(&self) -> &str {
         &self.db_path
+    }
+
+    #[allow(unused)]
+    pub fn migrate(&self) -> bool {
+        self.migrate
     }
 
     /// Deletes the database file if RESET_DB is set to true.
@@ -92,6 +100,7 @@ pub fn from_env() -> Server {
     let db_path = std::env::var("DB_PATH").unwrap_or_else(|_| "fig.db".to_string());
     let api_key = std::env::var("API_KEY").unwrap_or_default();
     let reset_db = std::env::var("RESET_DB").unwrap_or_default() == "true";
+    let migrate = std::env::var("MIGRATE").unwrap_or_default() == "true";
 
     Server::new(
         ("0.0.0.0".to_string(), port),
@@ -100,6 +109,7 @@ pub fn from_env() -> Server {
         db_path,
         api_key,
         reset_db,
+        migrate,
     )
 }
 
@@ -135,6 +145,7 @@ impl Clone for Server {
             db_path: self.db_path.clone(),
             api_key: self.api_key.clone(),
             reset_db: self.reset_db,
+            migrate: self.migrate,
         }
     }
 }
