@@ -8,6 +8,9 @@ use serde::Deserialize;
 pub struct FigConfig {
     #[serde(default)]
     pub ignore_for_view: Vec<String>,
+    /// Tabs to display. If empty or not present, all tabs are shown.
+    #[serde(default)]
+    pub tabs: Vec<String>,
 }
 
 impl FigConfig {
@@ -323,29 +326,51 @@ pub fn read_file(
     Ok(Some(content.to_string()))
 }
 
-/// Lists all markdown files in the repository, optionally filtering based on config
-pub fn list_markdown_files(
+/// Result of listing repository files
+#[derive(Default)]
+pub struct RepoFiles {
+    pub markdown_files: Vec<String>,
+    pub typst_files: Vec<String>,
+}
+
+/// Lists all relevant files in the repository in a single tree walk
+pub fn list_files(
     root: &str,
     namespace: &str,
     repo: &str,
     config: Option<&FigConfig>,
-) -> Result<Vec<String>, git2::Error> {
+) -> Result<RepoFiles, git2::Error> {
     let path = Path::new(root).join(namespace).join(repo);
     let repo = git2::Repository::open(&path)?;
 
     // Get HEAD commit (handle unborn branch - no commits yet)
     let head = match repo.head() {
         Ok(head) => head,
-        Err(_) => return Ok(Vec::new()), // No HEAD yet (empty repo)
+        Err(_) => {
+            return Ok(RepoFiles {
+                markdown_files: Vec::new(),
+                typst_files: Vec::new(),
+            });
+        } // No HEAD yet (empty repo)
     };
 
     // Check if this is an unborn branch (HEAD exists but points to non-existent ref)
     let obj = match head.resolve() {
         Ok(resolved) => match resolved.peel(git2::ObjectType::Commit) {
             Ok(obj) => obj,
-            Err(_) => return Ok(Vec::new()), // Can't peel to commit
+            Err(_) => {
+                return Ok(RepoFiles {
+                    markdown_files: Vec::new(),
+                    typst_files: Vec::new(),
+                });
+            } // Can't peel to commit
         },
-        Err(_) => return Ok(Vec::new()), // Unborn branch - no commits yet
+        Err(_) => {
+            return Ok(RepoFiles {
+                markdown_files: Vec::new(),
+                typst_files: Vec::new(),
+            });
+        } // Unborn branch - no commits yet
     };
 
     let commit = obj
@@ -354,13 +379,15 @@ pub fn list_markdown_files(
 
     let tree = commit.tree()?;
     let mut markdown_files = Vec::new();
+    let mut typst_files = Vec::new();
 
-    // Walk the tree recursively to find all .md files
+    // Walk the tree recursively to find all relevant files
     fn walk_tree(
         repo: &git2::Repository,
         tree: &git2::Tree,
         prefix: &str,
-        files: &mut Vec<String>,
+        markdown_files: &mut Vec<String>,
+        typst_files: &mut Vec<String>,
         config: Option<&FigConfig>,
     ) -> Result<(), git2::Error> {
         for entry in tree {
@@ -382,12 +409,14 @@ pub fn list_markdown_files(
                 Some(git2::ObjectType::Tree) => {
                     let obj = entry.to_object(repo)?;
                     if let Ok(subtree) = obj.into_tree() {
-                        walk_tree(repo, &subtree, &path, files, config)?;
+                        walk_tree(repo, &subtree, &path, markdown_files, typst_files, config)?;
                     }
                 }
                 Some(git2::ObjectType::Blob) => {
                     if name.ends_with(".md") || name.ends_with(".markdown") {
-                        files.push(path);
+                        markdown_files.push(path);
+                    } else if name.ends_with(".typ") || name.ends_with(".typst") {
+                        typst_files.push(path);
                     }
                 }
                 _ => {}
@@ -396,10 +425,21 @@ pub fn list_markdown_files(
         Ok(())
     }
 
-    walk_tree(&repo, &tree, "", &mut markdown_files, config)?;
+    walk_tree(
+        &repo,
+        &tree,
+        "",
+        &mut markdown_files,
+        &mut typst_files,
+        config,
+    )?;
     markdown_files.sort();
+    typst_files.sort();
 
-    Ok(markdown_files)
+    Ok(RepoFiles {
+        markdown_files,
+        typst_files,
+    })
 }
 
 /// Commits a file to a non-bare repository (used for testing)
@@ -649,6 +689,7 @@ ignore_for_view = ["skills", "temp", "drafts/"]
     fn test_fig_config_should_ignore_folder() {
         let config = FigConfig {
             ignore_for_view: vec!["skills".to_string()],
+            tabs: vec![],
         };
 
         // Should ignore files in the skills folder
@@ -666,6 +707,7 @@ ignore_for_view = ["skills", "temp", "drafts/"]
     fn test_fig_config_should_ignore_with_slash_pattern() {
         let config = FigConfig {
             ignore_for_view: vec!["drafts/".to_string()],
+            tabs: vec![],
         };
 
         // Should ignore files in the drafts folder
@@ -681,6 +723,7 @@ ignore_for_view = ["skills", "temp", "drafts/"]
     fn test_fig_config_should_ignore_multiple_patterns() {
         let config = FigConfig {
             ignore_for_view: vec!["temp".to_string(), "archive".to_string()],
+            tabs: vec![],
         };
 
         // Should ignore files in temp
@@ -697,6 +740,7 @@ ignore_for_view = ["skills", "temp", "drafts/"]
     fn test_fig_config_empty() {
         let config = FigConfig {
             ignore_for_view: vec![],
+            tabs: vec![],
         };
 
         assert!(!config.should_ignore("any/file.md"));
@@ -761,26 +805,110 @@ ignore_for_view = ["skills", "temp", "drafts/"]
         // Test without config - should get all files
         let config = FigConfig {
             ignore_for_view: vec![],
+            tabs: vec![],
         };
-        let files = list_markdown_files(temp.to_str().unwrap(), "", "bare.git", Some(&config))
+        let files = list_files(temp.to_str().unwrap(), "", "bare.git", Some(&config))
             .expect("Failed to list files");
-        assert_eq!(files.len(), 4);
-        assert!(files.contains(&"README.md".to_string()));
-        assert!(files.contains(&"skills/rust.md".to_string()));
-        assert!(files.contains(&"skills/python.md".to_string()));
-        assert!(files.contains(&"docs/guide.md".to_string()));
+        assert_eq!(files.markdown_files.len(), 4);
+        assert!(files.markdown_files.contains(&"README.md".to_string()));
+        assert!(files.markdown_files.contains(&"skills/rust.md".to_string()));
+        assert!(
+            files
+                .markdown_files
+                .contains(&"skills/python.md".to_string())
+        );
+        assert!(files.markdown_files.contains(&"docs/guide.md".to_string()));
 
         // Test with config filtering "skills"
         let config = FigConfig {
             ignore_for_view: vec!["skills".to_string()],
+            tabs: vec![],
         };
-        let files = list_markdown_files(temp.to_str().unwrap(), "", "bare.git", Some(&config))
+        let files = list_files(temp.to_str().unwrap(), "", "bare.git", Some(&config))
             .expect("Failed to list files");
-        assert_eq!(files.len(), 2);
-        assert!(files.contains(&"README.md".to_string()));
-        assert!(files.contains(&"docs/guide.md".to_string()));
-        assert!(!files.contains(&"skills/rust.md".to_string()));
-        assert!(!files.contains(&"skills/python.md".to_string()));
+        assert_eq!(files.markdown_files.len(), 2);
+        assert!(files.markdown_files.contains(&"README.md".to_string()));
+        assert!(files.markdown_files.contains(&"docs/guide.md".to_string()));
+        assert!(!files.markdown_files.contains(&"skills/rust.md".to_string()));
+        assert!(
+            !files
+                .markdown_files
+                .contains(&"skills/python.md".to_string())
+        );
+    }
+
+    #[test]
+    fn test_list_files_combined() {
+        let temp = create_temp_dir("files_combined");
+        let _cleanup = TempDir { path: &temp };
+
+        let bare_path = temp.join("bare.git");
+        let local_path = temp.join("local");
+
+        init_bare_repo(&bare_path, "main");
+        init_repo(&local_path, "main");
+
+        // Create both markdown and typst files
+        commit_file(
+            &local_path,
+            "README.md",
+            "# Main README",
+            "Add README",
+            "Test",
+            "test@test.com",
+        )
+        .unwrap();
+
+        commit_file(
+            &local_path,
+            "main.typ",
+            "# Main Typst Document",
+            "Add main typst",
+            "Test",
+            "test@test.com",
+        )
+        .unwrap();
+
+        commit_file(
+            &local_path,
+            "report.typ",
+            "# Report",
+            "Add report",
+            "Test",
+            "test@test.com",
+        )
+        .unwrap();
+
+        commit_file(
+            &local_path,
+            "docs/guide.md",
+            "# Guide",
+            "Add guide",
+            "Test",
+            "test@test.com",
+        )
+        .unwrap();
+
+        // Push to bare repo
+        push_to_bare(&local_path, &bare_path, "main").expect("Failed to push");
+
+        // Test combined list_files
+        let config = FigConfig {
+            ignore_for_view: vec![],
+            tabs: vec![],
+        };
+        let files = list_files(temp.to_str().unwrap(), "", "bare.git", Some(&config))
+            .expect("Failed to list files");
+
+        // Check markdown files
+        assert_eq!(files.markdown_files.len(), 2);
+        assert!(files.markdown_files.contains(&"README.md".to_string()));
+        assert!(files.markdown_files.contains(&"docs/guide.md".to_string()));
+
+        // Check typst files
+        assert_eq!(files.typst_files.len(), 2);
+        assert!(files.typst_files.contains(&"main.typ".to_string()));
+        assert!(files.typst_files.contains(&"report.typ".to_string()));
     }
 
     #[test]
@@ -788,6 +916,7 @@ ignore_for_view = ["skills", "temp", "drafts/"]
         // Test that "skills/" pattern correctly ignores the skills folder
         let config = FigConfig {
             ignore_for_view: vec!["skills/".to_string()],
+            tabs: vec![],
         };
 
         // The folder itself should be ignored
@@ -809,6 +938,7 @@ ignore_for_view = ["skills", "temp", "drafts/"]
         // (simple patterns match any path component)
         let config = FigConfig {
             ignore_for_view: vec!["AGENTS.md".to_string()],
+            tabs: vec![],
         };
 
         // Root level AGENTS.md should be ignored
