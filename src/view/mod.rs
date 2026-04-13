@@ -15,6 +15,7 @@ pub fn render_layout(main_content: &maud::Markup, username: Option<&str>) -> mau
                 meta charset="utf-8";
                 meta name="viewport" content="width=device-width, initial-scale=1";
                 title { "Fig" }
+                link rel="icon" type="image/svg+xml" href="/assets/fig.svg";
                 link rel="stylesheet" href="/assets/t.css";
                 script src="/assets/h.js" {}
                 script src="/assets/hx-response-targets.js" {}
@@ -28,7 +29,8 @@ pub fn render_layout(main_content: &maud::Markup, username: Option<&str>) -> mau
             body hx-ext="response-targets" class="w-100 sans-serif ma0 bg-black white" style="height: 100vh; overflow: hidden;" {
                 nav class="dt w-100 bg-black bb b--white-20 fixed top-0 left-0 right-0 z-1" {
                     div class="dtc v-mid pa3" {
-                        a href="/" class="link white-90 hover-white no-underline fw6 f4" {
+                        a href="/" class="link white-90 hover-white no-underline fw6 f4 flex items-center" {
+                            img src="/assets/fig.svg" alt="Fig logo" style="width: 24px; height: 24px; margin-right: 0.5rem;";
                             "Fig"
                         }
                     }

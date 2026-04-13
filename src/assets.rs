@@ -3,6 +3,7 @@ use actix_web::{HttpRequest, HttpResponse, Responder, get};
 const TCSS: &str = include_str!("../assets/t.css");
 const HTMX: &str = include_str!("../assets/h.js");
 const HTMX_RESPONSE_TARGETS: &str = include_str!("../assets/hx-response-targets.js");
+const FIG_SVG: &str = include_str!("../assets/fig.svg");
 
 // Cache static assets for 1 year (in seconds)
 const CACHE_CONTROL_VALUE: &str = "public, max-age=31536000, immutable";
@@ -24,6 +25,10 @@ pub async fn assets(req: HttpRequest) -> impl Responder {
             .content_type("application/javascript; charset=utf-8")
             .insert_header(("Cache-Control", CACHE_CONTROL_VALUE))
             .body(HTMX_RESPONSE_TARGETS),
+        "fig.svg" => HttpResponse::Ok()
+            .content_type("image/svg+xml")
+            .insert_header(("Cache-Control", CACHE_CONTROL_VALUE))
+            .body(FIG_SVG),
         _ => HttpResponse::NotFound().body("Not found"),
     }
 }
