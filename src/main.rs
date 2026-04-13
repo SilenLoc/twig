@@ -27,7 +27,10 @@ async fn up() -> impl Responder {
 async fn main() -> std::io::Result<()> {
     let config = config::from_env();
 
-    let log_filter = format!("{},tracing::span=off", config.log_level());
+    let log_filter = format!(
+        "{},libsql=warn,turso=warn,tracing::span=warn",
+        config.log_level()
+    );
     env_logger::Builder::from_env(Env::default().default_filter_or(log_filter)).init();
 
     info!("{config}");
