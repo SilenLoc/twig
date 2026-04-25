@@ -9,6 +9,7 @@ git2 = "0.18"
 glob = "0.3"
 hex = "0.4"
 log = "0.4"
+migs = "0.1.7"
 pulldown-cmark = "0.12"
 rand = "0.8"
 toml = "0.8"
@@ -43,7 +44,7 @@ version = "1"
 [package]
 edition = "2024"
 name = "fig"
-version = "0.1.50"
+version = "0.1.51"
 
 [spruce]
 additional_tools = ["git"]
