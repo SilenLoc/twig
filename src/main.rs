@@ -20,7 +20,7 @@ async fn health() -> impl Responder {
 }
 
 #[get("/up")]
-async fn up(auth_state: web::Data<auth::AuthState>) -> impl Responder {
+async fn up(auth_state: web::Data<auth::FigContext>) -> impl Responder {
     if auth_state.db.is_initialized() {
         HttpResponse::Ok().finish()
     } else {
@@ -49,7 +49,7 @@ async fn main() -> std::io::Result<()> {
     let db_path = config.db_path().to_string();
     let api_key = config.effective_api_key();
 
-    let auth_state = match auth::AuthState::new(&db_path, api_key).await {
+    let auth_state = match auth::FigContext::new(&db_path, api_key).await {
         Ok(state) => web::Data::new(state),
         Err(e) => {
             log::error!("Failed to initialize auth state: {}", e);

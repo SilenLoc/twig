@@ -3,7 +3,7 @@ use actix_web::{HttpRequest, HttpResponse, Responder, get, post, web};
 use log::info;
 use serde::Deserialize;
 
-use crate::auth::AuthState;
+use crate::auth::FigContext;
 
 #[derive(Deserialize)]
 struct UpdateEmailForm {
@@ -13,7 +13,7 @@ struct UpdateEmailForm {
 #[get("/settings")]
 pub async fn settings_page(
     req: HttpRequest,
-    auth_state: web::Data<AuthState>,
+    auth_state: web::Data<FigContext>,
 ) -> AwResult<maud::Markup> {
     // Get user from session
     let token = match req.cookie("session") {
@@ -122,7 +122,7 @@ pub async fn settings_page(
 #[post("/settings/email")]
 pub async fn update_email(
     req: HttpRequest,
-    auth_state: web::Data<AuthState>,
+    auth_state: web::Data<FigContext>,
     form: web::Form<UpdateEmailForm>,
 ) -> impl Responder {
     // Get user from session

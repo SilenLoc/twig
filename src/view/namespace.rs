@@ -4,7 +4,7 @@ use log::info;
 use serde::Deserialize;
 
 use crate::{
-    auth::AuthState,
+    auth::FigContext,
     config,
     git::{self, repo::bare_init},
 };
@@ -12,7 +12,7 @@ use crate::{
 /// Helper function to get the username from the session cookie if logged in
 async fn get_username_from_request(
     req: &HttpRequest,
-    auth_state: &web::Data<AuthState>,
+    auth_state: &web::Data<FigContext>,
 ) -> Option<String> {
     let token = req.cookie("session")?;
     let user_id = auth_state.validate_token(token.value()).await?;
@@ -23,7 +23,7 @@ async fn get_username_from_request(
 /// Helper function to check if the current user has access to a namespace
 async fn user_has_namespace_access(
     req: &HttpRequest,
-    auth_state: &web::Data<AuthState>,
+    auth_state: &web::Data<FigContext>,
     namespace: &str,
 ) -> bool {
     let token = match req.cookie("session") {
@@ -87,7 +87,7 @@ fn format_date(date: &chrono::DateTime<chrono::Utc>) -> String {
 pub async fn handler(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<AuthState>,
+    auth_state: web::Data<FigContext>,
     params: web::Path<Params>,
     query: web::Query<SearchQuery>,
 ) -> AwResult<maud::Markup> {
@@ -275,7 +275,7 @@ pub async fn create_repo_form_handler(
 pub async fn create_repo_handler(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<AuthState>,
+    auth_state: web::Data<FigContext>,
     params: web::Path<Params>,
     form: web::Form<CreateRepoForm>,
 ) -> impl Responder {

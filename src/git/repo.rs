@@ -5,7 +5,7 @@ use log::info;
 use serde::Deserialize;
 use xshell::cmd;
 
-use crate::auth::{AuthState, extract_basic_auth, verify_password};
+use crate::auth::{FigContext, extract_basic_auth, verify_password};
 use crate::config;
 
 #[derive(Deserialize)]
@@ -39,7 +39,7 @@ pub async fn init(
     req: HttpRequest,
     init_repo: web::Form<InitRepo>,
     server: web::Data<config::Server>,
-    auth_state: web::Data<AuthState>,
+    auth_state: web::Data<FigContext>,
 ) -> impl Responder {
     // Authenticate the request
     let (username, password) = match extract_basic_auth(&req) {

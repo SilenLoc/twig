@@ -3,7 +3,7 @@ use log::info;
 use serde::Deserialize;
 
 use crate::{
-    auth::{AuthState, Ticket, create_namespace, create_user, generate_token, verify_password},
+    auth::{FigContext, Ticket, create_namespace, create_user, generate_token, verify_password},
     config,
 };
 
@@ -35,7 +35,7 @@ pub struct CreateNamespaceForm {
 #[post("/auth/logout")]
 pub async fn logout_ui_handler(
     req: HttpRequest,
-    auth_state: web::Data<AuthState>,
+    auth_state: web::Data<FigContext>,
 ) -> impl Responder {
     // Extract token from session cookie
     let token = match req.cookie("session") {
@@ -75,7 +75,7 @@ use crate::view::auth::{
 #[post("/auth/ticket")]
 pub async fn create_ticket_ui_handler(
     _req: HttpRequest,
-    auth_state: web::Data<AuthState>,
+    auth_state: web::Data<FigContext>,
     form: web::Form<TicketForm>,
 ) -> impl Responder {
     // Validate API key
@@ -114,7 +114,7 @@ pub async fn create_ticket_ui_handler(
 #[post("/auth/signup")]
 pub async fn signup_ui_handler(
     _req: HttpRequest,
-    auth_state: web::Data<AuthState>,
+    auth_state: web::Data<FigContext>,
     form: web::Form<SignupForm>,
 ) -> impl Responder {
     // Validate ticket first
@@ -149,7 +149,7 @@ pub async fn signup_ui_handler(
             .body(render_error("Password must be at least 8 characters").into_string());
     }
 
-    // Check if user already exists
+    // Check if user alredbady exists
     match auth_state.db.get_user_by_username(&form.username).await {
         Ok(Some(_)) => {
             return HttpResponse::Conflict()
@@ -204,7 +204,7 @@ pub async fn signup_ui_handler(
 #[post("/auth/login")]
 pub async fn login_ui_handler(
     _req: HttpRequest,
-    auth_state: web::Data<AuthState>,
+    auth_state: web::Data<FigContext>,
     form: web::Form<LoginForm>,
 ) -> impl Responder {
     // Get user from database
@@ -286,7 +286,7 @@ pub async fn login_ui_handler(
 #[post("/auth/namespace")]
 pub async fn create_namespace_ui_handler(
     req: HttpRequest,
-    auth_state: web::Data<AuthState>,
+    auth_state: web::Data<FigContext>,
     form: web::Form<CreateNamespaceForm>,
 ) -> impl Responder {
     // Validate namespace name

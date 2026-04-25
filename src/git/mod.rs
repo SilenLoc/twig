@@ -3,7 +3,7 @@ use std::path::Path;
 use actix_web::{HttpRequest, HttpResponse, web};
 use log::info;
 
-use crate::auth::{AuthState, User, extract_basic_auth, verify_password};
+use crate::auth::{FigContext, User, extract_basic_auth, verify_password};
 use crate::config;
 use crate::git::repo::bare_init;
 pub mod bare;
@@ -14,7 +14,7 @@ pub async fn git_handler(
     body: web::Bytes,
     path: web::Path<(String, String, String)>, // (namespace,repo, endpoint)
     server: web::Data<config::Server>,
-    auth_state: web::Data<AuthState>,
+    auth_state: web::Data<FigContext>,
 ) -> HttpResponse {
     let (namespace, repo, endpoint) = path.into_inner();
 
@@ -131,7 +131,7 @@ fn build_response(headers: String, body: Vec<u8>) -> actix_web::HttpResponse {
 
 async fn is_authenticated(
     req: &actix_web::HttpRequest,
-    auth_state: &web::Data<AuthState>,
+    auth_state: &web::Data<FigContext>,
     namespace_name: &str,
 ) -> Result<Option<User>, HttpResponse> {
     // Extract basic auth credentials
@@ -249,7 +249,7 @@ async fn is_authenticated(
 
 /// Ensures a namespace exists in the database, creating it if necessary
 async fn ensure_namespace_exists(
-    auth_state: &web::Data<AuthState>,
+    auth_state: &web::Data<FigContext>,
     user: &User,
     namespace_name: &str,
 ) -> Result<(), String> {

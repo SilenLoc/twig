@@ -4,7 +4,7 @@ use actix_web::get;
 use actix_web::web;
 use serde::Deserialize;
 
-use crate::auth::AuthState;
+use crate::auth::FigContext;
 use crate::config;
 use crate::view::session_auth::get_username_from_request;
 
@@ -17,7 +17,7 @@ struct SearchQuery {
 pub async fn index(
     req: HttpRequest,
     _server: web::Data<config::Server>,
-    auth_state: web::Data<AuthState>,
+    auth_state: web::Data<FigContext>,
     query: web::Query<SearchQuery>,
 ) -> AwResult<maud::Markup> {
     let search_query = query.q.as_deref().unwrap_or("");

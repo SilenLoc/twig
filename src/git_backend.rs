@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use log::{debug, info, warn};
+use log::{debug, warn};
 use xshell::Shell;
 
 #[derive(Default)]
@@ -97,7 +97,7 @@ pub fn run_with_config(
     // todo make this configurable
     let actual_root = format!("{}/{}", config.project_root(), namespace);
 
-    info!(
+    debug!(
         "Git backend HTTP: method='{}' path='{}' namespace='{}' project_root='{}'",
         req.method, req.path_info, namespace, actual_root
     );
@@ -109,18 +109,7 @@ pub fn run_with_config(
     }
     if !body.is_empty() {
         sh.set_var("CONTENT_LENGTH", body.len().to_string());
-        debug!(
-            "Git backend HTTP: body size={} bytes for path='{}'",
-            body.len(),
-            req.path_info
-        );
     }
-
-    // Run with or without stdin body
-    debug!(
-        "Git backend HTTP: executing 'git http-backend' for path='{}'",
-        req.path_info
-    );
 
     let output = if body.is_empty() {
         xshell::cmd!(sh, "git http-backend").output()
@@ -143,16 +132,11 @@ pub fn run_with_config(
             let parsed = parse_cgi_response(&stdout);
             let (headers, body_bytes) = &parsed;
 
-            info!(
+            debug!(
                 "Git backend HTTP: completed path='{}' response_headers_size={} response_body_size={}",
                 req.path_info,
                 headers.len(),
                 body_bytes.len()
-            );
-
-            debug!(
-                "Git backend HTTP: response headers for path='{}': {:?}",
-                req.path_info, headers
             );
 
             Ok(parsed)
@@ -191,7 +175,7 @@ pub fn prepare_cgi_env(project_root: &str, sh: Shell, req: GitRequest) -> Shell 
     sh.set_var("GIT_HTTP_EXPORT_ALL", "1");
     sh.set_var("GIT_HTTP_RECEIVE_PACK", "true"); // enables push operations
 
-    info!(
+    debug!(
         "Git backend HTTP: preparing CGI env method='{}' path='{}' query='{}' project_root='{}'",
         req.method, req.path_info, req.query_string, project_root
     );
@@ -201,7 +185,7 @@ pub fn prepare_cgi_env(project_root: &str, sh: Shell, req: GitRequest) -> Shell 
             // Pushes need write access — enforce auth here before proceeding
             sh.set_var("CONTENT_TYPE", req.content_type.clone());
             sh.set_var("REMOTE_USER", "authenticated_user"); // must be set to allow push
-            info!(
+            debug!(
                 "Git backend HTTP: push operation detected for path='{}'",
                 req.path_info
             );
@@ -209,7 +193,7 @@ pub fn prepare_cgi_env(project_root: &str, sh: Shell, req: GitRequest) -> Shell 
         GitRequestKind::FetchClone => {
             // needs read access — enforce auth here before proceeding
             sh.set_var("CONTENT_TYPE", req.content_type.clone());
-            info!(
+            debug!(
                 "Git backend HTTP: fetch/clone operation detected for path='{}'",
                 req.path_info
             );

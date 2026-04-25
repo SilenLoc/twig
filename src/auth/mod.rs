@@ -127,12 +127,12 @@ fn base64_decode(input: &str) -> Option<String> {
     String::from_utf8(decoded).ok()
 }
 
-pub struct AuthState {
+pub struct FigContext {
     pub db: Arc<Database>,
     pub api_key: String,
 }
 
-impl AuthState {
+impl FigContext {
     pub async fn new(db_path: &str, api_key: String) -> Result<Self, String> {
         let db = Arc::new(Database::new(db_path).await?);
 

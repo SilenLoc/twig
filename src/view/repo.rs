@@ -5,7 +5,7 @@ use pulldown_cmark::{Event, Options, Parser, html};
 use serde::Deserialize;
 
 use crate::{
-    auth::AuthState,
+    auth::FigContext,
     config,
     git::{
         self,
@@ -16,7 +16,7 @@ use crate::{
 /// Helper function to get the username from the session cookie if logged in
 async fn get_username_from_request(
     req: &HttpRequest,
-    auth_state: &web::Data<AuthState>,
+    auth_state: &web::Data<FigContext>,
 ) -> Option<String> {
     let token = req.cookie("session")?;
     let user_id = auth_state.validate_token(token.value()).await?;
@@ -61,7 +61,7 @@ struct TabContentContext<'a> {
 pub async fn handler(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<AuthState>,
+    auth_state: web::Data<FigContext>,
     params: web::Path<Params>,
 ) -> AwResult<Markup> {
     let namespace = &params.namespace;
@@ -121,7 +121,7 @@ pub async fn handler(
 pub async fn tab_handler(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<AuthState>,
+    auth_state: web::Data<FigContext>,
     params: web::Path<TabParams>,
 ) -> AwResult<Markup> {
     let namespace = &params.namespace;
@@ -194,7 +194,7 @@ pub async fn tab_handler(
 pub async fn markdown_handler(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<AuthState>,
+    auth_state: web::Data<FigContext>,
     params: web::Path<MarkdownParams>,
 ) -> AwResult<Markup> {
     let namespace = &params.namespace;
