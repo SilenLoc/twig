@@ -11,7 +11,6 @@ use crate::{
         self,
         bare::{Commit, Depth, FigConfig},
     },
-    typst_render,
 };
 
 /// Helper function to get the username from the session cookie if logged in
@@ -45,13 +44,6 @@ struct MarkdownParams {
     file_path: String,
 }
 
-#[derive(Deserialize)]
-struct TypstParams {
-    namespace: String,
-    repo: String,
-    file_path: String,
-}
-
 /// Context for rendering tab content to reduce parameter count
 struct TabContentContext<'a> {
     namespace: &'a str,
@@ -59,11 +51,8 @@ struct TabContentContext<'a> {
     tab: &'a str,
     commits: &'a [Commit],
     markdown_files: &'a [String],
-    typst_files: &'a [String],
     selected_md_file: Option<&'a str>,
     selected_content: Option<&'a str>,
-    selected_typst_file: Option<&'a str>,
-    selected_typst_content: Option<&'a str>,
     fig_content: Option<&'a str>,
     tabs_config: &'a [String],
 }
@@ -97,7 +86,6 @@ pub async fn handler(
         Ok(commits) => {
             let files = files_result.unwrap_or_default();
             let markdown_files = files.markdown_files;
-            let typst_files = files.typst_files;
             // Get default markdown file content for initial view
             let default_file = get_default_markdown_file(&markdown_files);
             let default_content = if let Some(file) = default_file {
@@ -107,40 +95,14 @@ pub async fn handler(
             } else {
                 None
             };
-            // Determine default tab - only load typst content if typst is the default tab
-            let default_tab = if !fig_config.tabs.is_empty() {
-                fig_config.tabs[0].as_str()
-            } else if !markdown_files.is_empty() {
-                "markdown"
-            } else if !typst_files.is_empty() {
-                "typst"
-            } else {
-                "commits"
-            };
-            // Only load typst content if typst is the default tab (lazy loading otherwise)
-            let (default_typst_file, default_typst_content) = if default_tab == "typst" {
-                let file = get_default_typst_file(&typst_files);
-                let content = if let Some(f) = file {
-                    git::bare::read_file(server.project_root(), namespace, repo, f)
-                        .ok()
-                        .flatten()
-                } else {
-                    None
-                };
-                (file, content)
-            } else {
-                (None, None)
-            };
+
             render_repo(
                 namespace,
                 repo,
                 &commits,
                 &markdown_files,
-                &typst_files,
                 default_file,
                 default_content.as_deref(),
-                default_typst_file,
-                default_typst_content.as_deref(),
                 fig_content.as_deref(),
                 &fig_config.tabs,
             )
@@ -177,7 +139,7 @@ pub async fn tab_handler(
     let commits_result =
         git::bare::get_commits(server.project_root(), namespace, repo, Depth::default());
 
-    // Get all files (markdown and typst) in a single tree walk
+    // Get all files (markdown) in a single tree walk
     let files_result =
         git::bare::list_files(server.project_root(), namespace, repo, Some(&fig_config));
 
@@ -185,21 +147,10 @@ pub async fn tab_handler(
         Ok(commits) => {
             let files = files_result.unwrap_or_default();
             let markdown_files = files.markdown_files;
-            let typst_files = files.typst_files;
 
             // Get default markdown file content
             let default_file = get_default_markdown_file(&markdown_files);
             let default_content = if let Some(file) = default_file {
-                git::bare::read_file(server.project_root(), namespace, repo, file)
-                    .ok()
-                    .flatten()
-            } else {
-                None
-            };
-
-            // Get default typst file content
-            let default_typst_file = get_default_typst_file(&typst_files);
-            let default_typst_content = if let Some(file) = default_typst_file {
                 git::bare::read_file(server.project_root(), namespace, repo, file)
                     .ok()
                     .flatten()
@@ -213,11 +164,8 @@ pub async fn tab_handler(
                 tab,
                 commits: &commits,
                 markdown_files: &markdown_files,
-                typst_files: &typst_files,
                 selected_md_file: default_file,
                 selected_content: default_content.as_deref(),
-                selected_typst_file: default_typst_file,
-                selected_typst_content: default_typst_content.as_deref(),
                 fig_content: fig_content.as_deref(),
                 tabs_config: &fig_config.tabs,
             };
@@ -264,7 +212,7 @@ pub async fn markdown_handler(
     let commits_result =
         git::bare::get_commits(server.project_root(), namespace, repo, Depth::default());
 
-    // Get all files (markdown and typst) in a single tree walk
+    // Get all files (markdown) in a single tree walk
     let files_result =
         git::bare::list_files(server.project_root(), namespace, repo, Some(&fig_config));
 
@@ -275,17 +223,6 @@ pub async fn markdown_handler(
         Ok(commits) => {
             let files = files_result.unwrap_or_default();
             let markdown_files = files.markdown_files;
-            let typst_files = files.typst_files;
-
-            // Get default typst file content for context
-            let default_typst_file = get_default_typst_file(&typst_files);
-            let default_typst_content = if let Some(file) = default_typst_file {
-                git::bare::read_file(server.project_root(), namespace, repo, file)
-                    .ok()
-                    .flatten()
-            } else {
-                None
-            };
 
             if req.headers().get("HX-Request").is_some() {
                 // For HTMX requests, return just the markdown content (not the full view with sidebar)
@@ -305,11 +242,8 @@ pub async fn markdown_handler(
                     tab: "markdown",
                     commits: &commits,
                     markdown_files: &markdown_files,
-                    typst_files: &typst_files,
                     selected_md_file: Some(file_path),
                     selected_content: selected_content.as_deref(),
-                    selected_typst_file: default_typst_file,
-                    selected_typst_content: default_typst_content.as_deref(),
                     fig_content: fig_content.as_deref(),
                     tabs_config: &fig_config.tabs,
                 };
@@ -383,92 +317,6 @@ fn markdown_to_html(markdown: &str, namespace: &str, repo: &str) -> String {
     html_output
 }
 
-#[get("/{namespace}/{repo}/typ/{file_path:.*}")]
-pub async fn typst_handler(
-    req: HttpRequest,
-    server: web::Data<config::Server>,
-    auth_state: web::Data<AuthState>,
-    params: web::Path<TypstParams>,
-) -> AwResult<Markup> {
-    let namespace = &params.namespace;
-    let repo = &params.repo;
-    let file_path = &params.file_path;
-    let username = get_username_from_request(&req, &auth_state).await;
-
-    // Load .fig.toml config
-    let fig_config = FigConfig::load(server.project_root(), namespace, repo);
-
-    // Get fig config file content for display
-    let fig_content = FigConfig::read_raw(server.project_root(), namespace, repo);
-
-    // Get commits
-    let commits_result =
-        git::bare::get_commits(server.project_root(), namespace, repo, Depth::default());
-
-    // Get all files (markdown and typst) in a single tree walk
-    let files_result =
-        git::bare::list_files(server.project_root(), namespace, repo, Some(&fig_config));
-
-    // Get the requested typst file content
-    let file_result = git::bare::read_file(server.project_root(), namespace, repo, file_path);
-
-    match commits_result {
-        Ok(commits) => {
-            let files = files_result.unwrap_or_default();
-            let markdown_files = files.markdown_files;
-            let typst_files = files.typst_files;
-
-            // Get default markdown file content for context
-            let default_md_file = get_default_markdown_file(&markdown_files);
-            let default_md_content = if let Some(file) = default_md_file {
-                git::bare::read_file(server.project_root(), namespace, repo, file)
-                    .ok()
-                    .flatten()
-            } else {
-                None
-            };
-
-            if req.headers().get("HX-Request").is_some() {
-                // For HTMX requests, return just the typst content (not the full view with sidebar)
-                let content = render_typst_content_only(
-                    namespace,
-                    repo,
-                    file_path,
-                    file_result.ok().flatten().as_deref(),
-                );
-                Ok(content)
-            } else {
-                // For full page loads, show the typst tab with the selected file
-                let selected_content = file_result.ok().flatten();
-                let ctx = TabContentContext {
-                    namespace,
-                    repo,
-                    tab: "typst",
-                    commits: &commits,
-                    markdown_files: &markdown_files,
-                    typst_files: &typst_files,
-                    selected_md_file: default_md_file,
-                    selected_content: default_md_content.as_deref(),
-                    selected_typst_file: Some(file_path),
-                    selected_typst_content: selected_content.as_deref(),
-                    fig_content: fig_content.as_deref(),
-                    tabs_config: &fig_config.tabs,
-                };
-                let content = render_tab_content(ctx);
-                Ok(super::render_layout(&content, username.as_deref()))
-            }
-        }
-        Err(e) => {
-            let content = render_git_error(e);
-            if req.headers().get("HX-Request").is_some() {
-                Ok(content)
-            } else {
-                Ok(super::render_layout(&content, username.as_deref()))
-            }
-        }
-    }
-}
-
 fn render_git_error(e: git2::Error) -> Markup {
     let code = e.code();
     let code = format!("{:?}", code);
@@ -498,7 +346,6 @@ fn render_tabs(
     repo: &str,
     active_tab: &str,
     has_config: bool,
-    has_typst_files: bool,
     tabs_config: &[String],
 ) -> Markup {
     // Build the list of available tabs
@@ -512,16 +359,13 @@ fn render_tabs(
                 "markdown" => all_tabs.push(("markdown", "Markdown")),
                 "commits" => all_tabs.push(("commits", "Commits")),
                 "config" if has_config => all_tabs.push(("config", "Config")),
-                "typst" if has_typst_files => all_tabs.push(("typst", "Typst")),
                 _ => {}
             }
         }
     } else {
         // Show all available tabs
         all_tabs.push(("markdown", "Markdown"));
-        if has_typst_files {
-            all_tabs.push(("typst", "Typst"));
-        }
+
         all_tabs.push(("commits", "Commits"));
         if has_config {
             all_tabs.push(("config", "Config"));
@@ -553,11 +397,8 @@ fn render_repo(
     repo: &str,
     commits: &[Commit],
     markdown_files: &[String],
-    typst_files: &[String],
     default_file: Option<&str>,
     default_content: Option<&str>,
-    default_typst_file: Option<&str>,
-    default_typst_content: Option<&str>,
     fig_content: Option<&str>,
     tabs_config: &[String],
 ) -> Markup {
@@ -567,13 +408,10 @@ fn render_repo(
         tabs_config[0].as_str()
     } else if !markdown_files.is_empty() {
         "markdown"
-    } else if !typst_files.is_empty() {
-        "typst"
     } else {
         "commits"
     };
     let has_config = fig_content.is_some();
-    let has_typst_files = !typst_files.is_empty();
 
     let ctx = TabContentContext {
         namespace,
@@ -581,11 +419,8 @@ fn render_repo(
         tab: default_tab,
         commits,
         markdown_files,
-        typst_files,
         selected_md_file: default_file,
         selected_content: default_content,
-        selected_typst_file: default_typst_file,
-        selected_typst_content: default_typst_content,
         fig_content,
         tabs_config,
     };
@@ -601,7 +436,7 @@ fn render_repo(
         }
 
         // Tab navigation
-        (render_tabs(namespace, repo, default_tab, has_config, has_typst_files, tabs_config))
+        (render_tabs(namespace, repo, default_tab, has_config, tabs_config))
 
         // Tab content container (scrollable)
         div id="tab-content" {
@@ -612,10 +447,9 @@ fn render_repo(
 
 fn render_tab_content(ctx: TabContentContext<'_>) -> Markup {
     let has_config = ctx.fig_content.is_some();
-    let has_typst_files = !ctx.typst_files.is_empty();
     maud::html! {
         // Tab navigation (update active state)
-        (render_tabs(ctx.namespace, ctx.repo, ctx.tab, has_config, has_typst_files, ctx.tabs_config))
+        (render_tabs(ctx.namespace, ctx.repo, ctx.tab, has_config, ctx.tabs_config))
 
         // Tab content container (scrollable)
         div id="tab-content" {
@@ -644,26 +478,6 @@ fn get_default_markdown_file(markdown_files: &[String]) -> Option<&str> {
     markdown_files.first().map(|s| s.as_str())
 }
 
-/// Get the default typst file to show - prefers main.typ if it exists
-fn get_default_typst_file(typst_files: &[String]) -> Option<&str> {
-    // First try to find main.typ (case-insensitive)
-    let main = typst_files
-        .iter()
-        .find(|f| f.eq_ignore_ascii_case("main.typ"));
-    if main.is_some() {
-        return main.map(|s| s.as_str());
-    }
-    // Then try any main variant
-    let main = typst_files
-        .iter()
-        .find(|f| f.to_lowercase().starts_with("main"));
-    if main.is_some() {
-        return main.map(|s| s.as_str());
-    }
-    // Fall back to first file
-    typst_files.first().map(|s| s.as_str())
-}
-
 fn render_tab_content_inner(ctx: TabContentContext<'_>) -> Markup {
     match ctx.tab {
         "markdown" => {
@@ -679,21 +493,6 @@ fn render_tab_content_inner(ctx: TabContentContext<'_>) -> Markup {
                 file_to_show,
                 ctx.selected_content,
                 ctx.markdown_files,
-            )
-        }
-        "typst" => {
-            // Use selected file or find default (main.typ preferred)
-            let file_to_show = ctx
-                .selected_typst_file
-                .or_else(|| get_default_typst_file(ctx.typst_files))
-                .unwrap_or("main.typ");
-
-            render_typst_view(
-                ctx.namespace,
-                ctx.repo,
-                file_to_show,
-                ctx.selected_typst_content,
-                ctx.typst_files,
             )
         }
         "commits" => {
@@ -712,11 +511,9 @@ fn render_tab_content_inner(ctx: TabContentContext<'_>) -> Markup {
         }
         "config" => render_config_view(ctx.namespace, ctx.repo, ctx.fig_content),
         _ => {
-            // Unknown tab - show Markdown by default if available, then Typst, then Commits
+            // Unknown tab - show Markdown by default if available, then Commits
             let new_tab = if !ctx.markdown_files.is_empty() {
                 "markdown"
-            } else if !ctx.typst_files.is_empty() {
-                "typst"
             } else {
                 "commits"
             };
@@ -726,11 +523,8 @@ fn render_tab_content_inner(ctx: TabContentContext<'_>) -> Markup {
                 tab: new_tab,
                 commits: ctx.commits,
                 markdown_files: ctx.markdown_files,
-                typst_files: ctx.typst_files,
                 selected_md_file: ctx.selected_md_file,
                 selected_content: ctx.selected_content,
-                selected_typst_file: ctx.selected_typst_file,
-                selected_typst_content: ctx.selected_typst_content,
                 fig_content: ctx.fig_content,
                 tabs_config: ctx.tabs_config,
             };
@@ -829,91 +623,6 @@ fn render_markdown_content_only(
         @if html_content.is_none() {
             div class="pa3 white-50" {
                 "File not found or empty."
-            }
-        }
-    }
-}
-
-fn render_typst_view(
-    namespace: &str,
-    repo: &str,
-    current_file: &str,
-    content: Option<&str>,
-    typst_files: &[String],
-) -> Markup {
-    maud::html! {
-        div class="flex" style="height: 100%;" {
-            // Left sidebar with typst files
-            div class="w4 w5-ns br b--white-20 pr3 overflow-y-auto" style="max-height: calc(100vh - 14rem); min-width: 200px;" {
-                h3 class="f5 fw6 mb2 white" { "Typst Files" }
-                ul class="list pl0" {
-                    @for file in typst_files {
-                        @let is_active = file == current_file;
-                        li class="mb1" {
-                            @if is_active {
-                                a
-                                    href=(format!("/{}/{}/typ/{}", namespace, repo, file))
-                                    class="white fw6 no-underline db pa1"
-                                    hx-get=(format!("/{}/{}/typ/{}", namespace, repo, file))
-                                    hx-target="#typst-view"
-                                {
-                                    (file)
-                                }
-                            }
-                            @if !is_active {
-                                a
-                                    href=(format!("/{}/{}/typ/{}", namespace, repo, file))
-                                    class="white-70 hover-white no-underline db pa1"
-                                    hx-get=(format!("/{}/{}/typ/{}", namespace, repo, file))
-                                    hx-target="#typst-view"
-                                {
-                                    (file)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Right content area
-            div id="typst-view" class="flex-auto pl3 overflow-y-auto" style="max-height: calc(100vh - 14rem);" {
-                (render_typst_content_only(namespace, repo, current_file, content))
-            }
-        }
-    }
-}
-
-/// Renders just the typst content without the sidebar (for HTMX updates)
-fn render_typst_content_only(
-    _namespace: &str,
-    _repo: &str,
-    _current_file: &str,
-    content: Option<&str>,
-) -> Markup {
-    let html_content = content.map(|typ| {
-        // Try to render typst to HTML
-        match typst_render::render_typst_to_html(typ) {
-            Ok(html) => html,
-            Err(errors) => {
-                // Show errors as a preformatted block
-                format!(
-                    "<div class='typst-error'><h4>Typst Compilation Errors:</h4><pre>{}</pre></div>",
-                    errors.join("\n")
-                )
-            }
-        }
-    });
-
-    maud::html! {
-        @if let Some(ref html) = html_content {
-            div class="typst-body white lh-copy" {
-                (maud::PreEscaped(html))
-            }
-        }
-        @if html_content.is_none() {
-            div class="pa3 white-50 flex items-center" {
-                span class="mr2" { "Loading..." }
-                span class="spinner" { "⟳" }
             }
         }
     }

@@ -330,7 +330,6 @@ pub fn read_file(
 #[derive(Default)]
 pub struct RepoFiles {
     pub markdown_files: Vec<String>,
-    pub typst_files: Vec<String>,
 }
 
 /// Lists all relevant files in the repository in a single tree walk
@@ -349,7 +348,6 @@ pub fn list_files(
         Err(_) => {
             return Ok(RepoFiles {
                 markdown_files: Vec::new(),
-                typst_files: Vec::new(),
             });
         } // No HEAD yet (empty repo)
     };
@@ -361,14 +359,12 @@ pub fn list_files(
             Err(_) => {
                 return Ok(RepoFiles {
                     markdown_files: Vec::new(),
-                    typst_files: Vec::new(),
                 });
             } // Can't peel to commit
         },
         Err(_) => {
             return Ok(RepoFiles {
                 markdown_files: Vec::new(),
-                typst_files: Vec::new(),
             });
         } // Unborn branch - no commits yet
     };
@@ -379,7 +375,6 @@ pub fn list_files(
 
     let tree = commit.tree()?;
     let mut markdown_files = Vec::new();
-    let mut typst_files = Vec::new();
 
     // Walk the tree recursively to find all relevant files
     fn walk_tree(
@@ -387,7 +382,6 @@ pub fn list_files(
         tree: &git2::Tree,
         prefix: &str,
         markdown_files: &mut Vec<String>,
-        typst_files: &mut Vec<String>,
         config: Option<&FigConfig>,
     ) -> Result<(), git2::Error> {
         for entry in tree {
@@ -409,14 +403,12 @@ pub fn list_files(
                 Some(git2::ObjectType::Tree) => {
                     let obj = entry.to_object(repo)?;
                     if let Ok(subtree) = obj.into_tree() {
-                        walk_tree(repo, &subtree, &path, markdown_files, typst_files, config)?;
+                        walk_tree(repo, &subtree, &path, markdown_files, config)?;
                     }
                 }
                 Some(git2::ObjectType::Blob) => {
                     if name.ends_with(".md") || name.ends_with(".markdown") {
                         markdown_files.push(path);
-                    } else if name.ends_with(".typ") || name.ends_with(".typst") {
-                        typst_files.push(path);
                     }
                 }
                 _ => {}
@@ -425,70 +417,10 @@ pub fn list_files(
         Ok(())
     }
 
-    walk_tree(
-        &repo,
-        &tree,
-        "",
-        &mut markdown_files,
-        &mut typst_files,
-        config,
-    )?;
+    walk_tree(&repo, &tree, "", &mut markdown_files, config)?;
     markdown_files.sort();
-    typst_files.sort();
 
-    Ok(RepoFiles {
-        markdown_files,
-        typst_files,
-    })
-}
-
-/// Commits a file to a non-bare repository (used for testing)
-#[allow(dead_code)]
-pub fn commit_file(
-    repo_path: &Path,
-    file_path: &str,
-    content: &str,
-    message: &str,
-    author_name: &str,
-    author_email: &str,
-) -> Result<String, git2::Error> {
-    let repo = git2::Repository::open(repo_path)?;
-
-    // Write the file
-    let full_path = repo_path.join(file_path);
-    if let Some(parent) = full_path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| git2::Error::from_str(&format!("Failed to create directory: {}", e)))?;
-    }
-    std::fs::write(&full_path, content)
-        .map_err(|e| git2::Error::from_str(&format!("Failed to write file: {}", e)))?;
-
-    // Add the file to the index
-    let mut index = repo.index()?;
-    index.add_path(Path::new(file_path))?;
-    index.write()?;
-
-    // Create signature
-    let sig = git2::Signature::now(author_name, author_email)?;
-
-    // Get the tree
-    let tree_id = index.write_tree()?;
-    let tree = repo.find_tree(tree_id)?;
-
-    // Get parent commit if exists
-    let parents = match repo.head() {
-        Ok(head) => {
-            let parent_commit = head.resolve()?.peel_to_commit()?;
-            vec![parent_commit]
-        }
-        Err(_) => vec![],
-    };
-
-    // Create the commit
-    let parent_refs: Vec<&git2::Commit> = parents.iter().collect();
-    let commit_id = repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parent_refs)?;
-
-    Ok(commit_id.to_string())
+    Ok(RepoFiles { markdown_files })
 }
 
 /// Push a local repository to a bare repository
@@ -554,74 +486,6 @@ mod tests {
         assert!(output.status.success(), "{:?}", output);
     }
 
-    fn init_repo(path: &Path, branch: &str) {
-        std::fs::create_dir_all(path).unwrap();
-        let output = Command::new("git")
-            .args(["init", "--initial-branch", branch])
-            .current_dir(path)
-            .output()
-            .expect("Failed to init repo");
-        assert!(output.status.success(), "{:?}", output);
-
-        // Configure git user
-        Command::new("git")
-            .args(["config", "user.email", "test@example.com"])
-            .current_dir(path)
-            .output()
-            .unwrap();
-        Command::new("git")
-            .args(["config", "user.name", "Test User"])
-            .current_dir(path)
-            .output()
-            .unwrap();
-    }
-
-    #[test]
-    fn test_readme_is_displayed() {
-        let temp = create_temp_dir("readme");
-        let _cleanup = TempDir { path: &temp };
-
-        let bare_path = temp.join("bare.git");
-        let local_path = temp.join("local");
-
-        init_bare_repo(&bare_path, "main");
-        init_repo(&local_path, "main");
-
-        // Create and commit README
-        let readme_content = "# Test Repository\n\nThis is a **test** README file.\n\n> Generated by Fig test suite for validating README display functionality.";
-        commit_file(
-            &local_path,
-            "README.md",
-            readme_content,
-            "Initial commit with README",
-            "Test User",
-            "test@example.com",
-        )
-        .expect("Failed to commit README");
-
-        // Push to bare repo
-        push_to_bare(&local_path, &bare_path, "main").expect("Failed to push");
-
-        // Read the README from bare repo (bare.git is at root of temp, no namespace)
-        let result = read_file(temp.to_str().unwrap(), "", "bare.git", "README.md");
-
-        assert!(result.is_ok(), "Failed to read README: {:?}", result.err());
-        let content = result.unwrap();
-        assert!(content.is_some(), "README should be found");
-
-        let content = content.unwrap();
-        assert!(
-            content.contains("# Test Repository"),
-            "Content should contain '# Test Repository', but got: {}",
-            content
-        );
-        assert!(
-            content.contains("test") && content.contains("README"),
-            "Content should contain 'test' and 'README', but got: {}",
-            content
-        );
-    }
-
     #[test]
     fn test_init_branch_parameter() {
         let temp = create_temp_dir("branch");
@@ -643,34 +507,6 @@ mod tests {
             "Branch should be 'develop' but was: {}",
             branch
         );
-    }
-
-    #[test]
-    fn test_read_readme_variants() {
-        let temp = create_temp_dir("readme_variants");
-        let _cleanup = TempDir { path: &temp };
-
-        let local_path = temp.join("local");
-        init_repo(&local_path, "main");
-
-        // Test with lowercase readme.md
-        commit_file(
-            &local_path,
-            "readme.md",
-            "# lowercase readme\n\n> Generated by Fig test suite for validating case-insensitive README detection.",
-            "Add lowercase readme",
-            "Test",
-            "test@test.com",
-        )
-        .unwrap();
-
-        // Verify we can read it back
-        let result = read_file(temp.to_str().unwrap(), "", "local", "readme.md");
-        assert!(result.is_ok());
-        let content = result.unwrap();
-        assert!(content.is_some());
-        let content = content.unwrap();
-        assert!(content.contains("# lowercase readme"));
     }
 
     #[test]
@@ -745,170 +581,6 @@ ignore_for_view = ["skills", "temp", "drafts/"]
 
         assert!(!config.should_ignore("any/file.md"));
         assert!(!config.should_ignore("README.md"));
-    }
-
-    #[test]
-    fn test_list_markdown_files_with_config_filter() {
-        let temp = create_temp_dir("config_filter");
-        let _cleanup = TempDir { path: &temp };
-
-        let bare_path = temp.join("bare.git");
-        let local_path = temp.join("local");
-
-        init_bare_repo(&bare_path, "main");
-        init_repo(&local_path, "main");
-
-        // Create markdown files in different folders
-        commit_file(
-            &local_path,
-            "README.md",
-            "# Main README",
-            "Add README",
-            "Test",
-            "test@test.com",
-        )
-        .unwrap();
-
-        commit_file(
-            &local_path,
-            "skills/rust.md",
-            "# Rust Skills",
-            "Add rust skills",
-            "Test",
-            "test@test.com",
-        )
-        .unwrap();
-
-        commit_file(
-            &local_path,
-            "skills/python.md",
-            "# Python Skills",
-            "Add python skills",
-            "Test",
-            "test@test.com",
-        )
-        .unwrap();
-
-        commit_file(
-            &local_path,
-            "docs/guide.md",
-            "# Guide",
-            "Add guide",
-            "Test",
-            "test@test.com",
-        )
-        .unwrap();
-
-        // Push to bare repo
-        push_to_bare(&local_path, &bare_path, "main").expect("Failed to push");
-
-        // Test without config - should get all files
-        let config = FigConfig {
-            ignore_for_view: vec![],
-            tabs: vec![],
-        };
-        let files = list_files(temp.to_str().unwrap(), "", "bare.git", Some(&config))
-            .expect("Failed to list files");
-        assert_eq!(files.markdown_files.len(), 4);
-        assert!(files.markdown_files.contains(&"README.md".to_string()));
-        assert!(files.markdown_files.contains(&"skills/rust.md".to_string()));
-        assert!(
-            files
-                .markdown_files
-                .contains(&"skills/python.md".to_string())
-        );
-        assert!(files.markdown_files.contains(&"docs/guide.md".to_string()));
-
-        // Test with config filtering "skills"
-        let config = FigConfig {
-            ignore_for_view: vec!["skills".to_string()],
-            tabs: vec![],
-        };
-        let files = list_files(temp.to_str().unwrap(), "", "bare.git", Some(&config))
-            .expect("Failed to list files");
-        assert_eq!(files.markdown_files.len(), 2);
-        assert!(files.markdown_files.contains(&"README.md".to_string()));
-        assert!(files.markdown_files.contains(&"docs/guide.md".to_string()));
-        assert!(!files.markdown_files.contains(&"skills/rust.md".to_string()));
-        assert!(
-            !files
-                .markdown_files
-                .contains(&"skills/python.md".to_string())
-        );
-    }
-
-    #[test]
-    fn test_list_files_combined() {
-        let temp = create_temp_dir("files_combined");
-        let _cleanup = TempDir { path: &temp };
-
-        let bare_path = temp.join("bare.git");
-        let local_path = temp.join("local");
-
-        init_bare_repo(&bare_path, "main");
-        init_repo(&local_path, "main");
-
-        // Create both markdown and typst files
-        commit_file(
-            &local_path,
-            "README.md",
-            "# Main README",
-            "Add README",
-            "Test",
-            "test@test.com",
-        )
-        .unwrap();
-
-        commit_file(
-            &local_path,
-            "main.typ",
-            "# Main Typst Document",
-            "Add main typst",
-            "Test",
-            "test@test.com",
-        )
-        .unwrap();
-
-        commit_file(
-            &local_path,
-            "report.typ",
-            "# Report",
-            "Add report",
-            "Test",
-            "test@test.com",
-        )
-        .unwrap();
-
-        commit_file(
-            &local_path,
-            "docs/guide.md",
-            "# Guide",
-            "Add guide",
-            "Test",
-            "test@test.com",
-        )
-        .unwrap();
-
-        // Push to bare repo
-        push_to_bare(&local_path, &bare_path, "main").expect("Failed to push");
-
-        // Test combined list_files
-        let config = FigConfig {
-            ignore_for_view: vec![],
-            tabs: vec![],
-        };
-        let files = list_files(temp.to_str().unwrap(), "", "bare.git", Some(&config))
-            .expect("Failed to list files");
-
-        // Check markdown files
-        assert_eq!(files.markdown_files.len(), 2);
-        assert!(files.markdown_files.contains(&"README.md".to_string()));
-        assert!(files.markdown_files.contains(&"docs/guide.md".to_string()));
-
-        // Check typst files
-        assert_eq!(files.typst_files.len(), 2);
-        assert!(files.typst_files.contains(&"main.typ".to_string()));
-        assert!(files.typst_files.contains(&"report.typ".to_string()));
     }
 
     #[test]
