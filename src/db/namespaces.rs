@@ -161,4 +161,30 @@ impl Database {
 
         Ok(rows.next().await.map_err(|e| e.to_string())?.is_some())
     }
+
+    pub async fn get_namespaces_for_user(&self, user_id: &str) -> Result<Vec<Namespace>, String> {
+        let mut rows = self
+            .conn()
+            .query(
+                "SELECT DISTINCT n.id, n.name, n.owner_id, n.created_at
+                 FROM namespaces n
+                 LEFT JOIN namespace_members nm ON n.id = nm.namespace_id
+                 WHERE n.owner_id = ?1 OR nm.user_id = ?1
+                 ORDER BY n.name",
+                turso::params![user_id],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let mut result = Vec::new();
+        while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
+            result.push(Namespace {
+                id: row.get(0).map_err(|e| e.to_string())?,
+                name: row.get(1).map_err(|e| e.to_string())?,
+                owner_id: row.get(2).map_err(|e| e.to_string())?,
+                created_at: row.get(3).map_err(|e| e.to_string())?,
+            });
+        }
+        Ok(result)
+    }
 }

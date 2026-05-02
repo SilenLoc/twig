@@ -11,6 +11,9 @@ pub struct FigConfig {
     /// Tabs to display. If empty or not present, all tabs are shown.
     #[serde(default)]
     pub tabs: Vec<String>,
+    /// Whether the repository can be deleted from the UI.
+    #[serde(default)]
+    pub deleteable: bool,
 }
 
 impl FigConfig {
@@ -513,12 +516,14 @@ mod tests {
     fn test_fig_config_parse() {
         let toml_content = r#"
 ignore_for_view = ["skills", "temp", "drafts/"]
+deleteable = true
 "#;
         let config = FigConfig::parse(toml_content);
         assert_eq!(config.ignore_for_view.len(), 3);
         assert!(config.ignore_for_view.contains(&"skills".to_string()));
         assert!(config.ignore_for_view.contains(&"temp".to_string()));
         assert!(config.ignore_for_view.contains(&"drafts/".to_string()));
+        assert!(config.deleteable);
     }
 
     #[test]
@@ -526,6 +531,7 @@ ignore_for_view = ["skills", "temp", "drafts/"]
         let config = FigConfig {
             ignore_for_view: vec!["skills".to_string()],
             tabs: vec![],
+            deleteable: false,
         };
 
         // Should ignore files in the skills folder
@@ -544,6 +550,7 @@ ignore_for_view = ["skills", "temp", "drafts/"]
         let config = FigConfig {
             ignore_for_view: vec!["drafts/".to_string()],
             tabs: vec![],
+            deleteable: false,
         };
 
         // Should ignore files in the drafts folder
@@ -560,6 +567,7 @@ ignore_for_view = ["skills", "temp", "drafts/"]
         let config = FigConfig {
             ignore_for_view: vec!["temp".to_string(), "archive".to_string()],
             tabs: vec![],
+            deleteable: false,
         };
 
         // Should ignore files in temp
@@ -577,6 +585,7 @@ ignore_for_view = ["skills", "temp", "drafts/"]
         let config = FigConfig {
             ignore_for_view: vec![],
             tabs: vec![],
+            deleteable: false,
         };
 
         assert!(!config.should_ignore("any/file.md"));
@@ -589,6 +598,7 @@ ignore_for_view = ["skills", "temp", "drafts/"]
         let config = FigConfig {
             ignore_for_view: vec!["skills/".to_string()],
             tabs: vec![],
+            deleteable: false,
         };
 
         // The folder itself should be ignored
@@ -611,6 +621,7 @@ ignore_for_view = ["skills", "temp", "drafts/"]
         let config = FigConfig {
             ignore_for_view: vec!["AGENTS.md".to_string()],
             tabs: vec![],
+            deleteable: false,
         };
 
         // Root level AGENTS.md should be ignored

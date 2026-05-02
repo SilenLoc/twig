@@ -96,6 +96,7 @@ async fn main() -> std::io::Result<()> {
             // Settings page MUST come before namespace handler (which matches /{namespace})
             .service(view::settings::settings_page)
             .service(view::settings::update_email)
+            .service(view::settings::delete_repo)
             .service(view::namespace::handler)
             .service(view::namespace::create_repo_form_handler)
             .service(view::namespace::create_repo_handler)
