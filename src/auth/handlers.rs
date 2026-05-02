@@ -95,7 +95,16 @@ pub async fn create_ticket_ui_handler(
         used_at: None,
     };
 
-    if let Err(e) = auth_state.db.create_ticket(&ticket).await {
+    let db = match auth_state.db().await {
+        Ok(db) => db,
+        Err(e) => {
+            log::error!("Database error: {}", e);
+            return HttpResponse::InternalServerError()
+                .body(render_error("Database error").into_string());
+        }
+    };
+
+    if let Err(e) = db.create_ticket(&ticket).await {
         log::error!("Failed to create ticket: {}", e);
         return HttpResponse::InternalServerError()
             .body(render_error("Failed to create ticket").into_string());
@@ -117,8 +126,17 @@ pub async fn signup_ui_handler(
     auth_state: web::Data<FigContext>,
     form: web::Form<SignupForm>,
 ) -> impl Responder {
+    let db = match auth_state.db().await {
+        Ok(db) => db,
+        Err(e) => {
+            log::error!("Database error: {}", e);
+            return HttpResponse::InternalServerError()
+                .body(render_error("Database error").into_string());
+        }
+    };
+
     // Validate ticket first
-    let ticket = match auth_state.db.get_ticket(&form.ticket).await {
+    let ticket = match db.get_ticket(&form.ticket).await {
         Ok(Some(ticket)) => ticket,
         Ok(None) => {
             return HttpResponse::Unauthorized().body(render_error("Invalid ticket").into_string());
@@ -149,8 +167,8 @@ pub async fn signup_ui_handler(
             .body(render_error("Password must be at least 8 characters").into_string());
     }
 
-    // Check if user alredbady exists
-    match auth_state.db.get_user_by_username(&form.username).await {
+    // Check if user already exists
+    match db.get_user_by_username(&form.username).await {
         Ok(Some(_)) => {
             return HttpResponse::Conflict()
                 .body(render_error("Username already exists").into_string());
@@ -178,14 +196,14 @@ pub async fn signup_ui_handler(
     };
 
     // Save user to database
-    if let Err(e) = auth_state.db.create_user(&user).await {
+    if let Err(e) = db.create_user(&user).await {
         log::error!("Failed to save user: {}", e);
         return HttpResponse::InternalServerError()
             .body(render_error("Failed to save user").into_string());
     }
 
     // Mark ticket as used
-    if let Err(e) = auth_state.db.mark_ticket_used(&ticket.id).await {
+    if let Err(e) = db.mark_ticket_used(&ticket.id).await {
         log::error!("Failed to mark ticket used: {}", e);
         // Don't fail here, user is already created
     }
@@ -207,8 +225,17 @@ pub async fn login_ui_handler(
     auth_state: web::Data<FigContext>,
     form: web::Form<LoginForm>,
 ) -> impl Responder {
+    let db = match auth_state.db().await {
+        Ok(db) => db,
+        Err(e) => {
+            log::error!("Database error: {}", e);
+            return HttpResponse::InternalServerError()
+                .body(render_error("Database error").into_string());
+        }
+    };
+
     // Get user from database
-    let user = match auth_state.db.get_user_by_username(&form.username).await {
+    let user = match db.get_user_by_username(&form.username).await {
         Ok(Some(user)) => user,
         Ok(None) => {
             return HttpResponse::Unauthorized()
@@ -248,8 +275,7 @@ pub async fn login_ui_handler(
     info!("User logged in via UI: {}", form.username);
 
     // Check if user has any namespaces
-    let has_namespaces = auth_state
-        .db
+    let has_namespaces = db
         .user_has_any_namespaces(&user.id)
         .await
         .unwrap_or(false);
@@ -289,6 +315,15 @@ pub async fn create_namespace_ui_handler(
     auth_state: web::Data<FigContext>,
     form: web::Form<CreateNamespaceForm>,
 ) -> impl Responder {
+    let db = match auth_state.db().await {
+        Ok(db) => db,
+        Err(e) => {
+            log::error!("Database error: {}", e);
+            return HttpResponse::InternalServerError()
+                .body(render_error("Database error").into_string());
+        }
+    };
+
     // Validate namespace name
     if form.name.len() < 2 {
         return HttpResponse::BadRequest()
@@ -296,7 +331,7 @@ pub async fn create_namespace_ui_handler(
     }
 
     // Check if namespace already exists
-    match auth_state.db.get_namespace_by_name(&form.name).await {
+    match db.get_namespace_by_name(&form.name).await {
         Ok(Some(_)) => {
             return HttpResponse::Conflict()
                 .body(render_error("Namespace already exists").into_string());
@@ -329,7 +364,7 @@ pub async fn create_namespace_ui_handler(
     // Create namespace
     let namespace = create_namespace(form.name.clone(), user_id);
 
-    if let Err(e) = auth_state.db.create_namespace(&namespace).await {
+    if let Err(e) = db.create_namespace(&namespace).await {
         log::error!("Failed to create namespace: {}", e);
         return HttpResponse::InternalServerError()
             .body(render_error("Failed to create namespace").into_string());

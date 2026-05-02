@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use actix_web::HttpRequest;
 use argon2::password_hash::{SaltString, rand_core::RngCore};
@@ -128,15 +128,30 @@ fn base64_decode(input: &str) -> Option<String> {
 }
 
 pub struct FigContext {
-    pub db: Arc<Database>,
+    db_path: String,
     pub api_key: String,
+    initialized: AtomicBool,
 }
 
 impl FigContext {
-    pub async fn new(db_path: &str, api_key: String) -> Result<Self, String> {
-        let db = Arc::new(Database::new(db_path).await?);
+    pub fn new(db_path: &str, api_key: String) -> Self {
+        Self {
+            db_path: db_path.to_string(),
+            api_key,
+            initialized: AtomicBool::new(false),
+        }
+    }
 
-        Ok(Self { db, api_key })
+    pub async fn db(&self) -> Result<Database, String> {
+        Database::new(&self.db_path).await
+    }
+
+    pub fn is_initialized(&self) -> bool {
+        self.initialized.load(Ordering::SeqCst)
+    }
+
+    pub fn set_initialized(&self) {
+        self.initialized.store(true, Ordering::SeqCst);
     }
 
     pub fn validate_api_key(&self, key: &str) -> bool {
@@ -144,16 +159,19 @@ impl FigContext {
     }
 
     pub async fn create_session(&self, user_id: String) -> Result<String, String> {
+        let db = self.db().await?;
         let token = generate_token();
-        self.db.create_token(&token, &user_id).await?;
+        db.create_token(&token, &user_id).await?;
         Ok(token)
     }
 
     pub async fn validate_token(&self, token: &str) -> Option<String> {
-        self.db.get_token_user(token).await.ok().flatten()
+        let db = self.db().await.ok()?;
+        db.get_token_user(token).await.ok().flatten()
     }
 
     pub async fn invalidate_token(&self, token: &str) -> Result<(), String> {
-        self.db.delete_token(token).await
+        let db = self.db().await?;
+        db.delete_token(token).await
     }
 }

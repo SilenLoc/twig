@@ -20,7 +20,8 @@ async fn get_username_from_request(
 ) -> Option<String> {
     let token = req.cookie("session")?;
     let user_id = auth_state.validate_token(token.value()).await?;
-    let user = auth_state.db.get_user_by_id(&user_id).await.ok()??;
+    let db = auth_state.db().await.ok()?;
+    let user = db.get_user_by_id(&user_id).await.ok()??;
     Some(user.username)
 }
 

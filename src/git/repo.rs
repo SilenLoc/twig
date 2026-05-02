@@ -41,6 +41,14 @@ pub async fn init(
     server: web::Data<config::Server>,
     auth_state: web::Data<FigContext>,
 ) -> impl Responder {
+    let db = match auth_state.db().await {
+        Ok(db) => db,
+        Err(e) => {
+            log::error!("Database error: {}", e);
+            return HttpResponse::InternalServerError().body("Database error");
+        }
+    };
+
     // Authenticate the request
     let (username, password) = match extract_basic_auth(&req) {
         Some(creds) => creds,
@@ -52,7 +60,7 @@ pub async fn init(
     };
 
     // Get user from database
-    let user = match auth_state.db.get_user_by_username(&username).await {
+    let user = match db.get_user_by_username(&username).await {
         Ok(Some(user)) => user,
         Ok(None) => {
             return HttpResponse::Unauthorized().body("Invalid credentials");
@@ -76,8 +84,7 @@ pub async fn init(
     }
 
     // Check if user has access to namespace
-    match auth_state
-        .db
+    match db
         .user_has_namespace_access(&user.id, &init_repo.namespace)
         .await
     {

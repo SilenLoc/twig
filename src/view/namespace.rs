@@ -16,7 +16,8 @@ async fn get_username_from_request(
 ) -> Option<String> {
     let token = req.cookie("session")?;
     let user_id = auth_state.validate_token(token.value()).await?;
-    let user = auth_state.db.get_user_by_id(&user_id).await.ok()??;
+    let db = auth_state.db().await.ok()?;
+    let user = db.get_user_by_id(&user_id).await.ok()??;
     Some(user.username)
 }
 
@@ -36,9 +37,12 @@ async fn user_has_namespace_access(
         None => return false,
     };
 
-    auth_state
-        .db
-        .user_has_namespace_access(&user_id, namespace)
+    let db = match auth_state.db().await {
+        Ok(db) => db,
+        Err(_) => return false,
+    };
+
+    db.user_has_namespace_access(&user_id, namespace)
         .await
         .unwrap_or_default()
 }
@@ -298,9 +302,17 @@ pub async fn create_repo_handler(
         }
     };
 
+    let db = match auth_state.db().await {
+        Ok(db) => db,
+        Err(e) => {
+            log::error!("Database error: {}", e);
+            return HttpResponse::InternalServerError()
+                .body(render_error("Database error").into_string());
+        }
+    };
+
     // Check if user has access to namespace
-    match auth_state
-        .db
+    match db
         .user_has_namespace_access(&user_id, namespace)
         .await
     {
@@ -341,7 +353,7 @@ pub async fn create_repo_handler(
     }
 
     // Get user details for git author info
-    let user = match auth_state.db.get_user_by_id(&user_id).await {
+    let user = match db.get_user_by_id(&user_id).await {
         Ok(Some(user)) => user,
         _ => {
             return HttpResponse::InternalServerError()

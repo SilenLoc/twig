@@ -154,8 +154,16 @@ async fn is_authenticated(
         namespace_name
     );
 
+    let db = match auth_state.db().await {
+        Ok(db) => db,
+        Err(e) => {
+            log::error!("Database connection error for user '{}': {}", username, e);
+            return Err(actix_web::HttpResponse::InternalServerError().body("Database error"));
+        }
+    };
+
     // Get user from database
-    let user = match auth_state.db.get_user_by_username(&username).await {
+    let user = match db.get_user_by_username(&username).await {
         Ok(Some(user)) => {
             log::debug!("Git auth: Found user '{}' with id '{}'", username, user.id);
             user
@@ -191,8 +199,7 @@ async fn is_authenticated(
         user.id,
         namespace_name
     );
-    match auth_state
-        .db
+    match db
         .user_has_namespace_access(&user.id, namespace_name)
         .await
     {
@@ -206,7 +213,7 @@ async fn is_authenticated(
         }
         Ok(false) => {
             // Check if namespace exists at all
-            match auth_state.db.get_namespace_by_name(namespace_name).await {
+match db.get_namespace_by_name(namespace_name).await {
                 Ok(Some(_)) => {
                     // Namespace exists but user doesn't have access
                     log::warn!(
@@ -253,8 +260,10 @@ async fn ensure_namespace_exists(
     user: &User,
     namespace_name: &str,
 ) -> Result<(), String> {
+    let db = auth_state.db().await?;
+
     // Check if namespace exists
-    match auth_state.db.get_namespace_by_name(namespace_name).await {
+    match db.get_namespace_by_name(namespace_name).await {
         Ok(Some(_)) => {
             // Namespace already exists
             Ok(())
@@ -268,9 +277,7 @@ async fn ensure_namespace_exists(
             );
             let namespace =
                 crate::auth::create_namespace(namespace_name.to_string(), user.id.clone());
-            auth_state
-                .db
-                .create_namespace(&namespace)
+            db.create_namespace(&namespace)
                 .await
                 .map_err(|e| format!("Failed to create namespace: {}", e))
         }

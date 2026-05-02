@@ -21,7 +21,7 @@ async fn health() -> impl Responder {
 
 #[get("/up")]
 async fn up(auth_state: web::Data<auth::FigContext>) -> impl Responder {
-    if auth_state.db.is_initialized() {
+    if auth_state.is_initialized() {
         HttpResponse::Ok().finish()
     } else {
         HttpResponse::ServiceUnavailable().finish()
@@ -49,13 +49,7 @@ async fn main() -> std::io::Result<()> {
     let db_path = config.db_path().to_string();
     let api_key = config.effective_api_key();
 
-    let auth_state = match auth::FigContext::new(&db_path, api_key).await {
-        Ok(state) => web::Data::new(state),
-        Err(e) => {
-            log::error!("Failed to initialize auth state: {}", e);
-            return Err(std::io::Error::other(e));
-        }
-    };
+    let auth_state = web::Data::new(auth::FigContext::new(&db_path, api_key));
 
     // Clone auth_state for the background task
     let auth_state_for_init = auth_state.clone();
@@ -65,8 +59,17 @@ async fn main() -> std::io::Result<()> {
     tokio::spawn(async move {
         tokio::time::sleep(Duration::from_secs(4)).await;
         log::info!("Initializing database tables...");
-        if let Err(e) = auth_state_for_init.db.init_tables().await {
-            log::error!("Failed to initialize database tables: {}", e);
+        match auth_state_for_init.db().await {
+            Ok(db) => {
+                if let Err(e) = db.init_tables().await {
+                    log::error!("Failed to initialize database tables: {}", e);
+                } else {
+                    auth_state_for_init.set_initialized();
+                }
+            }
+            Err(e) => {
+                log::error!("Failed to create database for initialization: {}", e);
+            }
         }
     });
 

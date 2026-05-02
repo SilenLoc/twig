@@ -44,7 +44,7 @@ version = "1"
 [package]
 edition = "2024"
 name = "fig"
-version = "0.1.52"
+version = "0.1.53"
 
 [spruce]
 additional_tools = ["git"]
@@ -61,6 +61,7 @@ excludes = [
     "skills",
     "tests",
 ]
+host = "fedora@vps"
 includes = [
     "Cargo.toml",
     "assets",

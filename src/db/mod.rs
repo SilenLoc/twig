@@ -1,5 +1,4 @@
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use turso::Builder;
@@ -12,7 +11,6 @@ pub mod users;
 
 pub struct Database {
     db: turso::Database,
-    initialized: AtomicBool,
 }
 
 impl Database {
@@ -28,10 +26,7 @@ impl Database {
             .await
             .map_err(|e| e.to_string())?;
 
-        Ok(Self {
-            db,
-            initialized: AtomicBool::new(false),
-        })
+        Ok(Self { db })
     }
 
     /// Initialize tables and configure connection.
@@ -46,7 +41,6 @@ impl Database {
         // Initialize tables
         self.create_tables().await?;
 
-        self.initialized.store(true, Ordering::SeqCst);
         log::info!("Database initialized successfully");
 
         Ok(())
@@ -54,9 +48,5 @@ impl Database {
 
     pub fn conn(&self) -> turso::Connection {
         self.db.connect().unwrap()
-    }
-
-    pub fn is_initialized(&self) -> bool {
-        self.initialized.load(Ordering::SeqCst)
     }
 }

@@ -49,7 +49,12 @@ pub async fn settings_page(
         }
     };
 
-    let user = match auth_state.db.get_user_by_id(&user_id).await {
+    let db = auth_state.db().await.map_err(|e| {
+        log::error!("Database error: {}", e);
+        actix_web::error::ErrorInternalServerError("Database error")
+    })?;
+
+    let user = match db.get_user_by_id(&user_id).await {
         Ok(Some(user)) => user,
         _ => {
             return Ok(maud::html! {
@@ -61,8 +66,7 @@ pub async fn settings_page(
     };
 
     // Load namespaces and repos the user has access to
-    let namespaces = auth_state
-        .db
+    let namespaces = db
         .get_namespaces_for_user(&user_id)
         .await
         .unwrap_or_default();
@@ -222,8 +226,17 @@ pub async fn update_email(
             .body(render_error("Please enter a valid email address").into_string());
     }
 
+    let db = match auth_state.db().await {
+        Ok(db) => db,
+        Err(e) => {
+            log::error!("Database error: {}", e);
+            return HttpResponse::InternalServerError()
+                .body(render_error("Database error").into_string());
+        }
+    };
+
     // Update email in database
-    match auth_state.db.update_user_email(&user_id, &form.email).await {
+    match db.update_user_email(&user_id, &form.email).await {
         Ok(_) => {
             info!("Updated email for user: {}", user_id);
             HttpResponse::Ok()
@@ -262,9 +275,17 @@ pub async fn delete_repo(
         }
     };
 
+    let db = match auth_state.db().await {
+        Ok(db) => db,
+        Err(e) => {
+            log::error!("Database error: {}", e);
+            return HttpResponse::InternalServerError()
+                .body(render_error("Database error").into_string());
+        }
+    };
+
     // Verify user has access to the namespace
-    match auth_state
-        .db
+    match db
         .user_has_namespace_access(&user_id, &form.namespace)
         .await
     {
