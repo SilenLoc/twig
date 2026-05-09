@@ -9,8 +9,9 @@ use crate::{
     config,
     git::{
         self,
-        bare::{Commit, Depth, FigConfig},
+        bare::{Commit, Depth, FigConfig, PresentConfig},
     },
+    md,
 };
 
 /// Helper function to get the username from the session cookie if logged in
@@ -45,6 +46,13 @@ struct MarkdownParams {
     file_path: String,
 }
 
+/// A rendered slide for the presentation view
+struct PresentSlide {
+    #[allow(dead_code)]
+    file: String,
+    html: String,
+}
+
 /// Context for rendering tab content to reduce parameter count
 struct TabContentContext<'a> {
     namespace: &'a str,
@@ -56,6 +64,8 @@ struct TabContentContext<'a> {
     selected_content: Option<&'a str>,
     fig_content: Option<&'a str>,
     tabs_config: &'a [String],
+    present_config: &'a PresentConfig,
+    present_slides: &'a [PresentSlide],
 }
 
 #[get("/{namespace}/{repo}")]
@@ -97,6 +107,9 @@ pub async fn handler(
                 None
             };
 
+            let present_slides =
+                load_present_slides(server.project_root(), namespace, repo, &fig_config.present);
+
             render_repo(
                 namespace,
                 repo,
@@ -106,6 +119,8 @@ pub async fn handler(
                 default_content.as_deref(),
                 fig_content.as_deref(),
                 &fig_config.tabs,
+                &fig_config.present,
+                &present_slides,
             )
         }
         Err(e) => render_git_error(e),
@@ -159,6 +174,9 @@ pub async fn tab_handler(
                 None
             };
 
+            let present_slides =
+                load_present_slides(server.project_root(), namespace, repo, &fig_config.present);
+
             let ctx = TabContentContext {
                 namespace,
                 repo,
@@ -169,6 +187,8 @@ pub async fn tab_handler(
                 selected_content: default_content.as_deref(),
                 fig_content: fig_content.as_deref(),
                 tabs_config: &fig_config.tabs,
+                present_config: &fig_config.present,
+                present_slides: &present_slides,
             };
             if req.headers().get("HX-Request").is_some() {
                 // HTMX request - return only the inner tab content for swapping
@@ -237,6 +257,12 @@ pub async fn markdown_handler(
             } else {
                 // For full page loads, show the markdown tab with the selected file
                 let selected_content = file_result.ok().flatten();
+                let present_slides = load_present_slides(
+                    server.project_root(),
+                    namespace,
+                    repo,
+                    &fig_config.present,
+                );
                 let ctx = TabContentContext {
                     namespace,
                     repo,
@@ -247,6 +273,8 @@ pub async fn markdown_handler(
                     selected_content: selected_content.as_deref(),
                     fig_content: fig_content.as_deref(),
                     tabs_config: &fig_config.tabs,
+                    present_config: &fig_config.present,
+                    present_slides: &present_slides,
                 };
                 let content = render_tab_content(ctx);
                 Ok(super::render_layout(&content, username.as_deref()))
@@ -348,6 +376,7 @@ fn render_tabs(
     active_tab: &str,
     has_config: bool,
     tabs_config: &[String],
+    has_present: bool,
 ) -> Markup {
     // Build the list of available tabs
     let mut all_tabs: Vec<(&str, &str)> = vec![];
@@ -360,6 +389,7 @@ fn render_tabs(
                 "markdown" => all_tabs.push(("markdown", "Markdown")),
                 "commits" => all_tabs.push(("commits", "Commits")),
                 "config" if has_config => all_tabs.push(("config", "Config")),
+                "present" if has_present => all_tabs.push(("present", "Present")),
                 _ => {}
             }
         }
@@ -370,6 +400,9 @@ fn render_tabs(
         all_tabs.push(("commits", "Commits"));
         if has_config {
             all_tabs.push(("config", "Config"));
+        }
+        if has_present {
+            all_tabs.push(("present", "Present"));
         }
     }
 
@@ -402,6 +435,8 @@ fn render_repo(
     default_content: Option<&str>,
     fig_content: Option<&str>,
     tabs_config: &[String],
+    present_config: &PresentConfig,
+    present_slides: &[PresentSlide],
 ) -> Markup {
     // Determine default tab based on configuration and available files
     let default_tab = if !tabs_config.is_empty() {
@@ -413,6 +448,7 @@ fn render_repo(
         "commits"
     };
     let has_config = fig_content.is_some();
+    let has_present = !present_config.files.is_empty();
 
     let ctx = TabContentContext {
         namespace,
@@ -424,6 +460,8 @@ fn render_repo(
         selected_content: default_content,
         fig_content,
         tabs_config,
+        present_config,
+        present_slides,
     };
 
     maud::html! {
@@ -437,7 +475,7 @@ fn render_repo(
         }
 
         // Tab navigation
-        (render_tabs(namespace, repo, default_tab, has_config, tabs_config))
+        (render_tabs(namespace, repo, default_tab, has_config, tabs_config, has_present))
 
         // Tab content container (scrollable)
         div id="tab-content" {
@@ -448,9 +486,10 @@ fn render_repo(
 
 fn render_tab_content(ctx: TabContentContext<'_>) -> Markup {
     let has_config = ctx.fig_content.is_some();
+    let has_present = !ctx.present_config.files.is_empty();
     maud::html! {
         // Tab navigation (update active state)
-        (render_tabs(ctx.namespace, ctx.repo, ctx.tab, has_config, ctx.tabs_config))
+        (render_tabs(ctx.namespace, ctx.repo, ctx.tab, has_config, ctx.tabs_config, has_present))
 
         // Tab content container (scrollable)
         div id="tab-content" {
@@ -511,6 +550,12 @@ fn render_tab_content_inner(ctx: TabContentContext<'_>) -> Markup {
             }
         }
         "config" => render_config_view(ctx.namespace, ctx.repo, ctx.fig_content),
+        "present" => render_present_view(
+            ctx.namespace,
+            ctx.repo,
+            ctx.present_config,
+            ctx.present_slides,
+        ),
         _ => {
             // Unknown tab - show Markdown by default if available, then Commits
             let new_tab = if !ctx.markdown_files.is_empty() {
@@ -528,6 +573,8 @@ fn render_tab_content_inner(ctx: TabContentContext<'_>) -> Markup {
                 selected_content: ctx.selected_content,
                 fig_content: ctx.fig_content,
                 tabs_config: ctx.tabs_config,
+                present_config: ctx.present_config,
+                present_slides: ctx.present_slides,
             };
             render_tab_content_inner(new_ctx)
         }
@@ -553,6 +600,167 @@ fn render_config_view(_namespace: &str, _repo: &str, fig_content: Option<&str>) 
                     "No configuration file found. Create a .fig.toml file in the repository root to configure ignore patterns."
                 }
             }
+        }
+    }
+}
+
+fn load_present_slides(
+    root: &str,
+    namespace: &str,
+    repo: &str,
+    present_config: &PresentConfig,
+) -> Vec<PresentSlide> {
+    present_config
+        .files
+        .iter()
+        .filter_map(|file| {
+            let content = git::bare::read_file(root, namespace, repo, file).ok()??;
+            let html = md::process_markdown(&content, &present_config.template_vars);
+            Some(PresentSlide {
+                file: file.clone(),
+                html,
+            })
+        })
+        .collect()
+}
+
+fn render_present_view(
+    _namespace: &str,
+    _repo: &str,
+    _present_config: &PresentConfig,
+    slides: &[PresentSlide],
+) -> Markup {
+    if slides.is_empty() {
+        return maud::html! {
+            div class="pa3 white-50" {
+                "No presentation slides configured. Add a [present] section with files to your .fig.toml."
+            }
+        };
+    }
+
+    let slide_count = slides.len();
+
+    maud::html! {
+        div id="present-container" {
+            // Slide counter and controls
+            div class="flex items-center justify-between mb3" {
+                div class="f4 fw6 white" { "Presentation" }
+                div class="flex items-center" {
+                    span id="slide-counter" class="f6 white-70 mr3" { "1 / " (slide_count) }
+                    button
+                        id="present-fullscreen-btn"
+                        class="f6 link white-70 hover-white bg-transparent bn pointer pa1 mr2"
+                        onclick="document.getElementById('present-container').requestFullscreen()"
+                    {
+                        "Fullscreen"
+                    }
+                }
+            }
+
+            // Slides container
+            div id="slides-wrapper" class="relative" style="min-height: 60vh;" {
+                @for (i, slide) in slides.iter().enumerate() {
+                    @let is_first = i == 0;
+                    div
+                        class=(if is_first { "present-slide" } else { "present-slide dn" })
+                        data-slide-index=(i)
+                        style="display: flex; align-items: center; justify-content: center; min-height: 60vh; padding: 2rem;"
+                    {
+                        div class="markdown-body white lh-copy" style="max-width: 800px; width: 100%;" {
+                            (maud::PreEscaped(&slide.html))
+                        }
+                    }
+                }
+            }
+
+            // Navigation controls
+            div class="flex items-center justify-between mt3" {
+                button
+                    id="present-prev"
+                    class="f6 link white-70 hover-white bg-transparent bn pointer pa2 ph3"
+                    onclick="presentPrev()"
+                {
+                    "\u{2190} Previous"
+                }
+                div class="flex" {
+                    @for i in 0..slide_count {
+                        @let is_active = i == 0;
+                        button
+                            class=(if is_active { "present-dot bg-white" } else { "present-dot bg-white-30" })
+                            data-dot-index=(i)
+                            onclick=(format!("presentGoTo({})", i))
+                            style="width: 10px; height: 10px; border-radius: 50%; margin: 0 4px; border: none; cursor: pointer;"
+                        {}
+                    }
+                }
+                button
+                    id="present-next"
+                    class="f6 link white-70 hover-white bg-transparent bn pointer pa2 ph3"
+                    onclick="presentNext()"
+                {
+                    "Next \u{2192}"
+                }
+            }
+        }
+        style {
+            ".present-slide {}"
+            ".present-slide.active { display: flex !important; }"
+            "div:fullscreen #present-container { background: black; }"
+            "div:fullscreen .present-slide { min-height: 100vh; }"
+            "div:fullscreen #slides-wrapper { min-height: 100vh; }"
+        }
+        script {
+            (maud::PreEscaped(r#"
+(function() {
+    let currentSlide = 0;
+    const slides = document.querySelectorAll('.present-slide');
+    const dots = document.querySelectorAll('.present-dot');
+    const counter = document.getElementById('slide-counter');
+    const total = slides.length;
+
+    function updateSlide() {
+        slides.forEach((s, i) => {
+            s.classList.remove('dn');
+            s.style.display = i === currentSlide ? 'flex' : 'none';
+        });
+        dots.forEach((d, i) => {
+            d.className = i === currentSlide ? 'present-dot bg-white' : 'present-dot bg-white-30';
+        });
+        if (counter) {
+            counter.textContent = (currentSlide + 1) + ' / ' + total;
+        }
+    }
+
+    window.presentNext = function() {
+        if (currentSlide < total - 1) {
+            currentSlide++;
+            updateSlide();
+        }
+    };
+
+    window.presentPrev = function() {
+        if (currentSlide > 0) {
+            currentSlide--;
+            updateSlide();
+        }
+    };
+
+    window.presentGoTo = function(index) {
+        currentSlide = index;
+        updateSlide();
+    };
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            presentNext();
+        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            presentPrev();
+        }
+    });
+})();
+"#))
         }
     }
 }

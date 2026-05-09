@@ -12,6 +12,7 @@ mod config;
 mod db;
 mod git;
 mod git_backend;
+mod md;
 mod view;
 
 #[get("/health")]

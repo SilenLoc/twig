@@ -1,7 +1,16 @@
+use std::collections::HashMap;
 use std::path::Path;
 
 use chrono::Utc;
 use serde::Deserialize;
+
+/// Presentation configuration from `.fig.toml`
+#[derive(Debug, Deserialize, Default, Clone)]
+pub struct PresentConfig {
+    pub files: Vec<String>,
+    #[serde(flatten)]
+    pub template_vars: HashMap<String, String>,
+}
 
 /// Configuration from `.fig.toml` file in repository
 #[derive(Debug, Deserialize, Default)]
@@ -14,6 +23,9 @@ pub struct FigConfig {
     /// Whether the repository can be deleted from the UI.
     #[serde(default)]
     pub deleteable: bool,
+    /// Presentation configuration.
+    #[serde(default)]
+    pub present: PresentConfig,
 }
 
 impl FigConfig {
@@ -515,15 +527,36 @@ mod tests {
     #[test]
     fn test_fig_config_parse() {
         let toml_content = r#"
-ignore_for_view = ["skills", "temp", "drafts/"]
+ignore_for_view = ["skills/", "temp", "drafts/"]
 deleteable = true
 "#;
         let config = FigConfig::parse(toml_content);
         assert_eq!(config.ignore_for_view.len(), 3);
-        assert!(config.ignore_for_view.contains(&"skills".to_string()));
+        assert!(config.ignore_for_view.contains(&"skills/".to_string()));
         assert!(config.ignore_for_view.contains(&"temp".to_string()));
         assert!(config.ignore_for_view.contains(&"drafts/".to_string()));
         assert!(config.deleteable);
+    }
+
+    #[test]
+    fn test_present_config_parse() {
+        let toml_content = r#"
+[present]
+files = ["slides/intro.md", "slides/conclusion.md"]
+author = "Jane Doe"
+"#;
+        let config = FigConfig::parse(toml_content);
+        assert_eq!(config.present.files.len(), 2);
+        assert!(
+            config
+                .present
+                .files
+                .contains(&"slides/intro.md".to_string())
+        );
+        assert_eq!(
+            config.present.template_vars.get("author").unwrap(),
+            "Jane Doe"
+        );
     }
 
     #[test]
@@ -532,6 +565,7 @@ deleteable = true
             ignore_for_view: vec!["skills".to_string()],
             tabs: vec![],
             deleteable: false,
+            present: PresentConfig::default(),
         };
 
         // Should ignore files in the skills folder
@@ -551,6 +585,7 @@ deleteable = true
             ignore_for_view: vec!["drafts/".to_string()],
             tabs: vec![],
             deleteable: false,
+            present: PresentConfig::default(),
         };
 
         // Should ignore files in the drafts folder
@@ -568,6 +603,7 @@ deleteable = true
             ignore_for_view: vec!["temp".to_string(), "archive".to_string()],
             tabs: vec![],
             deleteable: false,
+            present: PresentConfig::default(),
         };
 
         // Should ignore files in temp
@@ -586,6 +622,7 @@ deleteable = true
             ignore_for_view: vec![],
             tabs: vec![],
             deleteable: false,
+            present: PresentConfig::default(),
         };
 
         assert!(!config.should_ignore("any/file.md"));
@@ -599,6 +636,7 @@ deleteable = true
             ignore_for_view: vec!["skills/".to_string()],
             tabs: vec![],
             deleteable: false,
+            present: PresentConfig::default(),
         };
 
         // The folder itself should be ignored
@@ -622,6 +660,7 @@ deleteable = true
             ignore_for_view: vec!["AGENTS.md".to_string()],
             tabs: vec![],
             deleteable: false,
+            present: PresentConfig::default(),
         };
 
         // Root level AGENTS.md should be ignored
