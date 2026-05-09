@@ -199,10 +199,7 @@ async fn is_authenticated(
         user.id,
         namespace_name
     );
-    match db
-        .user_has_namespace_access(&user.id, namespace_name)
-        .await
-    {
+    match db.user_has_namespace_access(&user.id, namespace_name).await {
         Ok(true) => {
             log::info!(
                 "Git auth success: user='{}' has access to namespace='{}'",
@@ -213,7 +210,7 @@ async fn is_authenticated(
         }
         Ok(false) => {
             // Check if namespace exists at all
-match db.get_namespace_by_name(namespace_name).await {
+            match db.get_namespace_by_name(namespace_name).await {
                 Ok(Some(_)) => {
                     // Namespace exists but user doesn't have access
                     log::warn!(

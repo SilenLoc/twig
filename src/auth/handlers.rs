@@ -275,10 +275,7 @@ pub async fn login_ui_handler(
     info!("User logged in via UI: {}", form.username);
 
     // Check if user has any namespaces
-    let has_namespaces = db
-        .user_has_any_namespaces(&user.id)
-        .await
-        .unwrap_or(false);
+    let has_namespaces = db.user_has_any_namespaces(&user.id).await.unwrap_or(false);
 
     if has_namespaces {
         // Redirect to home page if user already has namespaces

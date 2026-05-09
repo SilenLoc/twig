@@ -312,10 +312,7 @@ pub async fn create_repo_handler(
     };
 
     // Check if user has access to namespace
-    match db
-        .user_has_namespace_access(&user_id, namespace)
-        .await
-    {
+    match db.user_has_namespace_access(&user_id, namespace).await {
         Ok(true) => {}
         Ok(false) => {
             return HttpResponse::Forbidden()
