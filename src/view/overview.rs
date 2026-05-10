@@ -27,13 +27,21 @@ pub async fn index(
 
     // Get namespaces with owners from database
     let namespaces = if search_query.is_empty() {
-        db.get_all_namespaces_with_owners()
-            .await
-            .unwrap_or_default()
+        match db.get_all_namespaces_with_owners().await {
+            Ok(n) => n,
+            Err(e) => {
+                log::error!("Failed to get namespaces: {e}");
+                Vec::new()
+            }
+        }
     } else {
-        db.search_namespaces_with_owners(search_query)
-            .await
-            .unwrap_or_default()
+        match db.search_namespaces_with_owners(search_query).await {
+            Ok(n) => n,
+            Err(e) => {
+                log::error!("Failed to search namespaces: {e}");
+                Vec::new()
+            }
+        }
     };
 
     let content = maud::html! {

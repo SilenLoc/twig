@@ -5,7 +5,7 @@ use super::render_layout;
 use super::session_auth::get_username_from_request;
 use crate::auth::FigContext;
 
-fn wrap_auth_content(content: maud::Markup) -> maud::Markup {
+fn wrap_auth_content(content: &maud::Markup) -> maud::Markup {
     maud::html! {
         div id="auth-content" class="flex flex-column items-center justify-center" style="min-height: calc(100vh - 5rem); padding: 2rem 1rem;" {
             div class="w-100 mw6" {
@@ -73,7 +73,7 @@ pub async fn ticket_page(
         Ok(content)
     } else {
         Ok(render_layout(
-            &wrap_auth_content(content),
+            &wrap_auth_content(&content),
             username.as_deref(),
         ))
     }
@@ -174,7 +174,7 @@ pub async fn signup_page(
         Ok(content)
     } else {
         Ok(render_layout(
-            &wrap_auth_content(content),
+            &wrap_auth_content(&content),
             username.as_deref(),
         ))
     }
@@ -240,7 +240,7 @@ pub async fn login_page(
         Ok(content)
     } else {
         Ok(render_layout(
-            &wrap_auth_content(content),
+            &wrap_auth_content(&content),
             username.as_deref(),
         ))
     }
@@ -304,7 +304,7 @@ pub async fn namespace_page(
         Ok(content)
     } else {
         Ok(render_layout(
-            &wrap_auth_content(content),
+            &wrap_auth_content(&content),
             username.as_deref(),
         ))
     }

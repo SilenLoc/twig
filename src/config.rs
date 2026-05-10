@@ -6,7 +6,6 @@ pub struct Server {
     db_path: String,
     api_key: String,
     reset_db: bool,
-    migrate: bool,
 }
 
 impl Server {
@@ -17,7 +16,6 @@ impl Server {
         db_path: String,
         api_key: String,
         reset_db: bool,
-        migrate: bool,
     ) -> Self {
         Server {
             address,
@@ -26,7 +24,6 @@ impl Server {
             db_path,
             api_key,
             reset_db,
-            migrate,
         }
     }
 
@@ -46,11 +43,6 @@ impl Server {
         &self.db_path
     }
 
-    #[allow(dead_code)]
-    pub fn migrate(&self) -> bool {
-        self.migrate
-    }
-
     /// Deletes the database file if RESET_DB is set to true.
     /// Logs warnings and results appropriately.
     pub fn maybe_reset_database(&self) {
@@ -65,7 +57,7 @@ impl Server {
 
         if std::path::Path::new(&self.db_path).exists() {
             if let Err(e) = std::fs::remove_file(&self.db_path) {
-                log::error!("Failed to delete database file: {}", e);
+                log::error!("Failed to delete database file: {e}");
             } else {
                 log::info!("Database file deleted successfully");
             }
@@ -77,7 +69,7 @@ impl Server {
     pub fn effective_api_key(&self) -> String {
         if self.api_key.is_empty() {
             let key = crate::auth::generate_token();
-            log::warn!("No API_KEY set, using generated key: {}", key);
+            log::warn!("No API_KEY set, using generated key: {key}");
             key
         } else {
             self.api_key.clone()
@@ -101,7 +93,6 @@ pub fn from_env() -> Server {
     let db_path = std::env::var("DB_PATH").unwrap_or_else(|_| "fig.db".to_string());
     let api_key = std::env::var("API_KEY").unwrap_or_default();
     let reset_db = std::env::var("RESET_DB").unwrap_or_default() == "true";
-    let migrate = std::env::var("MIGRATE").unwrap_or_default() == "true";
 
     Server::new(
         ("0.0.0.0".to_string(), port),
@@ -110,7 +101,6 @@ pub fn from_env() -> Server {
         db_path,
         api_key,
         reset_db,
-        migrate,
     )
 }
 
@@ -150,7 +140,6 @@ mod tests {
             "fig.db".to_string(),
             "mykey".to_string(),
             false,
-            false,
         );
         assert_eq!(server.address(), ("127.0.0.1".to_string(), 8080));
         assert_eq!(server.log_level(), "debug");
@@ -167,7 +156,6 @@ mod tests {
             "fig.db".to_string(),
             "apikey".to_string(),
             false,
-            true,
         );
         let cloned = server.clone();
         assert_eq!(cloned.project_root(), server.project_root());
@@ -183,7 +171,6 @@ mod tests {
             "fig.db".to_string(),
             "my-secret-key".to_string(),
             false,
-            false,
         );
         assert_eq!(server.effective_api_key(), "my-secret-key");
     }
@@ -194,9 +181,8 @@ mod tests {
             ("0.0.0.0".to_string(), 80),
             "info".to_string(),
             "/srv/git".to_string(),
-            "fig.db".to_string(),
             String::new(),
-            false,
+            String::new(),
             false,
         );
         let key = server.effective_api_key();
@@ -213,7 +199,6 @@ mod tests {
             "/tmp/fig_test_no_reset.db".to_string(),
             "key".to_string(),
             false,
-            false,
         );
         server.maybe_reset_database();
     }
@@ -226,7 +211,6 @@ mod tests {
             "/srv/git".to_string(),
             "fig.db".to_string(),
             "key".to_string(),
-            false,
             false,
         );
         let addr = server.address();

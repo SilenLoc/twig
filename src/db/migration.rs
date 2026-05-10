@@ -101,7 +101,7 @@ impl Database {
             self.conn()?
                 .execute(migration.content, ())
                 .await
-                .map_err(|e| format!("Migration failed: {}", e))?;
+                .map_err(|e| format!("Migration failed: {e}"))?;
         }
 
         Ok(())

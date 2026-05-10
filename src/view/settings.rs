@@ -28,51 +28,49 @@ pub async fn settings_page(
     auth_state: web::Data<FigContext>,
 ) -> AwResult<maud::Markup> {
     // Get user from session
-    let token = match req.cookie("session") {
-        Some(cookie) => cookie.value().to_string(),
-        None => {
-            return Ok(maud::html! {
-                div class="ba b--red br2 pa3 bg-dark-red" {
-                    p class="f6 white ma0" { "Not logged in. Please log in first." }
-                }
-            });
-        }
+    let Some(cookie) = req.cookie("session") else {
+        return Ok(maud::html! {
+            div class="ba b--red br2 pa3 bg-dark-red" {
+                p class="f6 white ma0" { "Not logged in. Please log in first." }
+            }
+        });
     };
+    let token = cookie.value().to_string();
 
-    let user_id = match auth_state.validate_token(&token).await {
-        Some(user_id) => user_id,
-        None => {
-            return Ok(maud::html! {
-                div class="ba b--red br2 pa3 bg-dark-red" {
-                    p class="f6 white ma0" { "Session expired. Please log in again." }
-                }
-            });
-        }
+    let Some(user_id) = auth_state.validate_token(&token).await else {
+        return Ok(maud::html! {
+            div class="ba b--red br2 pa3 bg-dark-red" {
+                p class="f6 white ma0" { "Session expired. Please log in again." }
+            }
+        });
     };
 
     let db = auth_state.db();
 
-    let user = match db.get_user_by_id(&user_id).await {
-        Ok(Some(user)) => user,
-        _ => {
-            return Ok(maud::html! {
-                div class="ba b--red br2 pa3 bg-dark-red" {
-                    p class="f6 white ma0" { "Failed to load user." }
-                }
-            });
-        }
+    let Ok(Some(user)) = db.get_user_by_id(&user_id).await else {
+        return Ok(maud::html! {
+            div class="ba b--red br2 pa3 bg-dark-red" {
+                p class="f6 white ma0" { "Failed to load user." }
+            }
+        });
     };
 
     // Load namespaces and repos the user has access to
-    let namespaces = db
-        .get_namespaces_for_user(&user_id)
-        .await
-        .unwrap_or_default();
+    let namespaces = match db.get_namespaces_for_user(&user_id).await {
+        Ok(n) => n,
+        Err(e) => {
+            log::error!("Failed to get namespaces: {e}");
+            Vec::new()
+        }
+    };
 
     let mut repos_by_namespace: Vec<(String, Vec<git::bare::RepoInfo>)> = Vec::new();
     for ns in namespaces {
         let repos =
-            git::bare::get_repos_with_info(server.project_root(), &ns.name).unwrap_or_default();
+            git::bare::get_repos_with_info(server.project_root(), &ns.name).unwrap_or_else(|e| {
+                log::error!("Failed to get repos for namespace '{}': {e}", ns.name);
+                Vec::new()
+            });
         let deletable_repos: Vec<_> = repos
             .into_iter()
             .filter(|repo| {
@@ -202,20 +200,15 @@ pub async fn update_email(
     form: web::Form<UpdateEmailForm>,
 ) -> impl Responder {
     // Get user from session
-    let token = match req.cookie("session") {
-        Some(cookie) => cookie.value().to_string(),
-        None => {
-            return HttpResponse::Unauthorized()
-                .body(render_error("Not logged in. Please log in first.").into_string());
-        }
+    let Some(cookie) = req.cookie("session") else {
+        return HttpResponse::Unauthorized()
+            .body(render_error("Not logged in. Please log in first.").into_string());
     };
+    let token = cookie.value().to_string();
 
-    let user_id = match auth_state.validate_token(&token).await {
-        Some(user_id) => user_id,
-        None => {
-            return HttpResponse::Unauthorized()
-                .body(render_error("Session expired. Please log in again.").into_string());
-        }
+    let Some(user_id) = auth_state.validate_token(&token).await else {
+        return HttpResponse::Unauthorized()
+            .body(render_error("Session expired. Please log in again.").into_string());
     };
 
     // Validate email format (basic validation)
@@ -228,14 +221,14 @@ pub async fn update_email(
 
     // Update email in database
     match db.update_user_email(&user_id, &form.email).await {
-        Ok(_) => {
-            info!("Updated email for user: {}", user_id);
+        Ok(()) => {
+            info!("Updated email for user: {user_id}");
             HttpResponse::Ok()
                 .content_type("text/html")
                 .body(render_success("Email updated successfully!").into_string())
         }
         Err(e) => {
-            log::error!("Failed to update email: {}", e);
+            log::error!("Failed to update email: {e}");
             HttpResponse::InternalServerError()
                 .body(render_error("Failed to update email").into_string())
         }
@@ -250,20 +243,15 @@ pub async fn delete_repo(
     form: web::Form<DeleteRepoForm>,
 ) -> impl Responder {
     // Get user from session
-    let token = match req.cookie("session") {
-        Some(cookie) => cookie.value().to_string(),
-        None => {
-            return HttpResponse::Unauthorized()
-                .body(render_error("Not logged in. Please log in first.").into_string());
-        }
+    let Some(cookie) = req.cookie("session") else {
+        return HttpResponse::Unauthorized()
+            .body(render_error("Not logged in. Please log in first.").into_string());
     };
+    let token = cookie.value().to_string();
 
-    let user_id = match auth_state.validate_token(&token).await {
-        Some(user_id) => user_id,
-        None => {
-            return HttpResponse::Unauthorized()
-                .body(render_error("Session expired. Please log in again.").into_string());
-        }
+    let Some(user_id) = auth_state.validate_token(&token).await else {
+        return HttpResponse::Unauthorized()
+            .body(render_error("Session expired. Please log in again.").into_string());
     };
 
     let db = auth_state.db();
@@ -279,7 +267,7 @@ pub async fn delete_repo(
                 .body(render_error("Access denied to namespace").into_string());
         }
         Err(e) => {
-            log::error!("Database error: {}", e);
+            log::error!("Database error: {e}");
             return HttpResponse::InternalServerError()
                 .body(render_error("Database error").into_string());
         }
@@ -310,7 +298,7 @@ pub async fn delete_repo(
 
     // Delete the repository
     match std::fs::remove_dir_all(&repo_path) {
-        Ok(_) => {
+        Ok(()) => {
             info!(
                 "Deleted repository '{}/{}' by user: {}",
                 form.namespace, form.repo_name, user_id
@@ -320,7 +308,7 @@ pub async fn delete_repo(
                 .body(render_success("Repository deleted successfully.").into_string())
         }
         Err(e) => {
-            log::error!("Failed to delete repository: {}", e);
+            log::error!("Failed to delete repository: {e}");
             HttpResponse::InternalServerError()
                 .body(render_error("Failed to delete repository").into_string())
         }

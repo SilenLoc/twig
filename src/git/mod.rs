@@ -36,19 +36,16 @@ pub async fn git_handler(
 
     match kind.clone() {
         crate::git_backend::GitRequestKind::AdvertiseRefs(git_service) => {
-            info!(
-                "handling advertise refs {}: {} kind: {}",
-                repo, endpoint, git_service
-            );
+            info!("handling advertise refs {repo}: {endpoint} kind: {git_service}");
         }
         crate::git_backend::GitRequestKind::FetchClone => {
-            info!("handling fetch or clone {}: {}", repo, endpoint);
+            info!("handling fetch or clone {repo}: {endpoint}");
         }
         crate::git_backend::GitRequestKind::Push => {
-            info!("handling push {}: {}", repo, endpoint);
+            info!("handling push {repo}: {endpoint}");
         }
         crate::git_backend::GitRequestKind::DumbGet => {
-            info!("handling dumb get {}: {}", repo, endpoint);
+            info!("handling dumb get {repo}: {endpoint}");
         }
     }
 
@@ -61,13 +58,13 @@ pub async fn git_handler(
             Ok(Some(user)) => {
                 // Auto-create namespace if it doesn't exist
                 if let Err(e) = ensure_namespace_exists(&auth_state, &user, &namespace).await {
-                    log::error!("Failed to ensure namespace exists: {}", e);
+                    log::error!("Failed to ensure namespace exists: {e}");
                     return actix_web::HttpResponse::InternalServerError()
                         .body("Failed to create namespace");
                 }
                 // Auto-create repo if it doesn't exist
-                if let Err(e) = ensure_repo_exists(server.project_root(), &namespace, &repo).await {
-                    log::error!("Failed to ensure repo exists: {}", e);
+                if let Err(e) = ensure_repo_exists(server.project_root(), &namespace, &repo) {
+                    log::error!("Failed to ensure repo exists: {e}");
                     return actix_web::HttpResponse::InternalServerError()
                         .body("Failed to create repository");
                 }
@@ -148,8 +145,7 @@ async fn is_authenticated(
         Some(creds) => creds,
         None => {
             log::warn!(
-                "Git auth failed: No basic auth credentials for namespace '{}'",
-                namespace_name
+                "Git auth failed: No basic auth credentials for namespace '{namespace_name}'"
             );
             return Err(actix_web::HttpResponse::Unauthorized()
                 .insert_header(("WWW-Authenticate", "Basic realm=\"git\""))
@@ -157,11 +153,7 @@ async fn is_authenticated(
         }
     };
 
-    log::debug!(
-        "Git auth attempt: user='{}' namespace='{}'",
-        username,
-        namespace_name
-    );
+    log::debug!("Git auth attempt: user='{username}' namespace='{namespace_name}'");
 
     let db = auth_state.db();
 
@@ -172,11 +164,11 @@ async fn is_authenticated(
             user
         }
         Ok(None) => {
-            log::warn!("Git auth failed: User '{}' not found in database", username);
+            log::warn!("Git auth failed: User '{username}' not found in database");
             return Err(actix_web::HttpResponse::Unauthorized().body("Invalid credentials"));
         }
         Err(e) => {
-            log::error!("Database error looking up user '{}': {}", username, e);
+            log::error!("Database error looking up user '{username}': {e}");
             return Err(actix_web::HttpResponse::InternalServerError().body("Database error"));
         }
     };
@@ -184,14 +176,14 @@ async fn is_authenticated(
     // Verify password
     match verify_password(&password, &user.password_hash) {
         Ok(true) => {
-            log::debug!("Git auth: Password verified for user '{}'", username);
+            log::debug!("Git auth: Password verified for user '{username}'");
         }
         Ok(false) => {
-            log::warn!("Git auth failed: Invalid password for user '{}'", username);
+            log::warn!("Git auth failed: Invalid password for user '{username}'");
             return Err(actix_web::HttpResponse::Unauthorized().body("Invalid credentials"));
         }
         Err(e) => {
-            log::error!("Password verification error for user '{}': {}", username, e);
+            log::error!("Password verification error for user '{username}': {e}");
             return Err(actix_web::HttpResponse::InternalServerError().body("Authentication error"));
         }
     }
@@ -205,9 +197,7 @@ async fn is_authenticated(
     match db.user_has_namespace_access(&user.id, namespace_name).await {
         Ok(true) => {
             log::info!(
-                "Git auth success: user='{}' has access to namespace='{}'",
-                username,
-                namespace_name
+                "Git auth success: user='{username}' has access to namespace='{namespace_name}'"
             );
             Ok(Some(user))
         }
@@ -227,28 +217,20 @@ async fn is_authenticated(
                 Ok(None) => {
                     // Namespace doesn't exist - allow auto-creation by returning the user
                     log::info!(
-                        "Git auth success: user='{}' can create namespace='{}' (doesn't exist)",
-                        username,
-                        namespace_name
+                        "Git auth success: user='{username}' can create namespace='{namespace_name}' (doesn't exist)"
                     );
                     Ok(Some(user))
                 }
                 Err(e) => {
                     log::error!(
-                        "Database error checking namespace existence for user '{}': {}",
-                        username,
-                        e
+                        "Database error checking namespace existence for user '{username}': {e}"
                     );
                     Err(actix_web::HttpResponse::InternalServerError().body("Database error"))
                 }
             }
         }
         Err(e) => {
-            log::error!(
-                "Database error checking namespace access for user '{}': {}",
-                username,
-                e
-            );
+            log::error!("Database error checking namespace access for user '{username}': {e}");
             Err(actix_web::HttpResponse::InternalServerError().body("Database error"))
         }
     }
@@ -279,18 +261,14 @@ async fn ensure_namespace_exists(
                 crate::auth::create_namespace(namespace_name.to_string(), user.id.clone());
             db.create_namespace(&namespace)
                 .await
-                .map_err(|e| format!("Failed to create namespace: {}", e))
+                .map_err(|e| format!("Failed to create namespace: {e}"))
         }
-        Err(e) => Err(format!("Database error checking namespace: {}", e)),
+        Err(e) => Err(format!("Database error checking namespace: {e}")),
     }
 }
 
 /// Ensures a bare repository exists on disk, creating it if necessary
-async fn ensure_repo_exists(
-    project_root: &str,
-    namespace: &str,
-    repo_name: &str,
-) -> Result<(), String> {
+fn ensure_repo_exists(project_root: &str, namespace: &str, repo_name: &str) -> Result<(), String> {
     let repo_path = Path::new(project_root).join(namespace).join(repo_name);
 
     if repo_path.exists() {
@@ -302,17 +280,17 @@ async fn ensure_repo_exists(
     let ns_path = Path::new(project_root).join(namespace);
     if !ns_path.exists() {
         std::fs::create_dir_all(&ns_path)
-            .map_err(|e| format!("Failed to create namespace directory: {}", e))?;
+            .map_err(|e| format!("Failed to create namespace directory: {e}"))?;
     }
 
     // Create the bare repository
-    log::info!("Auto-creating repository '{}/{}'", namespace, repo_name);
+    log::info!("Auto-creating repository '{namespace}/{repo_name}'");
 
     std::fs::create_dir_all(&repo_path)
-        .map_err(|e| format!("Failed to create repo directory: {}", e))?;
+        .map_err(|e| format!("Failed to create repo directory: {e}"))?;
 
     bare_init(&repo_path, "main", "Fig", "fig@localhost")
-        .map_err(|e| format!("Failed to initialize bare repo: {}", e))?;
+        .map_err(|e| format!("Failed to initialize bare repo: {e}"))?;
 
     Ok(())
 }

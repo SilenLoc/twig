@@ -40,7 +40,7 @@ impl Database {
         // instead of immediately returning SQLITE_BUSY
         let conn = self.conn()?;
         conn.busy_timeout(Duration::from_secs(30))
-            .map_err(|e| format!("Failed to set busy timeout: {}", e))?;
+            .map_err(|e| format!("Failed to set busy timeout: {e}"))?;
 
         // Initialize tables
         self.create_tables().await?;
@@ -54,9 +54,9 @@ impl Database {
         let conn = self
             .db
             .connect()
-            .map_err(|e| format!("Failed to connect to database: {}", e))?;
+            .map_err(|e| format!("Failed to connect to database: {e}"))?;
         conn.busy_timeout(std::time::Duration::from_secs(30))
-            .map_err(|e| format!("Failed to set busy timeout: {}", e))?;
+            .map_err(|e| format!("Failed to set busy timeout: {e}"))?;
         Ok(conn)
     }
 }

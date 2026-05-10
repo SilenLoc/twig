@@ -120,7 +120,7 @@ pub async fn handler(
                 &present_slides,
             )
         }
-        Err(e) => render_git_error(e),
+        Err(e) => render_git_error(&e),
     };
 
     if req.headers().get("HX-Request").is_some() {
@@ -199,7 +199,7 @@ pub async fn tab_handler(
             }
         }
         Err(e) => {
-            let content = render_git_error(e);
+            let content = render_git_error(&e);
             if req.headers().get("HX-Request").is_some() {
                 Ok(content)
             } else {
@@ -280,7 +280,7 @@ pub async fn markdown_handler(
             }
         }
         Err(e) => {
-            let content = render_git_error(e);
+            let content = render_git_error(&e);
             if req.headers().get("HX-Request").is_some() {
                 Ok(content)
             } else {
@@ -351,12 +351,13 @@ fn markdown_to_html(markdown: &str, namespace: &str, repo: &str) -> String {
                         && !dest_str.starts_with('#')
                     {
                         // Check if it's a markdown file
-                        if dest_str.ends_with(".md") || dest_str.ends_with(".markdown") {
+                        let lower = dest_str.to_ascii_lowercase();
+                        if lower.ends_with(".md") || lower.ends_with(".markdown") {
                             // Link to the markdown viewer
-                            format!("/{}/{}/md/{}", namespace, repo, dest_str).into()
+                            format!("/{namespace}/{repo}/md/{dest_str}").into()
                         } else {
                             // Link to the raw file via repo root
-                            format!("/{}/{}/{}", namespace, repo, dest_str).into()
+                            format!("/{namespace}/{repo}/{dest_str}").into()
                         }
                     } else {
                         dest_url
@@ -380,11 +381,11 @@ fn markdown_to_html(markdown: &str, namespace: &str, repo: &str) -> String {
     html_output
 }
 
-fn render_git_error(e: git2::Error) -> Markup {
+fn render_git_error(e: &git2::Error) -> Markup {
     let code = e.code();
-    let code = format!("{:?}", code);
+    let code = format!("{code:?}");
     let klass = e.class();
-    let klass = format!("{:?}", klass);
+    let klass = format!("{klass:?}");
     let message = e.message();
     maud::html! {
         p { (message) }
@@ -394,7 +395,7 @@ fn render_git_error(e: git2::Error) -> Markup {
 }
 
 /// A scrollable container for tab content
-fn scrollable_container(content: Markup) -> Markup {
+fn scrollable_container(content: &Markup) -> Markup {
     maud::html! {
         div class="overflow-y-auto flex-auto" style="max-height: calc(100vh - 14rem);" {
             (content)
@@ -515,7 +516,7 @@ fn render_repo(
 
         // Tab content container (scrollable)
         div id="tab-content" {
-            (scrollable_container(render_tab_content_inner(ctx)))
+            (scrollable_container(&render_tab_content_inner(ctx)))
         }
     }
 }
@@ -529,7 +530,7 @@ fn render_tab_content(ctx: TabContentContext<'_>) -> Markup {
 
         // Tab content container (scrollable)
         div id="tab-content" {
-            (scrollable_container(render_tab_content_inner(ctx)))
+            (scrollable_container(&render_tab_content_inner(ctx)))
         }
     }
 }
@@ -541,17 +542,17 @@ fn get_default_markdown_file(markdown_files: &[String]) -> Option<&str> {
         .iter()
         .find(|f| f.eq_ignore_ascii_case("README.md"));
     if readme.is_some() {
-        return readme.map(|s| s.as_str());
+        return readme.map(String::as_str);
     }
     // Then try any README variant
     let readme = markdown_files
         .iter()
         .find(|f| f.to_lowercase().starts_with("readme"));
     if readme.is_some() {
-        return readme.map(|s| s.as_str());
+        return readme.map(String::as_str);
     }
     // Fall back to first file
-    markdown_files.first().map(|s| s.as_str())
+    markdown_files.first().map(String::as_str)
 }
 
 fn render_tab_content_inner(ctx: TabContentContext<'_>) -> Markup {
@@ -818,12 +819,12 @@ fn render_markdown_view(
 
 /// Renders just the markdown content without the sidebar (for HTMX updates)
 fn render_markdown_content_only(
-    _namespace: &str,
-    _repo: &str,
+    namespace: &str,
+    repo: &str,
     _current_file: &str,
     content: Option<&str>,
 ) -> Markup {
-    let html_content = content.map(|md| markdown_to_html(md, _namespace, _repo));
+    let html_content = content.map(|md| markdown_to_html(md, namespace, repo));
 
     maud::html! {
         @if let Some(ref html) = html_content {

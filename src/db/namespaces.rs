@@ -82,7 +82,7 @@ impl Database {
         &self,
         query: &str,
     ) -> Result<Vec<(Namespace, String)>, String> {
-        let search_pattern = format!("%{}%", query);
+        let search_pattern = format!("%{query}%");
         let mut rows = self
             .conn()?
             .query(

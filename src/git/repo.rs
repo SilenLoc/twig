@@ -60,7 +60,7 @@ pub async fn init(
             return HttpResponse::Unauthorized().body("Invalid credentials");
         }
         Err(e) => {
-            log::error!("Database error: {}", e);
+            log::error!("Database error: {e}");
             return HttpResponse::InternalServerError().body("Database error");
         }
     };
@@ -72,7 +72,7 @@ pub async fn init(
             return HttpResponse::Unauthorized().body("Invalid credentials");
         }
         Err(e) => {
-            log::error!("Password verification error: {}", e);
+            log::error!("Password verification error: {e}");
             return HttpResponse::InternalServerError().body("Authentication error");
         }
     }
@@ -87,7 +87,7 @@ pub async fn init(
             return HttpResponse::Forbidden().body("Access denied to namespace");
         }
         Err(e) => {
-            log::error!("Database error: {}", e);
+            log::error!("Database error: {e}");
             return HttpResponse::InternalServerError().body("Database error");
         }
     }
@@ -102,7 +102,7 @@ pub async fn init(
     ) {
         Ok(()) => HttpResponse::Ok().body("Repository created"),
         Err(e) => {
-            log::error!("Failed to create repository: {}", e);
+            log::error!("Failed to create repository: {e}");
             HttpResponse::InternalServerError().body("Failed to create repository")
         }
     }
@@ -122,7 +122,7 @@ fn create_repo(
 
     if !root.exists() {
         std::fs::create_dir_all(root)
-            .map_err(|e| format!("Failed to create root directory: {}", e))?;
+            .map_err(|e| format!("Failed to create root directory: {e}"))?;
     }
 
     let ns: String = namespace.into();
@@ -130,7 +130,7 @@ fn create_repo(
 
     if !ns.exists() {
         std::fs::create_dir_all(&ns)
-            .map_err(|e| format!("Failed to create namespace directory: {}", e))?;
+            .map_err(|e| format!("Failed to create namespace directory: {e}"))?;
     }
 
     let repo: String = repo.into();
@@ -138,7 +138,7 @@ fn create_repo(
 
     if !repo.exists() {
         std::fs::create_dir_all(&repo)
-            .map_err(|e| format!("Failed to create repo directory: {}", e))?;
+            .map_err(|e| format!("Failed to create repo directory: {e}"))?;
         let res = bare_init(&repo, &branch, "Fig", "fig@localhost");
 
         match res {
@@ -167,7 +167,7 @@ pub fn bare_init(
     // Enable http.receivepack to allow pushes via HTTP
     cmd!(sh, "git config http.receivepack true")
         .run()
-        .map_err(|e| format!("Failed to enable http.receivepack: {}", e))?;
+        .map_err(|e| format!("Failed to enable http.receivepack: {e}"))?;
 
     // Create initial commit with .fig.toml file
     // Use git plumbing commands to create a commit in a bare repo
@@ -175,13 +175,13 @@ pub fn bare_init(
     let blob_hash = cmd!(sh, "git hash-object -w --stdin")
         .stdin(blob_content)
         .read()
-        .map_err(|e| format!("Failed to create blob: {}", e))?;
+        .map_err(|e| format!("Failed to create blob: {e}"))?;
 
-    let tree_entry = format!("100644 blob {}\t.fig.toml\n", blob_hash);
+    let tree_entry = format!("100644 blob {blob_hash}\t.fig.toml\n");
     let tree_hash = cmd!(sh, "git mktree")
         .stdin(tree_entry)
         .read()
-        .map_err(|e| format!("Failed to create tree: {}", e))?;
+        .map_err(|e| format!("Failed to create tree: {e}"))?;
 
     // Set author and committer info from user to avoid "Author unknown" error
     let commit_hash = cmd!(sh, "git commit-tree {tree_hash} -m 'Initial commit'")
@@ -190,15 +190,15 @@ pub fn bare_init(
         .env("GIT_COMMITTER_NAME", author_name)
         .env("GIT_COMMITTER_EMAIL", author_email)
         .read()
-        .map_err(|e| format!("Failed to create commit: {}", e))?;
+        .map_err(|e| format!("Failed to create commit: {e}"))?;
 
     cmd!(sh, "git update-ref refs/heads/{branch} {commit_hash}")
         .run()
-        .map_err(|e| format!("Failed to update ref: {}", e))?;
+        .map_err(|e| format!("Failed to update ref: {e}"))?;
 
     Ok(output)
 }
 
 fn sh() -> Result<xshell::Shell, String> {
-    xshell::Shell::new().map_err(|e| format!("Failed to create shell: {}", e))
+    xshell::Shell::new().map_err(|e| format!("Failed to create shell: {e}"))
 }

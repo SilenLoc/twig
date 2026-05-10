@@ -16,21 +16,24 @@ async fn user_has_namespace_access(
     auth_state: &web::Data<FigContext>,
     namespace: &str,
 ) -> bool {
-    let token = match req.cookie("session") {
-        Some(cookie) => cookie.value().to_string(),
-        None => return false,
+    let Some(cookie) = req.cookie("session") else {
+        return false;
     };
+    let token = cookie.value().to_string();
 
-    let user_id = match auth_state.validate_token(&token).await {
-        Some(id) => id,
-        None => return false,
+    let Some(user_id) = auth_state.validate_token(&token).await else {
+        return false;
     };
 
     let db = auth_state.db();
 
-    db.user_has_namespace_access(&user_id, namespace)
-        .await
-        .unwrap_or_default()
+    match db.user_has_namespace_access(&user_id, namespace).await {
+        Ok(access) => access,
+        Err(e) => {
+            log::error!("Failed to check namespace access: {e}");
+            false
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -41,17 +44,13 @@ struct Params {
 #[derive(Deserialize)]
 struct CreateRepoForm {
     repo_name: String,
-    #[serde(default = "default_branch")]
+    #[serde(default = "crate::git::repo::default_branch")]
     branch: String,
 }
 
 #[derive(Deserialize)]
 struct SearchQuery {
     q: Option<String>,
-}
-
-fn default_branch() -> String {
-    crate::git::repo::default_branch()
 }
 
 fn format_date(date: &chrono::DateTime<chrono::Utc>) -> String {
@@ -88,10 +87,16 @@ pub async fn handler(
 
     // Get repos with info (last commit date)
     let repos = if search_query.is_empty() {
-        git::bare::get_repos_with_info(server.project_root(), namespace).unwrap_or_default()
+        git::bare::get_repos_with_info(server.project_root(), namespace).unwrap_or_else(|e| {
+            log::error!("Failed to get repos: {e}");
+            Vec::new()
+        })
     } else {
         git::bare::search_repos_with_info(server.project_root(), namespace, search_query)
-            .unwrap_or_default()
+            .unwrap_or_else(|e| {
+                log::error!("Failed to search repos: {e}");
+                Vec::new()
+            })
     };
 
     let content = maud::html! {
@@ -272,20 +277,15 @@ pub async fn create_repo_handler(
     let namespace = &params.namespace;
 
     // Authenticate user via session cookie
-    let token = match req.cookie("session") {
-        Some(cookie) => cookie.value().to_string(),
-        None => {
-            return HttpResponse::Unauthorized()
-                .body(render_error("Not logged in. Please log in first.").into_string());
-        }
+    let Some(cookie) = req.cookie("session") else {
+        return HttpResponse::Unauthorized()
+            .body(render_error("Not logged in. Please log in first.").into_string());
     };
+    let token = cookie.value().to_string();
 
-    let user_id = match auth_state.validate_token(&token).await {
-        Some(user_id) => user_id,
-        None => {
-            return HttpResponse::Unauthorized()
-                .body(render_error("Session expired. Please log in again.").into_string());
-        }
+    let Some(user_id) = auth_state.validate_token(&token).await else {
+        return HttpResponse::Unauthorized()
+            .body(render_error("Session expired. Please log in again.").into_string());
     };
 
     let db = auth_state.db();
@@ -298,7 +298,7 @@ pub async fn create_repo_handler(
                 .body(render_error("Access denied to namespace").into_string());
         }
         Err(e) => {
-            log::error!("Database error: {}", e);
+            log::error!("Database error: {e}");
             return HttpResponse::InternalServerError()
                 .body(render_error("Database error").into_string());
         }
@@ -323,29 +323,24 @@ pub async fn create_repo_handler(
 
     // Create the repository directory
     if let Err(e) = std::fs::create_dir_all(&repo_path) {
-        log::error!("Failed to create repository directory: {}", e);
+        log::error!("Failed to create repository directory: {e}");
         return HttpResponse::InternalServerError()
             .body(render_error("Failed to create repository directory").into_string());
     }
 
     // Get user details for git author info
-    let user = match db.get_user_by_id(&user_id).await {
-        Ok(Some(user)) => user,
-        _ => {
-            return HttpResponse::InternalServerError()
-                .body(render_error("Failed to load user").into_string());
-        }
+    let Ok(Some(user)) = db.get_user_by_id(&user_id).await else {
+        return HttpResponse::InternalServerError()
+            .body(render_error("Failed to load user").into_string());
     };
 
     // Require user to have set an email before creating repositories
-    let author_email = match &user.email {
-        Some(email) => email.as_str(),
-        None => {
-            let _ = std::fs::remove_dir_all(&repo_path);
-            return HttpResponse::BadRequest()
-                .body(render_error("Please set your email in settings before creating a repository. <a href='/settings' class='link white underline'>Go to Settings</a>").into_string());
-        }
+    let Some(email) = &user.email else {
+        let _ = std::fs::remove_dir_all(&repo_path);
+        return HttpResponse::BadRequest()
+            .body(render_error("Please set your email in settings before creating a repository. <a href='/settings' class='link white underline'>Go to Settings</a>").into_string());
     };
+    let author_email = email.as_str();
 
     // Initialize bare repository with user info
     match bare_init(&repo_path, &form.branch, &user.username, author_email) {
@@ -363,7 +358,7 @@ pub async fn create_repo_handler(
                 .body(render_success(&success_msg).into_string())
         }
         Err(e) => {
-            log::error!("Failed to initialize bare repository: {}", e);
+            log::error!("Failed to initialize bare repository: {e}");
             // Clean up the created directory
             let _ = std::fs::remove_dir_all(&repo_path);
             HttpResponse::InternalServerError()

@@ -49,7 +49,7 @@ pub async fn logout_ui_handler(
 
     // Invalidate token
     if let Err(e) = auth_state.invalidate_token(&token).await {
-        log::error!("Failed to invalidate token: {}", e);
+        log::error!("Failed to invalidate token: {e}");
         return HttpResponse::InternalServerError().body("Failed to logout");
     }
 
@@ -95,12 +95,12 @@ pub async fn create_ticket_ui_handler(
     let db = auth_state.db();
 
     if let Err(e) = db.create_ticket(&ticket).await {
-        log::error!("Failed to create ticket: {}", e);
+        log::error!("Failed to create ticket: {e}");
         return HttpResponse::InternalServerError()
             .body(render_error("Failed to create ticket").into_string());
     }
 
-    info!("Generated signup ticket via UI: {}", ticket_id);
+    info!("Generated signup ticket via UI: {ticket_id}");
 
     // Return success with HX-Retarget to replace the whole form area
     HttpResponse::Ok()
@@ -125,7 +125,7 @@ pub async fn signup_ui_handler(
             return HttpResponse::Unauthorized().body(render_error("Invalid ticket").into_string());
         }
         Err(e) => {
-            log::error!("Database error: {}", e);
+            log::error!("Database error: {e}");
             return HttpResponse::InternalServerError()
                 .body(render_error("Database error").into_string());
         }
@@ -158,7 +158,7 @@ pub async fn signup_ui_handler(
         }
         Ok(None) => {}
         Err(e) => {
-            log::error!("Database error: {}", e);
+            log::error!("Database error: {e}");
             return HttpResponse::InternalServerError()
                 .body(render_error("Database error").into_string());
         }
@@ -172,7 +172,7 @@ pub async fn signup_ui_handler(
     ) {
         Ok(user) => user,
         Err(e) => {
-            log::error!("Failed to create user: {}", e);
+            log::error!("Failed to create user: {e}");
             return HttpResponse::InternalServerError()
                 .body(render_error("Failed to create user").into_string());
         }
@@ -180,14 +180,14 @@ pub async fn signup_ui_handler(
 
     // Save user to database
     if let Err(e) = db.create_user(&user).await {
-        log::error!("Failed to save user: {}", e);
+        log::error!("Failed to save user: {e}");
         return HttpResponse::InternalServerError()
             .body(render_error("Failed to save user").into_string());
     }
 
     // Mark ticket as used
     if let Err(e) = db.mark_ticket_used(&ticket.id).await {
-        log::error!("Failed to mark ticket used: {}", e);
+        log::error!("Failed to mark ticket used: {e}");
         // Don't fail here, user is already created
     }
 
@@ -218,7 +218,7 @@ pub async fn login_ui_handler(
                 .body(render_error("Invalid credentials").into_string());
         }
         Err(e) => {
-            log::error!("Database error: {}", e);
+            log::error!("Database error: {e}");
             return HttpResponse::InternalServerError()
                 .body(render_error("Database error").into_string());
         }
@@ -232,7 +232,7 @@ pub async fn login_ui_handler(
                 .body(render_error("Invalid credentials").into_string());
         }
         Err(e) => {
-            log::error!("Password verification error: {}", e);
+            log::error!("Password verification error: {e}");
             return HttpResponse::InternalServerError()
                 .body(render_error("Authentication error").into_string());
         }
@@ -242,7 +242,7 @@ pub async fn login_ui_handler(
     let token = match auth_state.create_session(user.id.clone()).await {
         Ok(token) => token,
         Err(e) => {
-            log::error!("Failed to create session: {}", e);
+            log::error!("Failed to create session: {e}");
             return HttpResponse::InternalServerError()
                 .body(render_error("Failed to create session").into_string());
         }
@@ -251,7 +251,13 @@ pub async fn login_ui_handler(
     info!("User logged in via UI: {}", form.username);
 
     // Check if user has any namespaces
-    let has_namespaces = db.user_has_any_namespaces(&user.id).await.unwrap_or(false);
+    let has_namespaces = match db.user_has_any_namespaces(&user.id).await {
+        Ok(has) => has,
+        Err(e) => {
+            log::error!("Failed to check namespaces for user '{}': {e}", user.id);
+            false
+        }
+    };
 
     if has_namespaces {
         // Redirect to home page if user already has namespaces
@@ -304,7 +310,7 @@ pub async fn create_namespace_ui_handler(
         }
         Ok(None) => {}
         Err(e) => {
-            log::error!("Database error: {}", e);
+            log::error!("Database error: {e}");
             return HttpResponse::InternalServerError()
                 .body(render_error("Database error").into_string());
         }
@@ -331,7 +337,7 @@ pub async fn create_namespace_ui_handler(
     let namespace = create_namespace(form.name.clone(), user_id);
 
     if let Err(e) = db.create_namespace(&namespace).await {
-        log::error!("Failed to create namespace: {}", e);
+        log::error!("Failed to create namespace: {e}");
         return HttpResponse::InternalServerError()
             .body(render_error("Failed to create namespace").into_string());
     }
@@ -351,7 +357,7 @@ pub async fn create_namespace_ui_handler(
     let namespace_path = std::path::Path::new(&project_root).join(&namespace.name);
 
     if let Err(e) = std::fs::create_dir_all(&namespace_path) {
-        log::error!("Failed to create namespace directory: {}", e);
+        log::error!("Failed to create namespace directory: {e}");
         // Don't fail here, directory can be created later
     }
 

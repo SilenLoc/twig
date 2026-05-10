@@ -5,7 +5,7 @@ use pulldown_cmark::{Event, Options, Parser, html};
 pub fn replace_mustache(input: &str, vars: &HashMap<String, String>) -> String {
     let mut result = input.to_string();
     for (key, value) in vars {
-        let pattern = format!("{{{{{}}}}}", key);
+        let pattern = format!("{{{{{key}}}}}");
         result = result.replace(&pattern, value);
     }
     result

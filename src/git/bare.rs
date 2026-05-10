@@ -404,7 +404,7 @@ pub fn list_files(
             let path = if prefix.is_empty() {
                 name.to_string()
             } else {
-                format!("{}/{}", prefix, name)
+                format!("{prefix}/{name}")
             };
 
             // Skip this entry if it matches ignore patterns

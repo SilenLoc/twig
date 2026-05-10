@@ -67,10 +67,8 @@ impl GitRequest {
             // Push data transfer
             ("POST", p) if p.ends_with("/git-receive-pack") => GitRequestKind::Push,
 
-            // Dumb HTTP fallback (static objects, HEAD, etc.)
-            ("GET", _) | ("HEAD", _) => GitRequestKind::DumbGet,
-
-            _ => GitRequestKind::DumbGet, // or return a 405
+            // Dumb HTTP fallback (static objects, HEAD, PUT, etc.)
+            _ => GitRequestKind::DumbGet,
         }
     }
 
@@ -98,7 +96,7 @@ pub fn run_with_config(
 ) -> Result<(String, Vec<u8>), String> {
     let sh = sh()?;
 
-    // todo make this configurable
+    // TODO: make this configurable
     let actual_root = format!("{}/{}", config.project_root(), namespace);
 
     debug!(
@@ -106,7 +104,7 @@ pub fn run_with_config(
         req.method, req.path_info, namespace, actual_root
     );
 
-    let sh = prepare_cgi_env(&actual_root, sh, req.clone(), authenticated_user);
+    let sh = prepare_cgi_env(&actual_root, sh, req, authenticated_user);
 
     if !req.content_type.is_empty() {
         sh.set_var("CONTENT_TYPE", req.content_type.clone());
@@ -174,7 +172,7 @@ fn parse_cgi_response(output: &[u8]) -> (String, Vec<u8>) {
 pub fn prepare_cgi_env(
     project_root: &str,
     sh: Shell,
-    req: GitRequest,
+    req: &GitRequest,
     authenticated_user: Option<&str>,
 ) -> Shell {
     sh.set_var("REQUEST_METHOD", req.method.clone());
@@ -241,7 +239,7 @@ pub fn prepare_cgi_env(
 }
 
 fn sh() -> Result<Shell, String> {
-    Shell::new().map_err(|e| format!("Failed to create shell: {}", e))
+    Shell::new().map_err(|e| format!("Failed to create shell: {e}"))
 }
 
 #[cfg(test)]
@@ -367,7 +365,7 @@ mod tests {
     fn test_prepare_cgi_env_sets_vars() {
         let sh = Shell::new().unwrap();
         let req = GitRequest::new("GET", "/repo/info/refs", "service=git-upload-pack", "");
-        let sh = prepare_cgi_env("/srv/git/ns/repo", sh, req, None);
+        let sh = prepare_cgi_env("/srv/git/ns/repo", sh, &req, None);
         assert_eq!(sh.var("REQUEST_METHOD").unwrap(), "GET");
         assert_eq!(sh.var("PATH_INFO").unwrap(), "/repo/info/refs");
         assert_eq!(sh.var("QUERY_STRING").unwrap(), "service=git-upload-pack");
