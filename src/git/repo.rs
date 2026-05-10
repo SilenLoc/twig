@@ -16,7 +16,7 @@ struct InitRepo {
     branch: String,
 }
 
-fn default_branch() -> String {
+pub fn default_branch() -> String {
     "main".to_string()
 }
 
@@ -100,14 +100,18 @@ pub async fn init(
 
     let init = init_repo;
 
-    create_repo(
+    match create_repo(
         server.project_root(),
         init.namespace(),
         init.repo(),
         init.branch(),
-    );
-
-    HttpResponse::Ok().body("Repository created")
+    ) {
+        Ok(()) => HttpResponse::Ok().body("Repository created"),
+        Err(e) => {
+            log::error!("Failed to create repository: {}", e);
+            HttpResponse::InternalServerError().body("Failed to create repository")
+        }
+    }
 }
 
 fn create_repo(
@@ -115,7 +119,7 @@ fn create_repo(
     namespace: impl Into<String>,
     repo: impl Into<String>,
     branch: impl Into<String>,
-) {
+) -> Result<(), String> {
     let root: String = root.into();
     let root: &Path = Path::new(&root);
     let branch: String = branch.into();
@@ -123,22 +127,24 @@ fn create_repo(
     info!("root path:{root:?}");
 
     if !root.exists() {
-        std::fs::create_dir_all(root).unwrap();
+        std::fs::create_dir_all(root)
+            .map_err(|e| format!("Failed to create root directory: {}", e))?;
     }
 
     let ns: String = namespace.into();
     let ns = root.join(ns);
 
     if !ns.exists() {
-        std::fs::create_dir_all(&ns).unwrap();
+        std::fs::create_dir_all(&ns)
+            .map_err(|e| format!("Failed to create namespace directory: {}", e))?;
     }
 
     let repo: String = repo.into();
     let repo = ns.join(repo);
 
     if !repo.exists() {
-        std::fs::create_dir_all(&repo).unwrap();
-        // Use default author info for API endpoint (username: Fig, email: fig@localhost)
+        std::fs::create_dir_all(&repo)
+            .map_err(|e| format!("Failed to create repo directory: {}", e))?;
         let res = bare_init(&repo, &branch, "Fig", "fig@localhost");
 
         match res {
@@ -146,6 +152,8 @@ fn create_repo(
             Err(e) => log::error!("{e}"),
         }
     }
+
+    Ok(())
 }
 
 pub fn bare_init(
@@ -154,7 +162,7 @@ pub fn bare_init(
     author_name: &str,
     author_email: &str,
 ) -> Result<String, String> {
-    let sh = sh();
+    let sh = sh()?;
     sh.change_dir(repo_path);
 
     // Initialize bare repo
@@ -197,6 +205,6 @@ pub fn bare_init(
     Ok(output)
 }
 
-fn sh() -> xshell::Shell {
-    xshell::Shell::new().unwrap()
+fn sh() -> Result<xshell::Shell, String> {
+    xshell::Shell::new().map_err(|e| format!("Failed to create shell: {}", e))
 }

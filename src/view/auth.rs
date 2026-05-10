@@ -2,19 +2,8 @@ use actix_web::Result as AwResult;
 use actix_web::{HttpRequest, get, web};
 
 use super::render_layout;
+use super::session_auth::get_username_from_request;
 use crate::auth::FigContext;
-
-/// Helper function to get the username from the session cookie if logged in
-async fn get_username_from_request(
-    req: &HttpRequest,
-    auth_state: &web::Data<FigContext>,
-) -> Option<String> {
-    let token = req.cookie("session")?;
-    let user_id = auth_state.validate_token(token.value()).await?;
-    let db = auth_state.db().await.ok()?;
-    let user = db.get_user_by_id(&user_id).await.ok()??;
-    Some(user.username)
-}
 
 fn wrap_auth_content(content: maud::Markup) -> maud::Markup {
     maud::html! {
@@ -367,24 +356,6 @@ pub fn render_signup_success(username: &str) -> maud::Markup {
                     "Create a Namespace →"
                 }
             }
-        }
-    }
-}
-
-// Handler for errors
-pub fn render_error(message: &str) -> maud::Markup {
-    maud::html! {
-        div class="ba b--red br2 pa3 bg-dark-red" {
-            p class="f6 white ma0" { (message) }
-        }
-    }
-}
-
-// Handler for success messages
-pub fn render_success(message: &str) -> maud::Markup {
-    maud::html! {
-        div class="ba b--green br2 pa3 bg-dark-green" {
-            p class="f6 white ma0" { (message) }
         }
     }
 }

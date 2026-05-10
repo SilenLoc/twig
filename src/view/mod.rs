@@ -70,3 +70,19 @@ pub fn render_layout(main_content: &maud::Markup, username: Option<&str>) -> mau
         }
     }
 }
+
+pub fn render_error(message: &str) -> maud::Markup {
+    maud::html! {
+        div class="ba b--red br2 pa3 bg-dark-red mt3" {
+            p class="f6 white ma0" { (message) }
+        }
+    }
+}
+
+pub fn render_success(message: &str) -> maud::Markup {
+    maud::html! {
+        div class="ba b--green br2 pa3 bg-dark-green mt3" {
+            p class="f6 white ma0" { (message) }
+        }
+    }
+}

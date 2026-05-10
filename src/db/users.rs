@@ -3,7 +3,7 @@ use crate::db::Database;
 
 impl Database {
     pub async fn create_user(&self, user: &User) -> Result<(), String> {
-        self.conn()
+        self.conn()?
             .execute(
                 "INSERT INTO users (id, username, email, password_hash, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
                 turso::params![user.id.clone(), user.username.clone(), user.email.clone(), user.password_hash.clone(), user.created_at.clone()],
@@ -15,7 +15,7 @@ impl Database {
 
     pub async fn get_user_by_username(&self, username: &str) -> Result<Option<User>, String> {
         let mut rows = self
-            .conn()
+            .conn()?
             .query(
                 "SELECT id, username, email, password_hash, created_at FROM users WHERE username = ?1",
                 turso::params![username],
@@ -38,7 +38,7 @@ impl Database {
 
     pub async fn get_user_by_id(&self, user_id: &str) -> Result<Option<User>, String> {
         let mut rows = self
-            .conn()
+            .conn()?
             .query(
                 "SELECT id, username, email, password_hash, created_at FROM users WHERE id = ?1",
                 turso::params![user_id],
@@ -60,7 +60,7 @@ impl Database {
     }
 
     pub async fn update_user_email(&self, user_id: &str, email: &str) -> Result<(), String> {
-        self.conn()
+        self.conn()?
             .execute(
                 "UPDATE users SET email = ?1 WHERE id = ?2",
                 turso::params![email, user_id],

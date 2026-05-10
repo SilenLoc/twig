@@ -36,7 +36,10 @@ pub enum GitService {
 
 impl Display for GitService {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        match self {
+            GitService::ReadRef => write!(f, "git-upload-pack"),
+            GitService::WriteRef => write!(f, "git-receive-pack"),
+        }
     }
 }
 
@@ -91,8 +94,9 @@ pub fn run_with_config(
     namespace: &str,
     req: &GitRequest,
     body: Vec<u8>,
+    authenticated_user: Option<&str>,
 ) -> Result<(String, Vec<u8>), String> {
-    let sh = sh();
+    let sh = sh()?;
 
     // todo make this configurable
     let actual_root = format!("{}/{}", config.project_root(), namespace);
@@ -102,7 +106,7 @@ pub fn run_with_config(
         req.method, req.path_info, namespace, actual_root
     );
 
-    let sh = prepare_cgi_env(&actual_root, sh, req.clone());
+    let sh = prepare_cgi_env(&actual_root, sh, req.clone(), authenticated_user);
 
     if !req.content_type.is_empty() {
         sh.set_var("CONTENT_TYPE", req.content_type.clone());
@@ -167,7 +171,12 @@ fn parse_cgi_response(output: &[u8]) -> (String, Vec<u8>) {
     }
 }
 
-pub fn prepare_cgi_env(project_root: &str, sh: Shell, req: GitRequest) -> Shell {
+pub fn prepare_cgi_env(
+    project_root: &str,
+    sh: Shell,
+    req: GitRequest,
+    authenticated_user: Option<&str>,
+) -> Shell {
     sh.set_var("REQUEST_METHOD", req.method.clone());
     sh.set_var("PATH_INFO", req.path_info.clone());
     sh.set_var("QUERY_STRING", req.query_string.clone());
@@ -184,7 +193,9 @@ pub fn prepare_cgi_env(project_root: &str, sh: Shell, req: GitRequest) -> Shell 
         GitRequestKind::Push => {
             // Pushes need write access — enforce auth here before proceeding
             sh.set_var("CONTENT_TYPE", req.content_type.clone());
-            sh.set_var("REMOTE_USER", "authenticated_user"); // must be set to allow push
+            if let Some(user) = authenticated_user {
+                sh.set_var("REMOTE_USER", user);
+            }
             debug!(
                 "Git backend HTTP: push operation detected for path='{}'",
                 req.path_info
@@ -229,6 +240,138 @@ pub fn prepare_cgi_env(project_root: &str, sh: Shell, req: GitRequest) -> Shell 
     sh
 }
 
-fn sh() -> Shell {
-    xshell::Shell::new().unwrap()
+fn sh() -> Result<Shell, String> {
+    Shell::new().map_err(|e| format!("Failed to create shell: {}", e))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_git_request_kind_advertise_refs_upload() {
+        let req = GitRequest::new("GET", "/repo.git/info/refs", "service=git-upload-pack", "");
+        match req.kind() {
+            GitRequestKind::AdvertiseRefs(GitService::ReadRef) => {}
+            other => panic!("Expected AdvertiseRefs(ReadRef), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_git_request_kind_advertise_refs_receive() {
+        let req = GitRequest::new("GET", "/repo.git/info/refs", "service=git-receive-pack", "");
+        match req.kind() {
+            GitRequestKind::AdvertiseRefs(GitService::WriteRef) => {}
+            other => panic!("Expected AdvertiseRefs(WriteRef), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_git_request_kind_fetch_clone() {
+        let req = GitRequest::new(
+            "POST",
+            "/repo.git/git-upload-pack",
+            "",
+            "application/x-git-upload-pack",
+        );
+        match req.kind() {
+            GitRequestKind::FetchClone => {}
+            other => panic!("Expected FetchClone, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_git_request_kind_push() {
+        let req = GitRequest::new(
+            "POST",
+            "/repo.git/git-receive-pack",
+            "",
+            "application/x-git-receive-pack",
+        );
+        match req.kind() {
+            GitRequestKind::Push => {}
+            other => panic!("Expected Push, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_git_request_kind_dumb_get() {
+        let req = GitRequest::new("GET", "/repo.git/objects/abc123", "", "");
+        match req.kind() {
+            GitRequestKind::DumbGet => {}
+            other => panic!("Expected DumbGet, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_git_service_display() {
+        assert_eq!(format!("{}", GitService::ReadRef), "git-upload-pack");
+        assert_eq!(format!("{}", GitService::WriteRef), "git-receive-pack");
+    }
+
+    #[test]
+    fn test_git_request_new() {
+        let req = GitRequest::new("GET", "/path", "q=1", "text/plain");
+        assert_eq!(req.method, "GET");
+        assert_eq!(req.path_info, "/path");
+        assert_eq!(req.query_string, "q=1");
+        assert_eq!(req.content_type, "text/plain");
+    }
+
+    #[test]
+    fn test_config_new() {
+        let config = Config::new("/srv/git");
+        assert_eq!(config.project_root(), "/srv/git");
+    }
+
+    #[test]
+    fn test_config_default() {
+        let config = Config::default();
+        assert_eq!(config.project_root(), "/srv/git");
+    }
+
+    #[test]
+    fn test_parse_cgi_response_with_headers_and_body() {
+        let response = b"Content-Type: text/html\r\nStatus: 200 OK\r\n\r\nHello, World!";
+        let (headers, body) = parse_cgi_response(response);
+        assert!(headers.contains("Content-Type: text/html"));
+        assert!(headers.contains("Status: 200 OK"));
+        assert_eq!(body, b"Hello, World!");
+    }
+
+    #[test]
+    fn test_parse_cgi_response_with_lf_only() {
+        let response = b"Content-Type: text/html\n\nBody content";
+        let (headers, body) = parse_cgi_response(response);
+        assert!(headers.contains("Content-Type: text/html"));
+        assert_eq!(body, b"Body content");
+    }
+
+    #[test]
+    fn test_parse_cgi_response_no_separator() {
+        let response = b"Just a body without headers";
+        let (headers, body) = parse_cgi_response(response);
+        assert!(headers.is_empty());
+        assert_eq!(body, b"Just a body without headers");
+    }
+
+    #[test]
+    fn test_parse_cgi_response_empty_body() {
+        let response = b"Content-Type: text/html\r\n\r\n";
+        let (headers, body) = parse_cgi_response(response);
+        assert!(headers.contains("Content-Type: text/html"));
+        assert!(body.is_empty());
+    }
+
+    #[test]
+    fn test_prepare_cgi_env_sets_vars() {
+        let sh = Shell::new().unwrap();
+        let req = GitRequest::new("GET", "/repo/info/refs", "service=git-upload-pack", "");
+        let sh = prepare_cgi_env("/srv/git/ns/repo", sh, req, None);
+        assert_eq!(sh.var("REQUEST_METHOD").unwrap(), "GET");
+        assert_eq!(sh.var("PATH_INFO").unwrap(), "/repo/info/refs");
+        assert_eq!(sh.var("QUERY_STRING").unwrap(), "service=git-upload-pack");
+        assert_eq!(sh.var("GIT_PROJECT_ROOT").unwrap(), "/srv/git/ns/repo");
+        assert_eq!(sh.var("GIT_HTTP_EXPORT_ALL").unwrap(), "1");
+    }
 }

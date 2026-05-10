@@ -225,7 +225,7 @@ fn git_commits(
 }
 
 fn chrono(git_time: git2::Time) -> chrono::DateTime<Utc> {
-    chrono::DateTime::from_timestamp(git_time.seconds(), 0).unwrap()
+    chrono::DateTime::from_timestamp(git_time.seconds(), 0).unwrap_or(chrono::DateTime::UNIX_EPOCH)
 }
 
 pub struct RepoInfo {
@@ -421,10 +421,10 @@ pub fn list_files(
                         walk_tree(repo, &subtree, &path, markdown_files, config)?;
                     }
                 }
-                Some(git2::ObjectType::Blob) => {
-                    if name.ends_with(".md") || name.ends_with(".markdown") {
-                        markdown_files.push(path);
-                    }
+                Some(git2::ObjectType::Blob)
+                    if name.ends_with(".md") || name.ends_with(".markdown") =>
+                {
+                    markdown_files.push(path);
                 }
                 _ => {}
             }
@@ -436,30 +436,6 @@ pub fn list_files(
     markdown_files.sort();
 
     Ok(RepoFiles { markdown_files })
-}
-
-/// Push a local repository to a bare repository
-#[allow(dead_code)]
-pub fn push_to_bare(
-    local_repo_path: &Path,
-    bare_repo_path: &Path,
-    branch: &str,
-) -> Result<(), String> {
-    use xshell::cmd;
-
-    let sh = xshell::Shell::new().map_err(|e| e.to_string())?;
-    sh.change_dir(local_repo_path);
-
-    // Add the bare repo as remote
-    let bare_path_str = bare_repo_path.to_str().ok_or("Invalid path")?;
-    let _ = cmd!(sh, "git remote add origin {bare_path_str}").run();
-
-    // Push to the bare repo
-    cmd!(sh, "git push -u origin {branch}")
-        .run()
-        .map_err(|e| e.to_string())?;
-
-    Ok(())
 }
 
 #[cfg(test)]
@@ -677,7 +653,6 @@ author = "Jane Doe"
 
     #[test]
     fn test_fig_config_toml_format_parsing() {
-        // Test the exact format from .fig.toml file
         let toml_content = r#"
 # Fig Configuration File
 ignore_for_view = ["skills/", "AGENTS.md"]
@@ -687,10 +662,40 @@ ignore_for_view = ["skills/", "AGENTS.md"]
         assert!(config.ignore_for_view.contains(&"skills/".to_string()));
         assert!(config.ignore_for_view.contains(&"AGENTS.md".to_string()));
 
-        // Verify the patterns work
         assert!(config.should_ignore("skills"));
         assert!(config.should_ignore("skills/file.md"));
         assert!(config.should_ignore("AGENTS.md"));
         assert!(!config.should_ignore("README.md"));
+    }
+
+    #[test]
+    fn test_chrono_handles_valid_timestamp() {
+        let time = git2::Time::new(0, 0);
+        let result = chrono(time);
+        assert_eq!(result.timestamp(), 0);
+    }
+
+    #[test]
+    fn test_chrono_handles_current_time() {
+        let now_secs = chrono::Utc::now().timestamp() as i64;
+        let time = git2::Time::new(now_secs, 0);
+        let result = chrono(time);
+        assert_eq!(result.timestamp(), now_secs);
+    }
+
+    #[test]
+    fn test_fig_config_config_filename_order() {
+        let config = FigConfig::default();
+        assert_eq!(config.ignore_for_view.len(), 0);
+    }
+
+    #[test]
+    fn test_repo_info_has_name_and_date() {
+        let info = RepoInfo {
+            name: "test-repo".to_string(),
+            last_commit_date: None,
+        };
+        assert_eq!(info.name, "test-repo");
+        assert!(info.last_commit_date.is_none());
     }
 }

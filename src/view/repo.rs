@@ -14,17 +14,7 @@ use crate::{
     md,
 };
 
-/// Helper function to get the username from the session cookie if logged in
-async fn get_username_from_request(
-    req: &HttpRequest,
-    auth_state: &web::Data<FigContext>,
-) -> Option<String> {
-    let token = req.cookie("session")?;
-    let user_id = auth_state.validate_token(token.value()).await?;
-    let db = auth_state.db().await.ok()?;
-    let user = db.get_user_by_id(&user_id).await.ok()??;
-    Some(user.username)
-}
+use super::session_auth::get_username_from_request;
 
 #[derive(Deserialize)]
 struct Params {
@@ -48,13 +38,12 @@ struct MarkdownParams {
 
 /// A rendered slide for the presentation view
 struct PresentSlide {
-    #[allow(dead_code)]
-    file: String,
     html: String,
 }
 
 /// Context for rendering tab content to reduce parameter count
 struct TabContentContext<'a> {
+    project_root: &'a str,
     namespace: &'a str,
     repo: &'a str,
     tab: &'a str,
@@ -111,6 +100,7 @@ pub async fn handler(
                 load_present_slides(server.project_root(), namespace, repo, &fig_config.present);
 
             render_repo(
+                server.project_root(),
                 namespace,
                 repo,
                 &commits,
@@ -178,6 +168,7 @@ pub async fn tab_handler(
                 load_present_slides(server.project_root(), namespace, repo, &fig_config.present);
 
             let ctx = TabContentContext {
+                project_root: server.project_root(),
                 namespace,
                 repo,
                 tab,
@@ -264,6 +255,7 @@ pub async fn markdown_handler(
                     &fig_config.present,
                 );
                 let ctx = TabContentContext {
+                    project_root: server.project_root(),
                     namespace,
                     repo,
                     tab: "markdown",
@@ -427,6 +419,7 @@ fn render_tabs(
 
 #[allow(clippy::too_many_arguments)]
 fn render_repo(
+    project_root: &str,
     namespace: &str,
     repo: &str,
     commits: &[Commit],
@@ -451,6 +444,7 @@ fn render_repo(
     let has_present = !present_config.files.is_empty();
 
     let ctx = TabContentContext {
+        project_root,
         namespace,
         repo,
         tab: default_tab,
@@ -549,7 +543,7 @@ fn render_tab_content_inner(ctx: TabContentContext<'_>) -> Markup {
                 }
             }
         }
-        "config" => render_config_view(ctx.namespace, ctx.repo, ctx.fig_content),
+        "config" => render_config_view(ctx.project_root, ctx.namespace, ctx.repo, ctx.fig_content),
         "present" => render_present_view(
             ctx.namespace,
             ctx.repo,
@@ -564,6 +558,7 @@ fn render_tab_content_inner(ctx: TabContentContext<'_>) -> Markup {
                 "commits"
             };
             let new_ctx = TabContentContext {
+                project_root: ctx.project_root,
                 namespace: ctx.namespace,
                 repo: ctx.repo,
                 tab: new_tab,
@@ -581,8 +576,13 @@ fn render_tab_content_inner(ctx: TabContentContext<'_>) -> Markup {
     }
 }
 
-fn render_config_view(_namespace: &str, _repo: &str, fig_content: Option<&str>) -> Markup {
-    let config_filename = FigConfig::config_filename(_namespace, _repo, _repo)
+fn render_config_view(
+    project_root: &str,
+    namespace: &str,
+    repo: &str,
+    fig_content: Option<&str>,
+) -> Markup {
+    let config_filename = FigConfig::config_filename(project_root, namespace, repo)
         .unwrap_or_else(|| ".fig.toml".to_string());
 
     maud::html! {
@@ -616,10 +616,7 @@ fn load_present_slides(
         .filter_map(|file| {
             let content = git::bare::read_file(root, namespace, repo, file).ok()??;
             let html = md::process_markdown(&content, &present_config.template_vars);
-            Some(PresentSlide {
-                file: file.clone(),
-                html,
-            })
+            Some(PresentSlide { html })
         })
         .collect()
 }

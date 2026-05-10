@@ -53,7 +53,7 @@ pub async fn git_handler(
     }
 
     // Auth gate for write operations
-    let _authenticated_user = match kind {
+    let username = match &kind {
         crate::git_backend::GitRequestKind::Push
         | crate::git_backend::GitRequestKind::AdvertiseRefs(
             crate::git_backend::GitService::WriteRef,
@@ -71,7 +71,7 @@ pub async fn git_handler(
                     return actix_web::HttpResponse::InternalServerError()
                         .body("Failed to create repository");
                 }
-                Some(user)
+                Some(user.username.clone())
             }
             Ok(None) => {
                 return actix_web::HttpResponse::Forbidden().body("Access denied to namespace");
@@ -86,7 +86,13 @@ pub async fn git_handler(
     let body_bytes = body.to_vec();
     let namespace_clone = namespace.clone();
     let result = web::block(move || {
-        crate::git_backend::run_with_config(&git_backend_config, &namespace_clone, &req, body_bytes)
+        crate::git_backend::run_with_config(
+            &git_backend_config,
+            &namespace_clone,
+            &req,
+            body_bytes,
+            username.as_deref(),
+        )
     })
     .await;
 
@@ -120,7 +126,10 @@ fn build_response(headers: String, body: Vec<u8>) -> actix_web::HttpResponse {
                     .next()
                     .and_then(|s| s.parse::<u16>().ok())
                     .unwrap_or(200);
-                response.status(actix_web::http::StatusCode::from_u16(code).unwrap());
+                response.status(
+                    actix_web::http::StatusCode::from_u16(code)
+                        .unwrap_or(actix_web::http::StatusCode::OK),
+                );
             } else {
                 response.insert_header((key.to_owned(), value.to_owned()));
             }
@@ -312,4 +321,41 @@ async fn ensure_repo_exists(
         .map_err(|e| format!("Failed to initialize bare repo: {}", e))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_response_status_header() {
+        let headers = "Content-Type: text/html\r\nStatus: 401 Unauthorized".to_string();
+        let body = b"Unauthorized".to_vec();
+        let response = build_response(headers, body);
+        assert_eq!(response.status(), actix_web::http::StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn test_build_response_default_status() {
+        let headers = "Content-Type: text/html".to_string();
+        let body = b"OK".to_vec();
+        let response = build_response(headers, body);
+        assert_eq!(response.status(), actix_web::http::StatusCode::OK);
+    }
+
+    #[test]
+    fn test_build_response_content_type() {
+        let headers = "Content-Type: application/git-upload-pack-advertisement".to_string();
+        let body = b"data".to_vec();
+        let response = build_response(headers, body);
+        assert_eq!(response.status(), actix_web::http::StatusCode::OK);
+    }
+
+    #[test]
+    fn test_build_response_multiple_headers() {
+        let headers = "Content-Type: text/plain\r\nCache-Control: no-cache".to_string();
+        let body = b"test".to_vec();
+        let response = build_response(headers, body);
+        assert_eq!(response.status(), actix_web::http::StatusCode::OK);
+    }
 }

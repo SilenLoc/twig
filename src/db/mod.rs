@@ -21,7 +21,11 @@ impl Database {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
 
-        let db = Builder::new_local(db_path.to_str().unwrap())
+        let db_path_str = db_path
+            .to_str()
+            .ok_or_else(|| "Invalid database path: contains non-UTF8 characters".to_string())?;
+
+        let db = Builder::new_local(db_path_str)
             .build()
             .await
             .map_err(|e| e.to_string())?;
@@ -34,7 +38,7 @@ impl Database {
     pub async fn init_tables(&self) -> Result<(), String> {
         // Configure connection to use busy timeout - SQLite will wait for locks
         // instead of immediately returning SQLITE_BUSY
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.busy_timeout(Duration::from_secs(30))
             .map_err(|e| format!("Failed to set busy timeout: {}", e))?;
 
@@ -46,7 +50,9 @@ impl Database {
         Ok(())
     }
 
-    pub fn conn(&self) -> turso::Connection {
-        self.db.connect().unwrap()
+    pub fn conn(&self) -> Result<turso::Connection, String> {
+        self.db
+            .connect()
+            .map_err(|e| format!("Failed to connect to database: {}", e))
     }
 }

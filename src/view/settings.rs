@@ -5,6 +5,7 @@ use actix_web::{HttpRequest, HttpResponse, Responder, get, post, web};
 use log::info;
 use serde::Deserialize;
 
+use super::{render_error, render_success};
 use crate::auth::FigContext;
 use crate::config;
 use crate::git;
@@ -339,22 +340,6 @@ pub async fn delete_repo(
             log::error!("Failed to delete repository: {}", e);
             HttpResponse::InternalServerError()
                 .body(render_error("Failed to delete repository").into_string())
-        }
-    }
-}
-
-fn render_error(message: &str) -> maud::Markup {
-    maud::html! {
-        div class="ba b--red br2 pa3 bg-dark-red mt3" {
-            p class="f6 white ma0" { (message) }
-        }
-    }
-}
-
-fn render_success(message: &str) -> maud::Markup {
-    maud::html! {
-        div class="ba b--green br2 pa3 bg-dark-green mt3" {
-            p class="f6 white ma0" { (message) }
         }
     }
 }

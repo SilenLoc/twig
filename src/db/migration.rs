@@ -85,7 +85,7 @@ impl Database {
     pub async fn create_tables(&self) -> Result<(), String> {
         // Enable WAL mode for better concurrent access
         let _ = self
-            .conn()
+            .conn()?
             .query("PRAGMA journal_mode = WAL;", ())
             .await
             .map_err(|e| e.to_string())?;
@@ -98,7 +98,7 @@ impl Database {
         migrations.sort_by_key(|m| m.order.unwrap_or(u32::MAX));
 
         for migration in &migrations {
-            self.conn()
+            self.conn()?
                 .execute(migration.content, ())
                 .await
                 .map_err(|e| format!("Migration failed: {}", e))?;

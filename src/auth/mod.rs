@@ -62,11 +62,7 @@ pub fn generate_token() -> String {
     hex::encode(bytes)
 }
 
-pub fn create_user(
-    username: String,
-    email: String,
-    password: String,
-) -> Result<(User, String), String> {
+pub fn create_user(username: String, email: String, password: String) -> Result<User, String> {
     let password_hash = hash_password(&password)?;
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
@@ -79,12 +75,11 @@ pub fn create_user(
         created_at: now,
     };
 
-    let ticket = create_ticket(&user.id);
-
-    Ok((user, ticket))
+    Ok(user)
 }
 
-pub fn create_ticket(_user_id: &str) -> String {
+#[cfg(test)]
+pub fn generate_ticket() -> String {
     Uuid::new_v4().to_string()
 }
 
@@ -129,7 +124,7 @@ fn base64_decode(input: &str) -> Option<String> {
 
 pub struct FigContext {
     db_path: String,
-    pub api_key: String,
+    api_key: String,
     initialized: AtomicBool,
 }
 
@@ -173,5 +168,109 @@ impl FigContext {
     pub async fn invalidate_token(&self, token: &str) -> Result<(), String> {
         let db = self.db().await?;
         db.delete_token(token).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_hash_and_verify_password() {
+        let hash = hash_password("testpassword").unwrap();
+        assert!(verify_password("testpassword", &hash).unwrap());
+        assert!(!verify_password("wrongpassword", &hash).unwrap());
+    }
+
+    #[test]
+    fn test_verify_password_invalid_hash() {
+        assert!(verify_password("test", "not-a-hash").is_err());
+    }
+
+    #[test]
+    fn test_generate_token_is_hex() {
+        let token = generate_token();
+        assert_eq!(token.len(), 64);
+        assert!(token.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn test_generate_ticket_is_uuid() {
+        let ticket = generate_ticket();
+        assert!(uuid::Uuid::parse_str(&ticket).is_ok());
+    }
+
+    #[test]
+    fn test_generate_tokens_are_unique() {
+        let t1 = generate_token();
+        let t2 = generate_token();
+        assert_ne!(t1, t2);
+    }
+
+    #[test]
+    fn test_create_user_fields() {
+        let user = create_user(
+            "testuser".to_string(),
+            "test@example.com".to_string(),
+            "password123".to_string(),
+        )
+        .unwrap();
+        assert_eq!(user.username, "testuser");
+        assert_eq!(user.email, Some("test@example.com".to_string()));
+        assert!(!user.password_hash.is_empty());
+        assert!(!user.id.is_empty());
+    }
+
+    #[test]
+    fn test_create_user_password_is_hashed() {
+        let user = create_user(
+            "testuser".to_string(),
+            "test@example.com".to_string(),
+            "password123".to_string(),
+        )
+        .unwrap();
+        assert_ne!(user.password_hash, "password123");
+        assert!(verify_password("password123", &user.password_hash).unwrap());
+    }
+
+    #[test]
+    fn test_create_namespace_fields() {
+        let ns = create_namespace("myns".to_string(), "user-1".to_string());
+        assert_eq!(ns.name, "myns");
+        assert_eq!(ns.owner_id, "user-1");
+        assert!(!ns.id.is_empty());
+    }
+
+    #[test]
+    fn test_base64_decode_valid() {
+        let result = base64_decode("dXNlcjpwYXNz");
+        assert_eq!(result, Some("user:pass".to_string()));
+    }
+
+    #[test]
+    fn test_base64_decode_invalid() {
+        let result = base64_decode("not-valid-base64!!!");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_base64_decode_empty() {
+        let result = base64_decode("");
+        assert_eq!(result, Some("".to_string()));
+    }
+
+    #[test]
+    fn test_fig_context_validate_api_key() {
+        let ctx = FigContext::new("/tmp/test.db", "my-api-key".to_string());
+        assert!(ctx.validate_api_key("my-api-key"));
+        assert!(!ctx.validate_api_key("wrong-key"));
+    }
+
+    #[test]
+    fn test_fig_context_initialized_flag() {
+        let ctx = FigContext::new("/tmp/test.db", "key".to_string());
+        assert!(!ctx.is_initialized());
+        ctx.set_initialized();
+        assert!(ctx.is_initialized());
     }
 }

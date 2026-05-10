@@ -5,6 +5,8 @@ use serde::Deserialize;
 use crate::{
     auth::{FigContext, Ticket, create_namespace, create_user, generate_token, verify_password},
     config,
+    view::auth::{render_login_success, render_signup_success, render_ticket_success},
+    view::{render_error, render_success},
 };
 
 // Form data types for HTMX UI submissions
@@ -66,11 +68,6 @@ pub async fn logout_ui_handler(
 }
 
 // ========== UI Form Handlers (HTML) ==========
-
-use crate::view::auth::{
-    render_error, render_login_success, render_signup_success, render_success,
-    render_ticket_success,
-};
 
 #[post("/auth/ticket")]
 pub async fn create_ticket_ui_handler(
@@ -182,12 +179,12 @@ pub async fn signup_ui_handler(
     }
 
     // Create user
-    let (user, _) = match create_user(
+    let user = match create_user(
         form.username.clone(),
         form.email.clone(),
         form.password.clone(),
     ) {
-        Ok((user, _)) => (user, ""),
+        Ok(user) => user,
         Err(e) => {
             log::error!("Failed to create user: {}", e);
             return HttpResponse::InternalServerError()

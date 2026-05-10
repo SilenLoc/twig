@@ -3,25 +3,14 @@ use actix_web::{HttpRequest, HttpResponse, Responder, get, post, web};
 use log::info;
 use serde::Deserialize;
 
+use super::session_auth::get_username_from_request;
+use super::{render_error, render_success};
 use crate::{
     auth::FigContext,
     config,
     git::{self, repo::bare_init},
 };
 
-/// Helper function to get the username from the session cookie if logged in
-async fn get_username_from_request(
-    req: &HttpRequest,
-    auth_state: &web::Data<FigContext>,
-) -> Option<String> {
-    let token = req.cookie("session")?;
-    let user_id = auth_state.validate_token(token.value()).await?;
-    let db = auth_state.db().await.ok()?;
-    let user = db.get_user_by_id(&user_id).await.ok()??;
-    Some(user.username)
-}
-
-/// Helper function to check if the current user has access to a namespace
 async fn user_has_namespace_access(
     req: &HttpRequest,
     auth_state: &web::Data<FigContext>,
@@ -65,7 +54,7 @@ struct SearchQuery {
 }
 
 fn default_branch() -> String {
-    "main".to_string()
+    crate::git::repo::default_branch()
 }
 
 fn format_date(date: &chrono::DateTime<chrono::Utc>) -> String {
@@ -140,7 +129,7 @@ pub async fn handler(
         div class="mb4" {
             form
                 method="GET"
-                action=(format!("/ {}", namespace))
+                action=(format!("/{}", namespace))
                 class="flex items-center"
             {
                 input
@@ -160,7 +149,7 @@ pub async fn handler(
                 }
                 @if !search_query.is_empty() {
                     a
-                        href=(format!("/ {}", namespace))
+                        href=(format!("/{}", namespace))
                         class="ml2 pa2 link white-70 hover-white no-underline"
                     {
                         "Clear"
@@ -389,22 +378,6 @@ pub async fn create_repo_handler(
             let _ = std::fs::remove_dir_all(&repo_path);
             HttpResponse::InternalServerError()
                 .body(render_error("Failed to initialize repository").into_string())
-        }
-    }
-}
-
-fn render_error(message: &str) -> maud::Markup {
-    maud::html! {
-        div class="ba b--red br2 pa3 bg-dark-red" {
-            p class="f6 white ma0" { (message) }
-        }
-    }
-}
-
-fn render_success(message: &str) -> maud::Markup {
-    maud::html! {
-        div class="ba b--green br2 pa3 bg-dark-green" {
-            p class="f6 white ma0" style="white-space: pre-wrap;" { (message) }
         }
     }
 }

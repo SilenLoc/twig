@@ -1,3 +1,4 @@
+#[derive(Clone)]
 pub struct Server {
     address: (String, u16),
     log_level: String,
@@ -45,7 +46,7 @@ impl Server {
         &self.db_path
     }
 
-    #[allow(unused)]
+    #[allow(dead_code)]
     pub fn migrate(&self) -> bool {
         self.migrate
     }
@@ -136,16 +137,99 @@ fn ascii(server: &Server) -> String {
     )
 }
 
-impl Clone for Server {
-    fn clone(&self) -> Self {
-        Self {
-            address: self.address.clone(),
-            log_level: self.log_level.clone(),
-            project_root: self.project_root.clone(),
-            db_path: self.db_path.clone(),
-            api_key: self.api_key.clone(),
-            reset_db: self.reset_db,
-            migrate: self.migrate,
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_server_new() {
+        let server = Server::new(
+            ("127.0.0.1".to_string(), 8080),
+            "debug".to_string(),
+            "/srv/git".to_string(),
+            "fig.db".to_string(),
+            "mykey".to_string(),
+            false,
+            false,
+        );
+        assert_eq!(server.address(), ("127.0.0.1".to_string(), 8080));
+        assert_eq!(server.log_level(), "debug");
+        assert_eq!(server.project_root(), "/srv/git");
+        assert_eq!(server.db_path(), "fig.db");
+    }
+
+    #[test]
+    fn test_server_clone() {
+        let server = Server::new(
+            ("0.0.0.0".to_string(), 80),
+            "info".to_string(),
+            "/srv/git".to_string(),
+            "fig.db".to_string(),
+            "apikey".to_string(),
+            false,
+            true,
+        );
+        let cloned = server.clone();
+        assert_eq!(cloned.project_root(), server.project_root());
+        assert_eq!(cloned.log_level(), server.log_level());
+    }
+
+    #[test]
+    fn test_effective_api_key_with_set_key() {
+        let server = Server::new(
+            ("0.0.0.0".to_string(), 80),
+            "info".to_string(),
+            "/srv/git".to_string(),
+            "fig.db".to_string(),
+            "my-secret-key".to_string(),
+            false,
+            false,
+        );
+        assert_eq!(server.effective_api_key(), "my-secret-key");
+    }
+
+    #[test]
+    fn test_effective_api_key_generates_when_empty() {
+        let server = Server::new(
+            ("0.0.0.0".to_string(), 80),
+            "info".to_string(),
+            "/srv/git".to_string(),
+            "fig.db".to_string(),
+            String::new(),
+            false,
+            false,
+        );
+        let key = server.effective_api_key();
+        assert!(!key.is_empty());
+        assert_eq!(key.len(), 64);
+    }
+
+    #[test]
+    fn test_maybe_reset_database_no_flag() {
+        let server = Server::new(
+            ("0.0.0.0".to_string(), 80),
+            "info".to_string(),
+            "/srv/git".to_string(),
+            "/tmp/fig_test_no_reset.db".to_string(),
+            "key".to_string(),
+            false,
+            false,
+        );
+        server.maybe_reset_database();
+    }
+
+    #[test]
+    fn test_address_returns_clone() {
+        let server = Server::new(
+            ("0.0.0.0".to_string(), 3000),
+            "info".to_string(),
+            "/srv/git".to_string(),
+            "fig.db".to_string(),
+            "key".to_string(),
+            false,
+            false,
+        );
+        let addr = server.address();
+        assert_eq!(addr, ("0.0.0.0".to_string(), 3000));
     }
 }
