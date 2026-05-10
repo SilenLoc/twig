@@ -2,9 +2,9 @@ use actix_web::{
     App, HttpResponse, HttpServer, Responder, get, guard,
     web::{self},
 };
+use db::Database;
 use env_logger::Env;
 use log::info;
-use std::time::Duration;
 
 mod assets;
 mod auth;
@@ -46,33 +46,20 @@ async fn main() -> std::io::Result<()> {
     // Check if we should reset the database
     config.maybe_reset_database();
 
-    // Initialize auth state
+    // Initialize database
     let db_path = config.db_path().to_string();
     let api_key = config.effective_api_key();
 
-    let auth_state = web::Data::new(auth::FigContext::new(&db_path, api_key));
+    let db = Database::new(&db_path)
+        .await
+        .expect("Failed to initialize database");
 
-    // Clone auth_state for the background task
-    let auth_state_for_init = auth_state.clone();
+    db.init_tables()
+        .await
+        .expect("Failed to initialize database tables");
 
-    // Spawn background task to initialize database tables after a delay
-    // This allows the server to start and pass health checks first
-    tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(4)).await;
-        log::info!("Initializing database tables...");
-        match auth_state_for_init.db().await {
-            Ok(db) => {
-                if let Err(e) = db.init_tables().await {
-                    log::error!("Failed to initialize database tables: {}", e);
-                } else {
-                    auth_state_for_init.set_initialized();
-                }
-            }
-            Err(e) => {
-                log::error!("Failed to create database for initialization: {}", e);
-            }
-        }
-    });
+    let auth_state = web::Data::new(auth::FigContext::new(db, api_key));
+    auth_state.set_initialized();
 
     let bind_address = config.address();
 
@@ -106,6 +93,7 @@ async fn main() -> std::io::Result<()> {
             .service(view::namespace::create_repo_handler)
             .service(view::repo::handler)
             .service(view::repo::tab_handler)
+            .service(view::repo::slide_handler)
             .service(view::repo::markdown_handler)
             // Git endpoints with auth
             .service(git::repo::init)

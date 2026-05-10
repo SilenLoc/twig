@@ -36,6 +36,13 @@ struct MarkdownParams {
     file_path: String,
 }
 
+#[derive(Deserialize)]
+struct SlideParams {
+    namespace: String,
+    repo: String,
+    index: usize,
+}
+
 /// A rendered slide for the presentation view
 struct PresentSlide {
     html: String,
@@ -279,6 +286,41 @@ pub async fn markdown_handler(
             } else {
                 Ok(super::render_layout(&content, username.as_deref()))
             }
+        }
+    }
+}
+
+#[get("/{namespace}/{repo}/slide/{index}")]
+pub async fn slide_handler(
+    req: HttpRequest,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<FigContext>,
+    params: web::Path<SlideParams>,
+) -> AwResult<Markup> {
+    let namespace = &params.namespace;
+    let repo = &params.repo;
+    let index = params.index;
+    let username = get_username_from_request(&req, &auth_state).await;
+
+    let fig_config = FigConfig::load(server.project_root(), namespace, repo);
+    let present_slides =
+        load_present_slides(server.project_root(), namespace, repo, &fig_config.present);
+
+    if index >= present_slides.len() {
+        let content = maud::html! {
+            div class="pa3 white-50" { "Slide not found" }
+        };
+        if req.headers().get("HX-Request").is_some() {
+            Ok(content)
+        } else {
+            Ok(super::render_layout(&content, username.as_deref()))
+        }
+    } else {
+        let content = render_slide_content(namespace, repo, index, &present_slides);
+        if req.headers().get("HX-Request").is_some() {
+            Ok(content)
+        } else {
+            Ok(super::render_layout(&content, username.as_deref()))
         }
     }
 }
@@ -621,9 +663,87 @@ fn load_present_slides(
         .collect()
 }
 
+fn render_slide_content(
+    namespace: &str,
+    repo: &str,
+    current_index: usize,
+    slides: &[PresentSlide],
+) -> Markup {
+    let slide_count = slides.len();
+    let slide = &slides[current_index];
+    let has_prev = current_index > 0;
+    let has_next = current_index < slide_count - 1;
+
+    maud::html! {
+        div class="flex items-center justify-between mb3" {
+            div class="f4 fw6 white" { "Presentation" }
+            div class="flex items-center" {
+                span class="f6 white-70 mr3" { (current_index + 1) " / " (slide_count) }
+                button
+                    class="f6 link white-70 hover-white bg-transparent bn pointer pa1 mr2"
+                    onclick="document.getElementById('present-container').requestFullscreen()"
+                {
+                    "Fullscreen"
+                }
+            }
+        }
+
+        div id="slides-wrapper" class="relative" style="min-height: 60vh;" {
+            div
+                class="present-slide"
+                style="display: flex; align-items: center; justify-content: center; min-height: 60vh; padding: 2rem;"
+            {
+                div class="markdown-body white lh-copy" style="max-width: 800px; width: 100%;" {
+                    (maud::PreEscaped(&slide.html))
+                }
+            }
+        }
+
+        div class="flex items-center justify-between mt3" {
+            @if has_prev {
+                button
+                    class="f6 link white-70 hover-white bg-transparent bn pointer pa2 ph3"
+                    hx-get=(format!("/{}/{}/slide/{}", namespace, repo, current_index - 1))
+                    hx-target="#present-container"
+                    hx-swap="innerHTML"
+                {
+                    "\u{2190} Previous"
+                }
+            } @else {
+                span class="f6 white-30 pa2 ph3" { "\u{2190} Previous" }
+            }
+            div class="flex" {
+                @for i in 0..slide_count {
+                    @let is_active = i == current_index;
+                    @let dot_classes = if is_active { "present-dot bg-white" } else { "present-dot bg-white-30" };
+                    button
+                        class=(dot_classes)
+                        hx-get=(format!("/{}/{}/slide/{}", namespace, repo, i))
+                        hx-target="#present-container"
+                        hx-swap="innerHTML"
+                        style="width: 10px; height: 10px; border-radius: 50%; margin: 0 4px; border: none; cursor: pointer;"
+                    {}
+                }
+            }
+            @if has_next {
+                button
+                    class="f6 link white-70 hover-white bg-transparent bn pointer pa2 ph3"
+                    hx-get=(format!("/{}/{}/slide/{}", namespace, repo, current_index + 1))
+                    hx-target="#present-container"
+                    hx-swap="innerHTML"
+                {
+                    "Next \u{2192}"
+                }
+            } @else {
+                span class="f6 white-30 pa2 ph3" { "Next \u{2192}" }
+            }
+        }
+    }
+}
+
 fn render_present_view(
-    _namespace: &str,
-    _repo: &str,
+    namespace: &str,
+    repo: &str,
     _present_config: &PresentConfig,
     slides: &[PresentSlide],
 ) -> Markup {
@@ -635,129 +755,14 @@ fn render_present_view(
         };
     }
 
-    let slide_count = slides.len();
-
     maud::html! {
         div id="present-container" {
-            // Slide counter and controls
-            div class="flex items-center justify-between mb3" {
-                div class="f4 fw6 white" { "Presentation" }
-                div class="flex items-center" {
-                    span id="slide-counter" class="f6 white-70 mr3" { "1 / " (slide_count) }
-                    button
-                        id="present-fullscreen-btn"
-                        class="f6 link white-70 hover-white bg-transparent bn pointer pa1 mr2"
-                        onclick="document.getElementById('present-container').requestFullscreen()"
-                    {
-                        "Fullscreen"
-                    }
-                }
-            }
-
-            // Slides container
-            div id="slides-wrapper" class="relative" style="min-height: 60vh;" {
-                @for (i, slide) in slides.iter().enumerate() {
-                    @let is_first = i == 0;
-                    div
-                        class=(if is_first { "present-slide" } else { "present-slide dn" })
-                        data-slide-index=(i)
-                        style="display: flex; align-items: center; justify-content: center; min-height: 60vh; padding: 2rem;"
-                    {
-                        div class="markdown-body white lh-copy" style="max-width: 800px; width: 100%;" {
-                            (maud::PreEscaped(&slide.html))
-                        }
-                    }
-                }
-            }
-
-            // Navigation controls
-            div class="flex items-center justify-between mt3" {
-                button
-                    id="present-prev"
-                    class="f6 link white-70 hover-white bg-transparent bn pointer pa2 ph3"
-                    onclick="presentPrev()"
-                {
-                    "\u{2190} Previous"
-                }
-                div class="flex" {
-                    @for i in 0..slide_count {
-                        @let is_active = i == 0;
-                        button
-                            class=(if is_active { "present-dot bg-white" } else { "present-dot bg-white-30" })
-                            data-dot-index=(i)
-                            onclick=(format!("presentGoTo({})", i))
-                            style="width: 10px; height: 10px; border-radius: 50%; margin: 0 4px; border: none; cursor: pointer;"
-                        {}
-                    }
-                }
-                button
-                    id="present-next"
-                    class="f6 link white-70 hover-white bg-transparent bn pointer pa2 ph3"
-                    onclick="presentNext()"
-                {
-                    "Next \u{2192}"
-                }
-            }
+            (render_slide_content(namespace, repo, 0, slides))
         }
         style {
-            ".present-slide {}"
-            ".present-slide.active { display: flex !important; }"
-            "div:fullscreen #present-container { background: black; }"
-            "div:fullscreen .present-slide { min-height: 100vh; }"
-            "div:fullscreen #slides-wrapper { min-height: 100vh; }"
-        }
-        script {
-            (maud::PreEscaped(r#"
-(function() {
-    let currentSlide = 0;
-    const slides = document.querySelectorAll('.present-slide');
-    const dots = document.querySelectorAll('.present-dot');
-    const counter = document.getElementById('slide-counter');
-    const total = slides.length;
-
-    function updateSlide() {
-        slides.forEach((s, i) => {
-            s.classList.remove('dn');
-            s.style.display = i === currentSlide ? 'flex' : 'none';
-        });
-        dots.forEach((d, i) => {
-            d.className = i === currentSlide ? 'present-dot bg-white' : 'present-dot bg-white-30';
-        });
-        if (counter) {
-            counter.textContent = (currentSlide + 1) + ' / ' + total;
-        }
-    }
-
-    window.presentNext = function() {
-        if (currentSlide < total - 1) {
-            currentSlide++;
-            updateSlide();
-        }
-    };
-
-    window.presentPrev = function() {
-        if (currentSlide > 0) {
-            currentSlide--;
-            updateSlide();
-        }
-    };
-
-    window.presentGoTo = function(index) {
-        currentSlide = index;
-        updateSlide();
-    };
-
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-            e.preventDefault();
-            presentNext();
-        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-            e.preventDefault();
-            presentPrev();
-        }
-    });
-})();
-"#))
+            "#present-container:fullscreen { background: black; }"
+            "#present-container:fullscreen .present-slide { min-height: 100vh; }"
+            "#present-container:fullscreen #slides-wrapper { min-height: 100vh; }"
         }
     }
 }

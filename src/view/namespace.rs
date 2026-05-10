@@ -26,10 +26,7 @@ async fn user_has_namespace_access(
         None => return false,
     };
 
-    let db = match auth_state.db().await {
-        Ok(db) => db,
-        Err(_) => return false,
-    };
+    let db = auth_state.db();
 
     db.user_has_namespace_access(&user_id, namespace)
         .await
@@ -291,14 +288,7 @@ pub async fn create_repo_handler(
         }
     };
 
-    let db = match auth_state.db().await {
-        Ok(db) => db,
-        Err(e) => {
-            log::error!("Database error: {}", e);
-            return HttpResponse::InternalServerError()
-                .body(render_error("Database error").into_string());
-        }
-    };
+    let db = auth_state.db();
 
     // Check if user has access to namespace
     match db.user_has_namespace_access(&user_id, namespace).await {

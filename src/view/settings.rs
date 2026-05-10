@@ -50,10 +50,7 @@ pub async fn settings_page(
         }
     };
 
-    let db = auth_state.db().await.map_err(|e| {
-        log::error!("Database error: {}", e);
-        actix_web::error::ErrorInternalServerError("Database error")
-    })?;
+    let db = auth_state.db();
 
     let user = match db.get_user_by_id(&user_id).await {
         Ok(Some(user)) => user,
@@ -227,14 +224,7 @@ pub async fn update_email(
             .body(render_error("Please enter a valid email address").into_string());
     }
 
-    let db = match auth_state.db().await {
-        Ok(db) => db,
-        Err(e) => {
-            log::error!("Database error: {}", e);
-            return HttpResponse::InternalServerError()
-                .body(render_error("Database error").into_string());
-        }
-    };
+    let db = auth_state.db();
 
     // Update email in database
     match db.update_user_email(&user_id, &form.email).await {
@@ -276,14 +266,7 @@ pub async fn delete_repo(
         }
     };
 
-    let db = match auth_state.db().await {
-        Ok(db) => db,
-        Err(e) => {
-            log::error!("Database error: {}", e);
-            return HttpResponse::InternalServerError()
-                .body(render_error("Database error").into_string());
-        }
-    };
+    let db = auth_state.db();
 
     // Verify user has access to the namespace
     match db

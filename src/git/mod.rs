@@ -163,13 +163,7 @@ async fn is_authenticated(
         namespace_name
     );
 
-    let db = match auth_state.db().await {
-        Ok(db) => db,
-        Err(e) => {
-            log::error!("Database connection error for user '{}': {}", username, e);
-            return Err(actix_web::HttpResponse::InternalServerError().body("Database error"));
-        }
-    };
+    let db = auth_state.db();
 
     // Get user from database
     let user = match db.get_user_by_username(&username).await {
@@ -266,7 +260,7 @@ async fn ensure_namespace_exists(
     user: &User,
     namespace_name: &str,
 ) -> Result<(), String> {
-    let db = auth_state.db().await?;
+    let db = auth_state.db();
 
     // Check if namespace exists
     match db.get_namespace_by_name(namespace_name).await {

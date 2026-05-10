@@ -41,13 +41,7 @@ pub async fn init(
     server: web::Data<config::Server>,
     auth_state: web::Data<FigContext>,
 ) -> impl Responder {
-    let db = match auth_state.db().await {
-        Ok(db) => db,
-        Err(e) => {
-            log::error!("Database error: {}", e);
-            return HttpResponse::InternalServerError().body("Database error");
-        }
-    };
+    let db = auth_state.db();
 
     // Authenticate the request
     let (username, password) = match extract_basic_auth(&req) {

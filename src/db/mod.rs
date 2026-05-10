@@ -51,8 +51,12 @@ impl Database {
     }
 
     pub fn conn(&self) -> Result<turso::Connection, String> {
-        self.db
+        let conn = self
+            .db
             .connect()
-            .map_err(|e| format!("Failed to connect to database: {}", e))
+            .map_err(|e| format!("Failed to connect to database: {}", e))?;
+        conn.busy_timeout(std::time::Duration::from_secs(30))
+            .map_err(|e| format!("Failed to set busy timeout: {}", e))?;
+        Ok(conn)
     }
 }

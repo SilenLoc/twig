@@ -92,14 +92,7 @@ pub async fn create_ticket_ui_handler(
         used_at: None,
     };
 
-    let db = match auth_state.db().await {
-        Ok(db) => db,
-        Err(e) => {
-            log::error!("Database error: {}", e);
-            return HttpResponse::InternalServerError()
-                .body(render_error("Database error").into_string());
-        }
-    };
+    let db = auth_state.db();
 
     if let Err(e) = db.create_ticket(&ticket).await {
         log::error!("Failed to create ticket: {}", e);
@@ -123,14 +116,7 @@ pub async fn signup_ui_handler(
     auth_state: web::Data<FigContext>,
     form: web::Form<SignupForm>,
 ) -> impl Responder {
-    let db = match auth_state.db().await {
-        Ok(db) => db,
-        Err(e) => {
-            log::error!("Database error: {}", e);
-            return HttpResponse::InternalServerError()
-                .body(render_error("Database error").into_string());
-        }
-    };
+    let db = auth_state.db();
 
     // Validate ticket first
     let ticket = match db.get_ticket(&form.ticket).await {
@@ -222,14 +208,7 @@ pub async fn login_ui_handler(
     auth_state: web::Data<FigContext>,
     form: web::Form<LoginForm>,
 ) -> impl Responder {
-    let db = match auth_state.db().await {
-        Ok(db) => db,
-        Err(e) => {
-            log::error!("Database error: {}", e);
-            return HttpResponse::InternalServerError()
-                .body(render_error("Database error").into_string());
-        }
-    };
+    let db = auth_state.db();
 
     // Get user from database
     let user = match db.get_user_by_username(&form.username).await {
@@ -309,14 +288,7 @@ pub async fn create_namespace_ui_handler(
     auth_state: web::Data<FigContext>,
     form: web::Form<CreateNamespaceForm>,
 ) -> impl Responder {
-    let db = match auth_state.db().await {
-        Ok(db) => db,
-        Err(e) => {
-            log::error!("Database error: {}", e);
-            return HttpResponse::InternalServerError()
-                .body(render_error("Database error").into_string());
-        }
-    };
+    let db = auth_state.db();
 
     // Validate namespace name
     if form.name.len() < 2 {

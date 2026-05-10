@@ -23,10 +23,7 @@ pub async fn index(
     let search_query = query.q.as_deref().unwrap_or("");
     let username = get_username_from_request(&req, &auth_state).await;
 
-    let db = auth_state.db().await.map_err(|e| {
-        log::error!("Database error: {}", e);
-        actix_web::error::ErrorInternalServerError("Database error")
-    })?;
+    let db = auth_state.db();
 
     // Get namespaces with owners from database
     let namespaces = if search_query.is_empty() {

@@ -123,22 +123,22 @@ fn base64_decode(input: &str) -> Option<String> {
 }
 
 pub struct FigContext {
-    db_path: String,
+    db: Database,
     api_key: String,
     initialized: AtomicBool,
 }
 
 impl FigContext {
-    pub fn new(db_path: &str, api_key: String) -> Self {
+    pub fn new(db: Database, api_key: String) -> Self {
         Self {
-            db_path: db_path.to_string(),
+            db,
             api_key,
             initialized: AtomicBool::new(false),
         }
     }
 
-    pub async fn db(&self) -> Result<Database, String> {
-        Database::new(&self.db_path).await
+    pub fn db(&self) -> &Database {
+        &self.db
     }
 
     pub fn is_initialized(&self) -> bool {
@@ -154,19 +154,19 @@ impl FigContext {
     }
 
     pub async fn create_session(&self, user_id: String) -> Result<String, String> {
-        let db = self.db().await?;
+        let db = self.db();
         let token = generate_token();
         db.create_token(&token, &user_id).await?;
         Ok(token)
     }
 
     pub async fn validate_token(&self, token: &str) -> Option<String> {
-        let db = self.db().await.ok()?;
+        let db = self.db();
         db.get_token_user(token).await.ok().flatten()
     }
 
     pub async fn invalidate_token(&self, token: &str) -> Result<(), String> {
-        let db = self.db().await?;
+        let db = self.db();
         db.delete_token(token).await
     }
 }
@@ -259,16 +259,20 @@ mod tests {
         assert_eq!(result, Some("".to_string()));
     }
 
-    #[test]
-    fn test_fig_context_validate_api_key() {
-        let ctx = FigContext::new("/tmp/test.db", "my-api-key".to_string());
+    #[tokio::test]
+    async fn test_fig_context_validate_api_key() {
+        let db = Database::new("/tmp/test_fig_ctx_validate.db")
+            .await
+            .unwrap();
+        let ctx = FigContext::new(db, "my-api-key".to_string());
         assert!(ctx.validate_api_key("my-api-key"));
         assert!(!ctx.validate_api_key("wrong-key"));
     }
 
-    #[test]
-    fn test_fig_context_initialized_flag() {
-        let ctx = FigContext::new("/tmp/test.db", "key".to_string());
+    #[tokio::test]
+    async fn test_fig_context_initialized_flag() {
+        let db = Database::new("/tmp/test_fig_ctx_flag.db").await.unwrap();
+        let ctx = FigContext::new(db, "key".to_string());
         assert!(!ctx.is_initialized());
         ctx.set_initialized();
         assert!(ctx.is_initialized());
