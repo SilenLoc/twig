@@ -28,48 +28,45 @@ pub struct FigConfig {
     pub present: PresentConfig,
 }
 
+pub struct FigConfigWithRaw {
+    pub config: FigConfig,
+    pub raw: Option<String>,
+    pub filename: Option<String>,
+}
+
 impl FigConfig {
+    /// Load config along with raw content and filename in a single pass
+    pub fn load_with_raw(root: &str, namespace: &str, repo: &str) -> FigConfigWithRaw {
+        if let Ok(Some(content)) = read_file(root, namespace, repo, ".fig.toml") {
+            return FigConfigWithRaw {
+                config: Self::parse(&content),
+                raw: Some(content),
+                filename: Some(".fig.toml".to_string()),
+            };
+        }
+        if let Ok(Some(content)) = read_file(root, namespace, repo, ".fig") {
+            return FigConfigWithRaw {
+                config: Self::parse(&content),
+                raw: Some(content),
+                filename: Some(".fig".to_string()),
+            };
+        }
+        FigConfigWithRaw {
+            config: Self::default(),
+            raw: None,
+            filename: None,
+        }
+    }
+
     /// Load config from `.fig.toml` file in the repository
     /// Falls back to `.fig` for backwards compatibility
     pub fn load(root: &str, namespace: &str, repo: &str) -> Self {
-        // Try .fig.toml first (new format)
-        if let Ok(Some(content)) = read_file(root, namespace, repo, ".fig.toml") {
-            return Self::parse(&content);
-        }
-        // Fall back to .fig (legacy format)
-        if let Ok(Some(content)) = read_file(root, namespace, repo, ".fig") {
-            return Self::parse(&content);
-        }
-        Self::default()
+        Self::load_with_raw(root, namespace, repo).config
     }
 
     /// Parse config from TOML content
     fn parse(content: &str) -> Self {
         toml::from_str(content).unwrap_or_default()
-    }
-
-    /// Read the raw config file content (.fig.toml or .fig)
-    pub fn read_raw(root: &str, namespace: &str, repo: &str) -> Option<String> {
-        // Try .fig.toml first (new format)
-        if let Ok(Some(content)) = read_file(root, namespace, repo, ".fig.toml") {
-            return Some(content);
-        }
-        // Fall back to .fig (legacy format)
-        if let Ok(Some(content)) = read_file(root, namespace, repo, ".fig") {
-            return Some(content);
-        }
-        None
-    }
-
-    /// Get the config filename that was found (for display purposes)
-    pub fn config_filename(root: &str, namespace: &str, repo: &str) -> Option<String> {
-        if let Ok(Some(_)) = read_file(root, namespace, repo, ".fig.toml") {
-            return Some(".fig.toml".to_string());
-        }
-        if let Ok(Some(_)) = read_file(root, namespace, repo, ".fig") {
-            return Some(".fig".to_string());
-        }
-        None
     }
 
     /// Check if a file path matches any of the ignore patterns

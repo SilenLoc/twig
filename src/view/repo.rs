@@ -9,7 +9,7 @@ use crate::{
     config,
     git::{
         self,
-        bare::{Commit, Depth, FigConfig, PresentConfig},
+        bare::{Commit, Depth, FigConfig, FigConfigWithRaw, PresentConfig},
     },
     md,
 };
@@ -59,6 +59,7 @@ struct TabContentContext<'a> {
     selected_md_file: Option<&'a str>,
     selected_content: Option<&'a str>,
     fig_content: Option<&'a str>,
+    fig_filename: Option<&'a str>,
     tabs_config: &'a [String],
     present_config: &'a PresentConfig,
     present_slides: &'a [PresentSlide],
@@ -75,11 +76,11 @@ pub async fn handler(
     let repo = &params.repo;
     let username = get_username_from_request(&req, &auth_state).await;
 
-    // Load .fig.toml config
-    let fig_config = FigConfig::load(server.project_root(), namespace, repo);
-
-    // Get fig config file content for display
-    let fig_content = FigConfig::read_raw(server.project_root(), namespace, repo);
+    let FigConfigWithRaw {
+        config: fig_config,
+        raw: fig_content,
+        filename: fig_filename,
+    } = FigConfig::load_with_raw(server.project_root(), namespace, repo);
 
     // Get commits
     let commits_result =
@@ -115,6 +116,7 @@ pub async fn handler(
                 default_file,
                 default_content.as_deref(),
                 fig_content.as_deref(),
+                fig_filename.as_deref(),
                 &fig_config.tabs,
                 &fig_config.present,
                 &present_slides,
@@ -142,11 +144,11 @@ pub async fn tab_handler(
     let tab = &params.tab;
     let username = get_username_from_request(&req, &auth_state).await;
 
-    // Load .fig.toml config
-    let fig_config = FigConfig::load(server.project_root(), namespace, repo);
-
-    // Get fig config file content for display
-    let fig_content = FigConfig::read_raw(server.project_root(), namespace, repo);
+    let FigConfigWithRaw {
+        config: fig_config,
+        raw: fig_content,
+        filename: fig_filename,
+    } = FigConfig::load_with_raw(server.project_root(), namespace, repo);
 
     // Get commits
     let commits_result =
@@ -184,6 +186,7 @@ pub async fn tab_handler(
                 selected_md_file: default_file,
                 selected_content: default_content.as_deref(),
                 fig_content: fig_content.as_deref(),
+                fig_filename: fig_filename.as_deref(),
                 tabs_config: &fig_config.tabs,
                 present_config: &fig_config.present,
                 present_slides: &present_slides,
@@ -233,11 +236,11 @@ pub async fn markdown_handler(
     let file_path = &params.file_path;
     let username = get_username_from_request(&req, &auth_state).await;
 
-    // Load .fig.toml config
-    let fig_config = FigConfig::load(server.project_root(), namespace, repo);
-
-    // Get fig config file content for display
-    let fig_content = FigConfig::read_raw(server.project_root(), namespace, repo);
+    let FigConfigWithRaw {
+        config: fig_config,
+        raw: fig_content,
+        filename: fig_filename,
+    } = FigConfig::load_with_raw(server.project_root(), namespace, repo);
 
     // Get commits
     let commits_result =
@@ -283,6 +286,7 @@ pub async fn markdown_handler(
                     selected_md_file: Some(file_path),
                     selected_content: selected_content.as_deref(),
                     fig_content: fig_content.as_deref(),
+                    fig_filename: fig_filename.as_deref(),
                     tabs_config: &fig_config.tabs,
                     present_config: &fig_config.present,
                     present_slides: &present_slides,
@@ -314,9 +318,9 @@ pub async fn slide_handler(
     let index = params.index;
     let username = get_username_from_request(&req, &auth_state).await;
 
-    let fig_config = FigConfig::load(server.project_root(), namespace, repo);
+    let fig_config = FigConfig::load_with_raw(server.project_root(), namespace, repo);
     let present_slides =
-        load_present_slides(server.project_root(), namespace, repo, &fig_config.present);
+        load_present_slides(server.project_root(), namespace, repo, &fig_config.config.present);
 
     if index >= present_slides.len() {
         let content = maud::html! {
@@ -482,6 +486,7 @@ fn render_repo(
     default_file: Option<&str>,
     default_content: Option<&str>,
     fig_content: Option<&str>,
+    fig_filename: Option<&str>,
     tabs_config: &[String],
     present_config: &PresentConfig,
     present_slides: &[PresentSlide],
@@ -508,6 +513,7 @@ fn render_repo(
         selected_md_file: default_file,
         selected_content: default_content,
         fig_content,
+        fig_filename,
         tabs_config,
         present_config,
         present_slides,
@@ -598,7 +604,7 @@ fn render_tab_content_inner(ctx: TabContentContext<'_>) -> Markup {
                 }
             }
         }
-        "config" => render_config_view(ctx.project_root, ctx.namespace, ctx.repo, ctx.fig_content),
+        "config" => render_config_view(ctx.project_root, ctx.namespace, ctx.repo, ctx.fig_content, ctx.fig_filename),
         "present" => render_present_view(
             ctx.namespace,
             ctx.repo,
@@ -622,6 +628,7 @@ fn render_tab_content_inner(ctx: TabContentContext<'_>) -> Markup {
                 selected_md_file: ctx.selected_md_file,
                 selected_content: ctx.selected_content,
                 fig_content: ctx.fig_content,
+                fig_filename: ctx.fig_filename,
                 tabs_config: ctx.tabs_config,
                 present_config: ctx.present_config,
                 present_slides: ctx.present_slides,
@@ -632,13 +639,13 @@ fn render_tab_content_inner(ctx: TabContentContext<'_>) -> Markup {
 }
 
 fn render_config_view(
-    project_root: &str,
-    namespace: &str,
-    repo: &str,
+    _project_root: &str,
+    _namespace: &str,
+    _repo: &str,
     fig_content: Option<&str>,
+    fig_filename: Option<&str>,
 ) -> Markup {
-    let config_filename = FigConfig::config_filename(project_root, namespace, repo)
-        .unwrap_or_else(|| ".fig.toml".to_string());
+    let config_filename = fig_filename.unwrap_or(".fig.toml");
 
     maud::html! {
         div {
