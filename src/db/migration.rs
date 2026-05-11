@@ -1,7 +1,6 @@
 use crate::db::Database;
 use migs::{collect, migs};
 
-// Register all migrations inline using the migs macro with explicit order
 migs! {
     sql = r#"CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
@@ -83,22 +82,21 @@ migs! {
 
 impl Database {
     pub async fn create_tables(&self) -> Result<(), String> {
-        // Enable WAL mode for better concurrent access
         let _ = self
-            .conn()?
+            .conn()
+            .await?
             .query("PRAGMA journal_mode = WAL;", ())
             .await
             .map_err(|e| e.to_string())?;
 
-        // Collect all registered migrations
         let migrations = collect!();
 
-        // Sort migrations by order and execute
         let mut migrations: Vec<_> = migrations;
         migrations.sort_by_key(|m| m.order.unwrap_or(u32::MAX));
 
         for migration in &migrations {
-            self.conn()?
+            self.conn()
+                .await?
                 .execute(migration.content, ())
                 .await
                 .map_err(|e| format!("Migration failed: {e}"))?;

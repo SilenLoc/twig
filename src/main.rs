@@ -46,9 +46,7 @@ async fn main() -> std::io::Result<()> {
     let db_path = config.db_path().to_string();
     let api_key = config.effective_api_key();
 
-    let db = Database::new(&db_path)
-        .await
-        .expect("Failed to initialize database");
+    let db = Database::new(&db_path);
 
     let auth_state = web::Data::new(auth::FigContext::new(db, api_key));
 

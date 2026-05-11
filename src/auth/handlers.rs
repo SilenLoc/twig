@@ -417,9 +417,7 @@ mod tests {
     async fn test_create_ticket_with_null_user_id() {
         // Create a temporary database for testing
         let db_path = format!("/tmp/test_fig_db_{}.db", generate_token());
-        let db = Database::new(&db_path)
-            .await
-            .expect("Failed to create database");
+        let db = Database::new(&db_path);
 
         // Initialize tables for testing
         db.init_tables()

@@ -3,7 +3,8 @@ use crate::db::Database;
 
 impl Database {
     pub async fn create_namespace(&self, namespace: &Namespace) -> Result<(), String> {
-        self.conn()?
+        self.conn()
+            .await?
             .execute(
                 "INSERT INTO namespaces (id, name, owner_id, created_at) VALUES (?1, ?2, ?3, ?4)",
                 turso::params![
@@ -16,9 +17,8 @@ impl Database {
             .await
             .map_err(|e| e.to_string())?;
 
-        // Add owner as a member
         let now = chrono::Utc::now().to_rfc3339();
-        self.conn()?
+        self.conn().await?
             .execute(
                 "INSERT INTO namespace_members (namespace_id, user_id, role, added_at) VALUES (?1, ?2, ?3, ?4)",
                 turso::params![namespace.id.clone(), namespace.owner_id.clone(), "owner", now],
@@ -31,7 +31,8 @@ impl Database {
 
     pub async fn get_namespace_by_name(&self, name: &str) -> Result<Option<Namespace>, String> {
         let mut rows = self
-            .conn()?
+            .conn()
+            .await?
             .query(
                 "SELECT id, name, owner_id, created_at FROM namespaces WHERE name = ?1",
                 turso::params![name],
@@ -53,7 +54,8 @@ impl Database {
 
     pub async fn get_all_namespaces_with_owners(&self) -> Result<Vec<(Namespace, String)>, String> {
         let mut rows = self
-            .conn()?
+            .conn()
+            .await?
             .query(
                 "SELECT n.id, n.name, n.owner_id, n.created_at, u.username
                  FROM namespaces n
@@ -84,7 +86,8 @@ impl Database {
     ) -> Result<Vec<(Namespace, String)>, String> {
         let search_pattern = format!("%{query}%");
         let mut rows = self
-            .conn()?
+            .conn()
+            .await?
             .query(
                 "SELECT n.id, n.name, n.owner_id, n.created_at, u.username
                  FROM namespaces n
@@ -115,9 +118,9 @@ impl Database {
         user_id: &str,
         namespace_name: &str,
     ) -> Result<bool, String> {
-        // Check if user is the owner of the namespace
         let mut owner_rows = self
-            .conn()?
+            .conn()
+            .await?
             .query(
                 "SELECT 1 FROM namespaces WHERE name = ?1 AND owner_id = ?2",
                 turso::params![namespace_name, user_id],
@@ -134,9 +137,9 @@ impl Database {
             return Ok(true);
         }
 
-        // Check if user is a member of the namespace
         let mut rows = self
-            .conn()?
+            .conn()
+            .await?
             .query(
                 "SELECT 1 FROM namespace_members nm
                  JOIN namespaces n ON nm.namespace_id = n.id
@@ -151,7 +154,8 @@ impl Database {
 
     pub async fn user_has_any_namespaces(&self, user_id: &str) -> Result<bool, String> {
         let mut rows = self
-            .conn()?
+            .conn()
+            .await?
             .query(
                 "SELECT 1 FROM namespace_members WHERE user_id = ?1 LIMIT 1",
                 turso::params![user_id],
@@ -164,7 +168,8 @@ impl Database {
 
     pub async fn get_namespaces_for_user(&self, user_id: &str) -> Result<Vec<Namespace>, String> {
         let mut rows = self
-            .conn()?
+            .conn()
+            .await?
             .query(
                 "SELECT DISTINCT n.id, n.name, n.owner_id, n.created_at
                  FROM namespaces n

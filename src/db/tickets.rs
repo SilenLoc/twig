@@ -3,7 +3,7 @@ use crate::db::Database;
 
 impl Database {
     pub async fn create_ticket(&self, ticket: &Ticket) -> Result<(), String> {
-        self.conn()?
+        self.conn().await?
             .execute(
                 "INSERT INTO tickets (id, user_id, used, created_at, used_at) VALUES (?1, ?2, ?3, ?4, ?5)",
                 turso::params![
@@ -21,7 +21,8 @@ impl Database {
 
     pub async fn get_ticket(&self, ticket_id: &str) -> Result<Option<Ticket>, String> {
         let mut rows = self
-            .conn()?
+            .conn()
+            .await?
             .query(
                 "SELECT id, user_id, used, created_at, used_at FROM tickets WHERE id = ?1",
                 turso::params![ticket_id],
@@ -44,7 +45,8 @@ impl Database {
 
     pub async fn mark_ticket_used(&self, ticket_id: &str) -> Result<(), String> {
         let now = chrono::Utc::now().to_rfc3339();
-        self.conn()?
+        self.conn()
+            .await?
             .execute(
                 "UPDATE tickets SET used = TRUE, used_at = ?1 WHERE id = ?2",
                 turso::params![now, ticket_id],

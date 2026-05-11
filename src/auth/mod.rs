@@ -264,9 +264,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fig_context_validate_api_key() {
-        let db = Database::new("/tmp/test_fig_ctx_validate.db")
-            .await
-            .unwrap();
+        let db = Database::new("/tmp/test_fig_ctx_validate.db");
         let ctx = FigContext::new(db, "my-api-key".to_string());
         assert!(ctx.validate_api_key("my-api-key"));
         assert!(!ctx.validate_api_key("wrong-key"));
@@ -274,7 +272,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fig_context_initialized_flag() {
-        let db = Database::new("/tmp/test_fig_ctx_flag.db").await.unwrap();
+        let db = Database::new("/tmp/test_fig_ctx_flag.db");
         let ctx = FigContext::new(db, "key".to_string());
         assert!(!ctx.is_initialized());
         ctx.set_initialized();
