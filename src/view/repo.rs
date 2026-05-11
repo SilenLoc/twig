@@ -189,9 +189,21 @@ pub async fn tab_handler(
                 present_slides: &present_slides,
             };
             if req.headers().get("HX-Request").is_some() {
-                // HTMX request - return only the inner tab content for swapping
-                let content = render_tab_content_inner(ctx);
-                Ok(content)
+                let has_config = fig_content.is_some();
+                let has_present = !fig_config.present.files.is_empty();
+                let inner = render_tab_content_inner(ctx);
+                let tabs = render_tabs(
+                    namespace,
+                    repo,
+                    tab,
+                    has_config,
+                    &fig_config.tabs,
+                    has_present,
+                );
+                Ok(maud::html! {
+                    (tabs)
+                    (inner)
+                })
             } else {
                 // For full page loads, return tabs + content
                 let content = render_tab_content(ctx);
@@ -442,7 +454,7 @@ fn render_tabs(
     }
 
     maud::html! {
-        div class="flex bb b--white-20 mb3" {
+        div id="tab-nav" hx-swap-oob="true" class="flex bb b--white-20 mb3" {
             @for (tab_id, tab_label) in all_tabs {
                 @let is_active = tab_id == active_tab;
                 @let active_classes = if is_active { "white fw6 bg-white-10" } else { "white-70 hover-white" };

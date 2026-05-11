@@ -27,3 +27,4 @@ fig.db-wal
 # Added by cargo
 
 /target
+.server.log
