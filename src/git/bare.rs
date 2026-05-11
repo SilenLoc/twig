@@ -283,13 +283,54 @@ pub fn search_repos_with_info(
     namespace: &str,
     query: &str,
 ) -> Result<Vec<RepoInfo>, git2::Error> {
-    let all_repos = get_repos_with_info(root, namespace)?;
     let query_lower = query.to_lowercase();
+    let path = Path::new(root).join(namespace);
+    let entries = match std::fs::read_dir(path) {
+        Ok(entries) => entries,
+        Err(_) => return Ok(Vec::new()),
+    };
 
-    Ok(all_repos
-        .into_iter()
-        .filter(|repo| repo.name.to_lowercase().contains(&query_lower))
-        .collect())
+    let mut repos = Vec::new();
+    for entry in entries {
+        let Ok(entry) = entry else {
+            continue;
+        };
+
+        let Ok(repo_name) = entry.file_name().into_string() else {
+            continue;
+        };
+
+        if !repo_name.to_lowercase().contains(&query_lower) {
+            continue;
+        }
+
+        let repo_path = Path::new(root).join(namespace).join(&repo_name);
+        let repo = match git2::Repository::open(&repo_path) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+
+        let last_commit_date = match repo.head() {
+            Ok(head) => match head.resolve() {
+                Ok(resolved) => match resolved.peel(git2::ObjectType::Commit) {
+                    Ok(obj) => match obj.into_commit() {
+                        Ok(commit) => Some(chrono(commit.author().when())),
+                        Err(_) => None,
+                    },
+                    Err(_) => None,
+                },
+                Err(_) => None,
+            },
+            Err(_) => None,
+        };
+
+        repos.push(RepoInfo {
+            name: repo_name,
+            last_commit_date,
+        });
+    }
+
+    Ok(repos)
 }
 
 /// Reads a file from the repository at the given path
