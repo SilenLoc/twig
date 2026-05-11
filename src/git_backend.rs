@@ -15,8 +15,8 @@ impl Config {
         }
     }
 
-    pub fn project_root(&self) -> String {
-        self.project_root.clone().unwrap_or("/srv/git".to_string())
+    pub fn project_root(&self) -> &str {
+        self.project_root.as_deref().unwrap_or("/srv/git")
     }
 }
 
