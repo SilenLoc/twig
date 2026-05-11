@@ -4,6 +4,173 @@ use std::path::Path;
 use chrono::Utc;
 use serde::Deserialize;
 
+/// Result of listing repository files
+#[derive(Default)]
+pub struct RepoFiles {
+    pub markdown_files: Vec<String>,
+}
+
+pub struct RepoHandle {
+    repo: git2::Repository,
+}
+
+impl RepoHandle {
+    pub fn open(root: &str, namespace: &str, repo: &str) -> Result<Self, git2::Error> {
+        let path = Path::new(root).join(namespace).join(repo);
+        let repo = git2::Repository::open(&path)?;
+        Ok(Self { repo })
+    }
+
+    fn head_commit(&self) -> Result<Option<git2::Commit<'_>>, git2::Error> {
+        let head = match self.repo.head() {
+            Ok(head) => head,
+            Err(_) => return Ok(None),
+        };
+        let obj = match head.resolve() {
+            Ok(resolved) => resolved.peel(git2::ObjectType::Commit)?,
+            Err(_) => return Ok(None),
+        };
+        match obj.into_commit() {
+            Ok(commit) => Ok(Some(commit)),
+            Err(_) => Err(git2::Error::from_str("Couldn't find commit")),
+        }
+    }
+
+    pub fn get_commits(&self, depth: Depth) -> Result<Vec<Commit>, git2::Error> {
+        let commit = match self.head_commit()? {
+            Some(c) => c,
+            None => return Ok(Vec::new()),
+        };
+
+        let mut revwalk = self.repo.revwalk()?;
+        revwalk.push(commit.id())?;
+
+        let mut commits = Vec::new();
+        revwalk.take(depth.depth).for_each(|oid_result| {
+            let Ok(oid) = oid_result else {
+                return;
+            };
+            let Ok(commit) = self.repo.find_commit(oid) else {
+                return;
+            };
+            commits.push(Commit::new(
+                oid.to_string(),
+                commit.author().name().unwrap_or("").to_string(),
+                chrono(commit.author().when()),
+                commit.message().unwrap_or("").to_string(),
+            ));
+        });
+
+        Ok(commits)
+    }
+
+    pub fn read_file(&self, file_path: &str) -> Result<Option<String>, git2::Error> {
+        let commit = match self.head_commit()? {
+            Some(c) => c,
+            None => return Ok(None),
+        };
+
+        let tree = commit.tree()?;
+        let entry = match tree.get_path(Path::new(file_path)) {
+            Ok(entry) => entry,
+            Err(_) => return Ok(None),
+        };
+
+        let object = entry.to_object(&self.repo)?;
+        let blob = object
+            .as_blob()
+            .ok_or_else(|| git2::Error::from_str("Not a blob"))?;
+
+        let content = String::from_utf8_lossy(blob.content());
+        Ok(Some(content.to_string()))
+    }
+
+    pub fn load_config_with_raw(&self) -> FigConfigWithRaw {
+        if let Ok(Some(content)) = self.read_file(".fig.toml") {
+            return FigConfigWithRaw {
+                config: FigConfig::parse(&content),
+                raw: Some(content),
+                filename: Some(".fig.toml".to_string()),
+            };
+        }
+        if let Ok(Some(content)) = self.read_file(".fig") {
+            return FigConfigWithRaw {
+                config: FigConfig::parse(&content),
+                raw: Some(content),
+                filename: Some(".fig".to_string()),
+            };
+        }
+        FigConfigWithRaw {
+            config: FigConfig::default(),
+            raw: None,
+            filename: None,
+        }
+    }
+
+    pub fn list_files(&self, config: Option<&FigConfig>) -> Result<RepoFiles, git2::Error> {
+        let commit = match self.head_commit()? {
+            Some(c) => c,
+            None => {
+                return Ok(RepoFiles {
+                    markdown_files: Vec::new(),
+                });
+            }
+        };
+
+        let tree = commit.tree()?;
+        let mut markdown_files = Vec::new();
+
+        fn walk_tree(
+            repo: &git2::Repository,
+            tree: &git2::Tree,
+            prefix: &str,
+            markdown_files: &mut Vec<String>,
+            config: Option<&FigConfig>,
+        ) -> Result<(), git2::Error> {
+            for entry in tree {
+                let name = entry.name().unwrap_or("");
+                let path = if prefix.is_empty() {
+                    name.to_string()
+                } else {
+                    format!("{prefix}/{name}")
+                };
+
+                if let Some(config) = config
+                    && config.should_ignore(&path)
+                {
+                    continue;
+                }
+
+                match entry.kind() {
+                    Some(git2::ObjectType::Tree) => {
+                        let obj = entry.to_object(repo)?;
+                        if let Ok(subtree) = obj.into_tree() {
+                            walk_tree(repo, &subtree, &path, markdown_files, config)?;
+                        }
+                    }
+                    Some(git2::ObjectType::Blob)
+                        if name.ends_with(".md") || name.ends_with(".markdown") =>
+                    {
+                        markdown_files.push(path);
+                    }
+                    _ => {}
+                }
+            }
+            Ok(())
+        }
+
+        walk_tree(&self.repo, &tree, "", &mut markdown_files, config)?;
+        markdown_files.sort();
+
+        Ok(RepoFiles { markdown_files })
+    }
+
+    pub fn last_commit_date(&self) -> Option<chrono::DateTime<Utc>> {
+        let commit = self.head_commit().ok()??;
+        Some(chrono(commit.author().when()))
+    }
+}
+
 /// Presentation configuration from `.fig.toml`
 #[derive(Debug, Deserialize, Default, Clone)]
 pub struct PresentConfig {
@@ -35,33 +202,14 @@ pub struct FigConfigWithRaw {
 }
 
 impl FigConfig {
-    /// Load config along with raw content and filename in a single pass
-    pub fn load_with_raw(root: &str, namespace: &str, repo: &str) -> FigConfigWithRaw {
-        if let Ok(Some(content)) = read_file(root, namespace, repo, ".fig.toml") {
-            return FigConfigWithRaw {
-                config: Self::parse(&content),
-                raw: Some(content),
-                filename: Some(".fig.toml".to_string()),
-            };
-        }
-        if let Ok(Some(content)) = read_file(root, namespace, repo, ".fig") {
-            return FigConfigWithRaw {
-                config: Self::parse(&content),
-                raw: Some(content),
-                filename: Some(".fig".to_string()),
-            };
-        }
-        FigConfigWithRaw {
-            config: Self::default(),
-            raw: None,
-            filename: None,
-        }
-    }
-
     /// Load config from `.fig.toml` file in the repository
     /// Falls back to `.fig` for backwards compatibility
+    /// Opens and closes the repo each time — prefer RepoHandle::load_config_with_raw when possible
     pub fn load(root: &str, namespace: &str, repo: &str) -> Self {
-        Self::load_with_raw(root, namespace, repo).config
+        let Ok(handle) = RepoHandle::open(root, namespace, repo) else {
+            return Self::default();
+        };
+        handle.load_config_with_raw().config
     }
 
     /// Parse config from TOML content
@@ -158,67 +306,6 @@ impl Default for Depth {
     fn default() -> Self {
         Self::new(1000)
     }
-}
-
-pub fn get_commits(
-    root: &str,
-    namespace: &str,
-    repo: &str,
-    depth: Depth,
-) -> Result<Vec<Commit>, git2::Error> {
-    git_commits(root, namespace, repo, depth)
-}
-
-fn git_commits(
-    root: &str,
-    namespace: &str,
-    repo: &str,
-    depth: Depth,
-) -> Result<Vec<Commit>, git2::Error> {
-    let path = Path::new(root).join(namespace).join(repo);
-
-    let repo = git2::Repository::open(&path)?;
-
-    // Get HEAD commit (handle unborn branch - no commits yet)
-    let head = match repo.head() {
-        Ok(head) => head,
-        Err(_) => return Ok(Vec::new()), // No HEAD yet (empty repo)
-    };
-
-    // Check if this is an unborn branch (HEAD exists but points to non-existent ref)
-    let obj = match head.resolve() {
-        Ok(resolved) => resolved.peel(git2::ObjectType::Commit)?,
-        Err(_) => return Ok(Vec::new()), // Unborn branch - no commits yet
-    };
-
-    let commit = obj
-        .into_commit()
-        .map_err(|_| git2::Error::from_str("Couldn't find commit"))?;
-
-    // Create a revision walker
-    let mut revwalk = repo.revwalk()?;
-    revwalk.push(commit.id())?;
-
-    let mut commits = Vec::new();
-
-    revwalk.take(depth.depth).for_each(|oid_result| {
-        let Ok(oid) = oid_result else {
-            return;
-        };
-
-        let Ok(commit) = repo.find_commit(oid) else {
-            return;
-        };
-
-        commits.push(Commit::new(
-            oid.to_string(),
-            commit.author().name().unwrap_or("").to_string(),
-            chrono(commit.author().when()),
-            commit.message().unwrap_or("").to_string(),
-        ));
-    });
-
-    Ok(commits)
 }
 
 fn chrono(git_time: git2::Time) -> chrono::DateTime<Utc> {
@@ -331,149 +418,6 @@ pub fn search_repos_with_info(
     }
 
     Ok(repos)
-}
-
-/// Reads a file from the repository at the given path
-pub fn read_file(
-    root: &str,
-    namespace: &str,
-    repo: &str,
-    file_path: &str,
-) -> Result<Option<String>, git2::Error> {
-    let path = Path::new(root).join(namespace).join(repo);
-    let repo = git2::Repository::open(&path)?;
-
-    // Get HEAD commit (handle unborn branch - no commits yet)
-    let head = match repo.head() {
-        Ok(head) => head,
-        Err(_) => return Ok(None), // No HEAD yet (empty repo)
-    };
-
-    // Check if this is an unborn branch (HEAD exists but points to non-existent ref)
-    let obj = match head.resolve() {
-        Ok(resolved) => match resolved.peel(git2::ObjectType::Commit) {
-            Ok(obj) => obj,
-            Err(_) => return Ok(None), // Can't peel to commit
-        },
-        Err(_) => return Ok(None), // Unborn branch - no commits yet
-    };
-
-    let commit = obj
-        .into_commit()
-        .map_err(|_| git2::Error::from_str("Couldn't find commit"))?;
-
-    let tree = commit.tree()?;
-
-    // Try to find the file
-    let entry = match tree.get_path(Path::new(file_path)) {
-        Ok(entry) => entry,
-        Err(_) => return Ok(None),
-    };
-
-    let object = entry.to_object(&repo)?;
-    let blob = object
-        .as_blob()
-        .ok_or_else(|| git2::Error::from_str("Not a blob"))?;
-
-    let content = String::from_utf8_lossy(blob.content());
-    Ok(Some(content.to_string()))
-}
-
-/// Result of listing repository files
-#[derive(Default)]
-pub struct RepoFiles {
-    pub markdown_files: Vec<String>,
-}
-
-/// Lists all relevant files in the repository in a single tree walk
-pub fn list_files(
-    root: &str,
-    namespace: &str,
-    repo: &str,
-    config: Option<&FigConfig>,
-) -> Result<RepoFiles, git2::Error> {
-    let path = Path::new(root).join(namespace).join(repo);
-    let repo = git2::Repository::open(&path)?;
-
-    // Get HEAD commit (handle unborn branch - no commits yet)
-    let head = match repo.head() {
-        Ok(head) => head,
-        Err(_) => {
-            return Ok(RepoFiles {
-                markdown_files: Vec::new(),
-            });
-        } // No HEAD yet (empty repo)
-    };
-
-    // Check if this is an unborn branch (HEAD exists but points to non-existent ref)
-    let obj = match head.resolve() {
-        Ok(resolved) => match resolved.peel(git2::ObjectType::Commit) {
-            Ok(obj) => obj,
-            Err(_) => {
-                return Ok(RepoFiles {
-                    markdown_files: Vec::new(),
-                });
-            } // Can't peel to commit
-        },
-        Err(_) => {
-            return Ok(RepoFiles {
-                markdown_files: Vec::new(),
-            });
-        } // Unborn branch - no commits yet
-    };
-
-    let commit = obj
-        .into_commit()
-        .map_err(|_| git2::Error::from_str("Couldn't find commit"))?;
-
-    let tree = commit.tree()?;
-    let mut markdown_files = Vec::new();
-
-    // Walk the tree recursively to find all relevant files
-    fn walk_tree(
-        repo: &git2::Repository,
-        tree: &git2::Tree,
-        prefix: &str,
-        markdown_files: &mut Vec<String>,
-        config: Option<&FigConfig>,
-    ) -> Result<(), git2::Error> {
-        for entry in tree {
-            let name = entry.name().unwrap_or("");
-            let path = if prefix.is_empty() {
-                name.to_string()
-            } else {
-                format!("{prefix}/{name}")
-            };
-
-            // Skip this entry if it matches ignore patterns
-            if let Some(config) = config
-                && config.should_ignore(&path)
-            {
-                continue;
-            }
-
-            match entry.kind() {
-                Some(git2::ObjectType::Tree) => {
-                    let obj = entry.to_object(repo)?;
-                    if let Ok(subtree) = obj.into_tree() {
-                        walk_tree(repo, &subtree, &path, markdown_files, config)?;
-                    }
-                }
-                Some(git2::ObjectType::Blob)
-                    if name.ends_with(".md") || name.ends_with(".markdown") =>
-                {
-                    markdown_files.push(path);
-                }
-                _ => {}
-            }
-        }
-        Ok(())
-    }
-
-    walk_tree(&repo, &tree, "", &mut markdown_files, config)?;
-    markdown_files.sort();
-
-    Ok(RepoFiles { markdown_files })
 }
 
 #[cfg(test)]

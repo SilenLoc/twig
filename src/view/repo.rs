@@ -7,10 +7,7 @@ use serde::Deserialize;
 use crate::{
     auth::FigContext,
     config,
-    git::{
-        self,
-        bare::{Commit, Depth, FigConfig, FigConfigWithRaw, PresentConfig},
-    },
+    git::bare::{Commit, Depth, PresentConfig, RepoHandle},
     md,
 };
 
@@ -50,7 +47,6 @@ struct PresentSlide {
 
 /// Context for rendering tab content to reduce parameter count
 struct TabContentContext<'a> {
-    project_root: &'a str,
     namespace: &'a str,
     repo: &'a str,
     tab: &'a str,
@@ -76,47 +72,49 @@ pub async fn handler(
     let repo = &params.repo;
     let username = get_username_from_request(&req, &auth_state).await;
 
-    let FigConfigWithRaw {
-        config: fig_config,
-        raw: fig_content,
-        filename: fig_filename,
-    } = FigConfig::load_with_raw(server.project_root(), namespace, repo);
+    let handle = match RepoHandle::open(server.project_root(), namespace, repo) {
+        Ok(h) => h,
+        Err(e) => {
+            let content = render_git_error(&e);
+            return if req.headers().get("HX-Request").is_some() {
+                Ok(content)
+            } else {
+                Ok(super::render_layout(&content, username.as_deref()))
+            };
+        }
+    };
 
-    // Get commits
-    let commits_result =
-        git::bare::get_commits(server.project_root(), namespace, repo, Depth::default());
+    let fig_result = handle.load_config_with_raw();
+    let fig_config = &fig_result.config;
+    let fig_content = fig_result.raw.as_deref();
+    let fig_filename = fig_result.filename.as_deref();
 
-    // Get all files (markdown and typst) in a single tree walk
-    let files_result =
-        git::bare::list_files(server.project_root(), namespace, repo, Some(&fig_config));
+    let commits_result = handle.get_commits(Depth::default());
+    let files_result = handle.list_files(Some(fig_config));
 
     let content = match commits_result {
         Ok(commits) => {
             let files = files_result.unwrap_or_default();
             let markdown_files = files.markdown_files;
-            // Get default markdown file content for initial view
             let default_file = get_default_markdown_file(&markdown_files);
             let default_content = if let Some(file) = default_file {
-                git::bare::read_file(server.project_root(), namespace, repo, file)
-                    .ok()
-                    .flatten()
+                handle.read_file(file).ok().flatten()
             } else {
                 None
             };
 
             let present_slides =
-                load_present_slides(server.project_root(), namespace, repo, &fig_config.present);
+                load_present_slides(&handle, &fig_config.present);
 
             render_repo(
-                server.project_root(),
                 namespace,
                 repo,
                 &commits,
                 &markdown_files,
                 default_file,
                 default_content.as_deref(),
-                fig_content.as_deref(),
-                fig_filename.as_deref(),
+                fig_content,
+                fig_filename,
                 &fig_config.tabs,
                 &fig_config.present,
                 &present_slides,
@@ -144,40 +142,41 @@ pub async fn tab_handler(
     let tab = &params.tab;
     let username = get_username_from_request(&req, &auth_state).await;
 
-    let FigConfigWithRaw {
-        config: fig_config,
-        raw: fig_content,
-        filename: fig_filename,
-    } = FigConfig::load_with_raw(server.project_root(), namespace, repo);
+    let handle = match RepoHandle::open(server.project_root(), namespace, repo) {
+        Ok(h) => h,
+        Err(e) => {
+            let content = render_git_error(&e);
+            return if req.headers().get("HX-Request").is_some() {
+                Ok(content)
+            } else {
+                Ok(super::render_layout(&content, username.as_deref()))
+            };
+        }
+    };
 
-    // Get commits
-    let commits_result =
-        git::bare::get_commits(server.project_root(), namespace, repo, Depth::default());
+    let fig_result = handle.load_config_with_raw();
+    let fig_config = &fig_result.config;
+    let fig_content = fig_result.raw.as_deref();
+    let fig_filename = fig_result.filename.as_deref();
 
-    // Get all files (markdown) in a single tree walk
-    let files_result =
-        git::bare::list_files(server.project_root(), namespace, repo, Some(&fig_config));
+    let commits_result = handle.get_commits(Depth::default());
+    let files_result = handle.list_files(Some(fig_config));
 
     match commits_result {
         Ok(commits) => {
             let files = files_result.unwrap_or_default();
             let markdown_files = files.markdown_files;
 
-            // Get default markdown file content
             let default_file = get_default_markdown_file(&markdown_files);
             let default_content = if let Some(file) = default_file {
-                git::bare::read_file(server.project_root(), namespace, repo, file)
-                    .ok()
-                    .flatten()
+                handle.read_file(file).ok().flatten()
             } else {
                 None
             };
 
-            let present_slides =
-                load_present_slides(server.project_root(), namespace, repo, &fig_config.present);
+            let present_slides = load_present_slides(&handle, &fig_config.present);
 
             let ctx = TabContentContext {
-                project_root: server.project_root(),
                 namespace,
                 repo,
                 tab,
@@ -185,8 +184,8 @@ pub async fn tab_handler(
                 markdown_files: &markdown_files,
                 selected_md_file: default_file,
                 selected_content: default_content.as_deref(),
-                fig_content: fig_content.as_deref(),
-                fig_filename: fig_filename.as_deref(),
+                fig_content,
+                fig_filename,
                 tabs_config: &fig_config.tabs,
                 present_config: &fig_config.present,
                 present_slides: &present_slides,
@@ -208,7 +207,6 @@ pub async fn tab_handler(
                     (inner)
                 })
             } else {
-                // For full page loads, return tabs + content
                 let content = render_tab_content(ctx);
                 Ok(super::render_layout(&content, username.as_deref()))
             }
@@ -236,22 +234,26 @@ pub async fn markdown_handler(
     let file_path = &params.file_path;
     let username = get_username_from_request(&req, &auth_state).await;
 
-    let FigConfigWithRaw {
-        config: fig_config,
-        raw: fig_content,
-        filename: fig_filename,
-    } = FigConfig::load_with_raw(server.project_root(), namespace, repo);
+    let handle = match RepoHandle::open(server.project_root(), namespace, repo) {
+        Ok(h) => h,
+        Err(e) => {
+            let content = render_git_error(&e);
+            return if req.headers().get("HX-Request").is_some() {
+                Ok(content)
+            } else {
+                Ok(super::render_layout(&content, username.as_deref()))
+            };
+        }
+    };
 
-    // Get commits
-    let commits_result =
-        git::bare::get_commits(server.project_root(), namespace, repo, Depth::default());
+    let fig_result = handle.load_config_with_raw();
+    let fig_config = &fig_result.config;
+    let fig_content = fig_result.raw.as_deref();
+    let fig_filename = fig_result.filename.as_deref();
 
-    // Get all files (markdown) in a single tree walk
-    let files_result =
-        git::bare::list_files(server.project_root(), namespace, repo, Some(&fig_config));
-
-    // Get the requested markdown file content
-    let file_result = git::bare::read_file(server.project_root(), namespace, repo, file_path);
+    let commits_result = handle.get_commits(Depth::default());
+    let files_result = handle.list_files(Some(fig_config));
+    let file_result = handle.read_file(file_path);
 
     match commits_result {
         Ok(commits) => {
@@ -259,7 +261,6 @@ pub async fn markdown_handler(
             let markdown_files = files.markdown_files;
 
             if req.headers().get("HX-Request").is_some() {
-                // For HTMX requests, return just the markdown content (not the full view with sidebar)
                 let content = render_markdown_content_only(
                     namespace,
                     repo,
@@ -268,16 +269,9 @@ pub async fn markdown_handler(
                 );
                 Ok(content)
             } else {
-                // For full page loads, show the markdown tab with the selected file
                 let selected_content = file_result.ok().flatten();
-                let present_slides = load_present_slides(
-                    server.project_root(),
-                    namespace,
-                    repo,
-                    &fig_config.present,
-                );
+                let present_slides = load_present_slides(&handle, &fig_config.present);
                 let ctx = TabContentContext {
-                    project_root: server.project_root(),
                     namespace,
                     repo,
                     tab: "markdown",
@@ -285,8 +279,8 @@ pub async fn markdown_handler(
                     markdown_files: &markdown_files,
                     selected_md_file: Some(file_path),
                     selected_content: selected_content.as_deref(),
-                    fig_content: fig_content.as_deref(),
-                    fig_filename: fig_filename.as_deref(),
+                    fig_content,
+                    fig_filename,
                     tabs_config: &fig_config.tabs,
                     present_config: &fig_config.present,
                     present_slides: &present_slides,
@@ -318,9 +312,20 @@ pub async fn slide_handler(
     let index = params.index;
     let username = get_username_from_request(&req, &auth_state).await;
 
-    let fig_config = FigConfig::load_with_raw(server.project_root(), namespace, repo);
-    let present_slides =
-        load_present_slides(server.project_root(), namespace, repo, &fig_config.config.present);
+    let handle = match RepoHandle::open(server.project_root(), namespace, repo) {
+        Ok(h) => h,
+        Err(e) => {
+            let content = render_git_error(&e);
+            return if req.headers().get("HX-Request").is_some() {
+                Ok(content)
+            } else {
+                Ok(super::render_layout(&content, username.as_deref()))
+            };
+        }
+    };
+
+    let fig_result = handle.load_config_with_raw();
+    let present_slides = load_present_slides(&handle, &fig_result.config.present);
 
     if index >= present_slides.len() {
         let content = maud::html! {
@@ -478,7 +483,6 @@ fn render_tabs(
 
 #[allow(clippy::too_many_arguments)]
 fn render_repo(
-    project_root: &str,
     namespace: &str,
     repo: &str,
     commits: &[Commit],
@@ -504,7 +508,6 @@ fn render_repo(
     let has_present = !present_config.files.is_empty();
 
     let ctx = TabContentContext {
-        project_root,
         namespace,
         repo,
         tab: default_tab,
@@ -604,7 +607,7 @@ fn render_tab_content_inner(ctx: TabContentContext<'_>) -> Markup {
                 }
             }
         }
-        "config" => render_config_view(ctx.project_root, ctx.namespace, ctx.repo, ctx.fig_content, ctx.fig_filename),
+        "config" => render_config_view(ctx.fig_content, ctx.fig_filename),
         "present" => render_present_view(
             ctx.namespace,
             ctx.repo,
@@ -619,7 +622,6 @@ fn render_tab_content_inner(ctx: TabContentContext<'_>) -> Markup {
                 "commits"
             };
             let new_ctx = TabContentContext {
-                project_root: ctx.project_root,
                 namespace: ctx.namespace,
                 repo: ctx.repo,
                 tab: new_tab,
@@ -639,9 +641,6 @@ fn render_tab_content_inner(ctx: TabContentContext<'_>) -> Markup {
 }
 
 fn render_config_view(
-    _project_root: &str,
-    _namespace: &str,
-    _repo: &str,
     fig_content: Option<&str>,
     fig_filename: Option<&str>,
 ) -> Markup {
@@ -667,16 +666,14 @@ fn render_config_view(
 }
 
 fn load_present_slides(
-    root: &str,
-    namespace: &str,
-    repo: &str,
+    handle: &RepoHandle,
     present_config: &PresentConfig,
 ) -> Vec<PresentSlide> {
     present_config
         .files
         .iter()
         .filter_map(|file| {
-            let content = git::bare::read_file(root, namespace, repo, file).ok()??;
+            let content = handle.read_file(file).ok()??;
             let html = md::process_markdown(&content, &present_config.template_vars);
             Some(PresentSlide { html })
         })
