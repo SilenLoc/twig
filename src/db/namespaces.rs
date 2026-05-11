@@ -118,33 +118,15 @@ impl Database {
         user_id: &str,
         namespace_name: &str,
     ) -> Result<bool, String> {
-        let mut owner_rows = self
-            .conn()
-            .await?
-            .query(
-                "SELECT 1 FROM namespaces WHERE name = ?1 AND owner_id = ?2",
-                turso::params![namespace_name, user_id],
-            )
-            .await
-            .map_err(|e| e.to_string())?;
-
-        if owner_rows
-            .next()
-            .await
-            .map_err(|e| e.to_string())?
-            .is_some()
-        {
-            return Ok(true);
-        }
-
         let mut rows = self
             .conn()
             .await?
             .query(
-                "SELECT 1 FROM namespace_members nm
-                 JOIN namespaces n ON nm.namespace_id = n.id
-                 WHERE nm.user_id = ?1 AND n.name = ?2",
-                turso::params![user_id, namespace_name],
+                "SELECT 1 FROM namespaces n
+                 LEFT JOIN namespace_members nm ON n.id = nm.namespace_id
+                 WHERE n.name = ?1 AND (n.owner_id = ?2 OR nm.user_id = ?2)
+                 LIMIT 1",
+                turso::params![namespace_name, user_id],
             )
             .await
             .map_err(|e| e.to_string())?;
