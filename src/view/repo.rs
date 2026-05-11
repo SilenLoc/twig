@@ -103,8 +103,7 @@ pub async fn handler(
                 None
             };
 
-            let present_slides =
-                load_present_slides(&handle, &fig_config.present);
+            let present_slides = load_present_slides(&handle, &fig_config.present);
 
             render_repo(
                 namespace,
@@ -640,10 +639,7 @@ fn render_tab_content_inner(ctx: TabContentContext<'_>) -> Markup {
     }
 }
 
-fn render_config_view(
-    fig_content: Option<&str>,
-    fig_filename: Option<&str>,
-) -> Markup {
+fn render_config_view(fig_content: Option<&str>, fig_filename: Option<&str>) -> Markup {
     let config_filename = fig_filename.unwrap_or(".fig.toml");
 
     maud::html! {
@@ -665,10 +661,7 @@ fn render_config_view(
     }
 }
 
-fn load_present_slides(
-    handle: &RepoHandle,
-    present_config: &PresentConfig,
-) -> Vec<PresentSlide> {
+fn load_present_slides(handle: &RepoHandle, present_config: &PresentConfig) -> Vec<PresentSlide> {
     present_config
         .files
         .iter()

@@ -34,11 +34,15 @@ impl Database {
 
         match result {
             Ok(()) => {
-                conn.execute("COMMIT", ()).await.map_err(|e| e.to_string())?;
+                conn.execute("COMMIT", ())
+                    .await
+                    .map_err(|e| e.to_string())?;
                 Ok(())
             }
             Err(e) => {
-                conn.execute("ROLLBACK", ()).await.map_err(|re| format!("{e} (rollback also failed: {re})"))?;
+                conn.execute("ROLLBACK", ())
+                    .await
+                    .map_err(|re| format!("{e} (rollback also failed: {re})"))?;
                 Err(e)
             }
         }

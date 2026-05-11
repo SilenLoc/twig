@@ -164,11 +164,6 @@ impl RepoHandle {
 
         Ok(RepoFiles { markdown_files })
     }
-
-    pub fn last_commit_date(&self) -> Option<chrono::DateTime<Utc>> {
-        let commit = self.head_commit().ok()??;
-        Some(chrono(commit.author().when()))
-    }
 }
 
 /// Presentation configuration from `.fig.toml`

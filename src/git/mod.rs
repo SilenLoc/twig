@@ -56,13 +56,13 @@ pub async fn git_handler(
             crate::git_backend::GitService::WriteRef,
         ) => match is_authenticated(&req, &auth_state, &namespace).await {
             Ok(Some(auth_result)) => {
-                // Auto-create namespace if it doesn't exist
-                if !auth_result.namespace_exists {
-                    if let Err(e) = ensure_namespace_exists(&auth_state, &auth_result.user, &namespace).await {
-                        log::error!("Failed to ensure namespace exists: {e}");
-                        return actix_web::HttpResponse::InternalServerError()
-                            .body("Failed to create namespace");
-                    }
+                if !auth_result.namespace_exists
+                    && let Err(e) =
+                        ensure_namespace_exists(&auth_state, &auth_result.user, &namespace).await
+                {
+                    log::error!("Failed to ensure namespace exists: {e}");
+                    return actix_web::HttpResponse::InternalServerError()
+                        .body("Failed to create namespace");
                 }
                 // Auto-create repo if it doesn't exist
                 if let Err(e) = ensure_repo_exists(server.project_root(), &namespace, &repo) {
