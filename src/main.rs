@@ -4,7 +4,7 @@ use actix_web::{
 };
 use db::Database;
 use env_logger::Env;
-use log::info;
+use log::{info, warn};
 
 mod assets;
 mod auth;
@@ -21,12 +21,8 @@ async fn health() -> impl Responder {
 }
 
 #[get("/up")]
-async fn up(auth_state: web::Data<auth::FigContext>) -> impl Responder {
-    if auth_state.is_initialized() {
-        HttpResponse::Ok().finish()
-    } else {
-        HttpResponse::ServiceUnavailable().finish()
-    }
+async fn up() -> impl Responder {
+    HttpResponse::Ok().finish()
 }
 
 #[actix_web::main]
@@ -54,12 +50,26 @@ async fn main() -> std::io::Result<()> {
         .await
         .expect("Failed to initialize database");
 
-    db.init_tables()
-        .await
-        .expect("Failed to initialize database tables");
-
     let auth_state = web::Data::new(auth::FigContext::new(db, api_key));
-    auth_state.set_initialized();
+
+    {
+        let auth_state = auth_state.clone();
+        actix_web::rt::spawn(async move {
+            loop {
+                match auth_state.db().init_tables().await {
+                    Ok(()) => {
+                        info!("Database initialized successfully");
+                        auth_state.set_initialized();
+                        return;
+                    }
+                    Err(e) => {
+                        warn!("Database init failed (will retry): {e}");
+                        actix_web::rt::time::sleep(std::time::Duration::from_secs(1)).await;
+                    }
+                }
+            }
+        });
+    }
 
     let bind_address = config.address();
 

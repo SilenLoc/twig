@@ -141,10 +141,6 @@ impl FigContext {
         &self.db
     }
 
-    pub fn is_initialized(&self) -> bool {
-        self.initialized.load(Ordering::SeqCst)
-    }
-
     pub fn set_initialized(&self) {
         self.initialized.store(true, Ordering::SeqCst);
     }
@@ -174,6 +170,13 @@ impl FigContext {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    impl FigContext {
+        // only for testing
+        pub fn is_initialized(&self) -> bool {
+            self.initialized.load(Ordering::SeqCst)
+        }
+    }
 
     #[test]
     fn test_hash_and_verify_password() {
