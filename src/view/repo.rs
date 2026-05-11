@@ -689,10 +689,10 @@ fn render_slide_content(
             }
         }
 
-        div id="slides-wrapper" class="relative" style="min-height: 60vh;" {
+        div id="slides-wrapper" style="display: flex; flex-direction: column; flex-grow: 1; min-height: 0;" {
             div
                 class="present-slide"
-                style="display: flex; align-items: center; justify-content: center; min-height: 60vh; padding: 2rem;"
+                style="display: flex; align-items: center; justify-content: center; flex-grow: 1; padding: 2rem;"
             {
                 div class="markdown-body white lh-copy" style="max-width: 800px; width: 100%;" {
                     (maud::PreEscaped(&slide.html))
@@ -703,6 +703,7 @@ fn render_slide_content(
         div class="flex items-center justify-between mt3" {
             @if has_prev {
                 button
+                    id="prev-slide"
                     class="f6 link white-70 hover-white bg-transparent bn pointer pa2 ph3"
                     hx-get=(format!("/{}/{}/slide/{}", namespace, repo, current_index - 1))
                     hx-target="#present-container"
@@ -711,7 +712,7 @@ fn render_slide_content(
                     "\u{2190} Previous"
                 }
             } @else {
-                span class="f6 white-30 pa2 ph3" { "\u{2190} Previous" }
+                span id="prev-slide" class="f6 white-30 pa2 ph3" { "\u{2190} Previous" }
             }
             div class="flex" {
                 @for i in 0..slide_count {
@@ -728,6 +729,7 @@ fn render_slide_content(
             }
             @if has_next {
                 button
+                    id="next-slide"
                     class="f6 link white-70 hover-white bg-transparent bn pointer pa2 ph3"
                     hx-get=(format!("/{}/{}/slide/{}", namespace, repo, current_index + 1))
                     hx-target="#present-container"
@@ -736,8 +738,12 @@ fn render_slide_content(
                     "Next \u{2192}"
                 }
             } @else {
-                span class="f6 white-30 pa2 ph3" { "Next \u{2192}" }
+                span id="next-slide" class="f6 white-30 pa2 ph3" { "Next \u{2192}" }
             }
+        }
+
+        script {
+            (maud::PreEscaped("document.onkeydown=function(e){if(e.key==='ArrowLeft'){e.preventDefault();var p=document.getElementById('prev-slide');if(p&&p.tagName==='BUTTON')p.click();}else if(e.key==='ArrowRight'){e.preventDefault();var n=document.getElementById('next-slide');if(n&&n.tagName==='BUTTON')n.click();}};"))
         }
     }
 }
@@ -757,13 +763,14 @@ fn render_present_view(
     }
 
     maud::html! {
-        div id="present-container" {
+        div id="present-container" style="display: flex; flex-direction: column; min-height: calc(100vh - 14rem);" {
             (render_slide_content(namespace, repo, 0, slides))
         }
         style {
-            "#present-container:fullscreen { background: black; }"
-            "#present-container:fullscreen .present-slide { min-height: 100vh; }"
-            "#present-container:fullscreen #slides-wrapper { min-height: 100vh; }"
+            "#present-container:fullscreen { background: black; min-height: 100vh; }"
+            "#present-container:fullscreen #slides-wrapper { flex-grow: 1; }"
+            "#present-container:fullscreen .present-slide { flex-grow: 1; }"
+            "#present-container:fullscreen .markdown-body { font-size: 1.5rem; max-width: 1200px; }"
         }
     }
 }
