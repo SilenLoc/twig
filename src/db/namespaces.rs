@@ -3,9 +3,12 @@ use crate::db::Database;
 
 impl Database {
     pub async fn create_namespace(&self, namespace: &Namespace) -> Result<(), String> {
-        self.conn()
-            .await?
-            .execute(
+        let conn = self.conn().await?;
+
+        conn.execute("BEGIN", ()).await.map_err(|e| e.to_string())?;
+
+        let result: Result<(), String> = async {
+            conn.execute(
                 "INSERT INTO namespaces (id, name, owner_id, created_at) VALUES (?1, ?2, ?3, ?4)",
                 turso::params![
                     namespace.id.clone(),
@@ -17,16 +20,28 @@ impl Database {
             .await
             .map_err(|e| e.to_string())?;
 
-        let now = chrono::Utc::now().to_rfc3339();
-        self.conn().await?
-            .execute(
+            let now = chrono::Utc::now().to_rfc3339();
+            conn.execute(
                 "INSERT INTO namespace_members (namespace_id, user_id, role, added_at) VALUES (?1, ?2, ?3, ?4)",
                 turso::params![namespace.id.clone(), namespace.owner_id.clone(), "owner", now],
             )
             .await
             .map_err(|e| e.to_string())?;
 
-        Ok(())
+            Ok(())
+        }
+        .await;
+
+        match result {
+            Ok(()) => {
+                conn.execute("COMMIT", ()).await.map_err(|e| e.to_string())?;
+                Ok(())
+            }
+            Err(e) => {
+                conn.execute("ROLLBACK", ()).await.map_err(|re| format!("{e} (rollback also failed: {re})"))?;
+                Err(e)
+            }
+        }
     }
 
     pub async fn get_namespace_by_name(&self, name: &str) -> Result<Option<Namespace>, String> {
