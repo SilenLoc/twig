@@ -55,12 +55,14 @@ pub async fn git_handler(
         | crate::git_backend::GitRequestKind::AdvertiseRefs(
             crate::git_backend::GitService::WriteRef,
         ) => match is_authenticated(&req, &auth_state, &namespace).await {
-            Ok(Some(user)) => {
+            Ok(Some(auth_result)) => {
                 // Auto-create namespace if it doesn't exist
-                if let Err(e) = ensure_namespace_exists(&auth_state, &user, &namespace).await {
-                    log::error!("Failed to ensure namespace exists: {e}");
-                    return actix_web::HttpResponse::InternalServerError()
-                        .body("Failed to create namespace");
+                if !auth_result.namespace_exists {
+                    if let Err(e) = ensure_namespace_exists(&auth_state, &auth_result.user, &namespace).await {
+                        log::error!("Failed to ensure namespace exists: {e}");
+                        return actix_web::HttpResponse::InternalServerError()
+                            .body("Failed to create namespace");
+                    }
                 }
                 // Auto-create repo if it doesn't exist
                 if let Err(e) = ensure_repo_exists(server.project_root(), &namespace, &repo) {
@@ -68,7 +70,7 @@ pub async fn git_handler(
                     return actix_web::HttpResponse::InternalServerError()
                         .body("Failed to create repository");
                 }
-                Some(user.username.clone())
+                Some(auth_result.user.username.clone())
             }
             Ok(None) => {
                 return actix_web::HttpResponse::Forbidden().body("Access denied to namespace");
@@ -135,11 +137,16 @@ fn build_response(headers: String, body: Vec<u8>) -> actix_web::HttpResponse {
     response.body(body)
 }
 
+struct AuthResult {
+    user: User,
+    namespace_exists: bool,
+}
+
 async fn is_authenticated(
     req: &actix_web::HttpRequest,
     auth_state: &web::Data<FigContext>,
     namespace_name: &str,
-) -> Result<Option<User>, HttpResponse> {
+) -> Result<Option<AuthResult>, HttpResponse> {
     // Extract basic auth credentials
     let (username, password) = match extract_basic_auth(req) {
         Some(creds) => creds,
@@ -199,7 +206,10 @@ async fn is_authenticated(
             log::info!(
                 "Git auth success: user='{username}' has access to namespace='{namespace_name}'"
             );
-            Ok(Some(user))
+            Ok(Some(AuthResult {
+                user,
+                namespace_exists: true,
+            }))
         }
         Ok(false) => {
             // Check if namespace exists at all
@@ -219,7 +229,10 @@ async fn is_authenticated(
                     log::info!(
                         "Git auth success: user='{username}' can create namespace='{namespace_name}' (doesn't exist)"
                     );
-                    Ok(Some(user))
+                    Ok(Some(AuthResult {
+                        user,
+                        namespace_exists: false,
+                    }))
                 }
                 Err(e) => {
                     log::error!(
@@ -244,27 +257,15 @@ async fn ensure_namespace_exists(
 ) -> Result<(), String> {
     let db = auth_state.db();
 
-    // Check if namespace exists
-    match db.get_namespace_by_name(namespace_name).await {
-        Ok(Some(_)) => {
-            // Namespace already exists
-            Ok(())
-        }
-        Ok(None) => {
-            // Create the namespace
-            log::info!(
-                "Auto-creating namespace '{}' for user '{}'",
-                namespace_name,
-                user.username
-            );
-            let namespace =
-                crate::auth::create_namespace(namespace_name.to_string(), user.id.clone());
-            db.create_namespace(&namespace)
-                .await
-                .map_err(|e| format!("Failed to create namespace: {e}"))
-        }
-        Err(e) => Err(format!("Database error checking namespace: {e}")),
-    }
+    log::info!(
+        "Auto-creating namespace '{}' for user '{}'",
+        namespace_name,
+        user.username
+    );
+    let namespace = crate::auth::create_namespace(namespace_name.to_string(), user.id.clone());
+    db.create_namespace(&namespace)
+        .await
+        .map_err(|e| format!("Failed to create namespace: {e}"))
 }
 
 /// Ensures a bare repository exists on disk, creating it if necessary
