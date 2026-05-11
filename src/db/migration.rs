@@ -80,6 +80,12 @@ migs! {
     order = 8
 }
 
+migs! {
+    sql = r#"CREATE INDEX IF NOT EXISTS idx_tokens_created_at ON tokens(created_at);"#,
+    scope = "init",
+    order = 9
+}
+
 impl Database {
     pub async fn create_tables(&self) -> Result<(), String> {
         let _ = self

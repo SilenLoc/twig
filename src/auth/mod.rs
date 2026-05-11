@@ -153,6 +153,9 @@ impl FigContext {
         let db = self.db();
         let token = generate_token();
         db.create_token(&token, &user_id).await?;
+        if let Err(e) = db.cleanup_expired_tokens().await {
+            log::warn!("Failed to cleanup expired tokens: {e}");
+        }
         Ok(token)
     }
 
