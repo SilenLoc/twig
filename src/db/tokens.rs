@@ -31,10 +31,39 @@ impl Database {
         }
     }
 
+    pub async fn get_username_by_token(&self, token: &str) -> Result<Option<String>, String> {
+        let mut rows = self
+            .conn().await?
+            .query(
+                "SELECT u.username FROM tokens t JOIN users u ON t.user_id = u.id WHERE t.token = ?1 AND t.created_at > datetime('now', '-30 days')",
+                turso::params![token],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
+            Ok(Some(row.get(0).map_err(|e| e.to_string())?))
+        } else {
+            Ok(None)
+        }
+    }
+
     pub async fn delete_token(&self, token: &str) -> Result<(), String> {
         self.conn()
             .await?
             .execute("DELETE FROM tokens WHERE token = ?1", turso::params![token])
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub async fn cleanup_expired_tokens(&self) -> Result<(), String> {
+        self.conn()
+            .await?
+            .execute(
+                "DELETE FROM tokens WHERE created_at < datetime('now', '-30 days')",
+                (),
+            )
             .await
             .map_err(|e| e.to_string())?;
         Ok(())
