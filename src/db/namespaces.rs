@@ -193,4 +193,44 @@ impl Database {
         }
         Ok(result)
     }
+
+    pub async fn delete_namespace(&self, namespace_id: &str) -> Result<(), String> {
+        let conn = self.conn().await?;
+
+        conn.execute("BEGIN", ()).await.map_err(|e| e.to_string())?;
+
+        let result: Result<(), String> = async {
+            conn.execute(
+                "DELETE FROM namespace_members WHERE namespace_id = ?1",
+                turso::params![namespace_id],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+
+            conn.execute(
+                "DELETE FROM namespaces WHERE id = ?1",
+                turso::params![namespace_id],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+
+            Ok(())
+        }
+        .await;
+
+        match result {
+            Ok(()) => {
+                conn.execute("COMMIT", ())
+                    .await
+                    .map_err(|e| e.to_string())?;
+                Ok(())
+            }
+            Err(e) => {
+                conn.execute("ROLLBACK", ())
+                    .await
+                    .map_err(|re| format!("{e} (rollback also failed: {re})"))?;
+                Err(e)
+            }
+        }
+    }
 }

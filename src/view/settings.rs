@@ -65,7 +65,13 @@ pub async fn settings_page(
     };
 
     let mut repos_by_namespace: Vec<(String, Vec<git::bare::RepoInfo>)> = Vec::new();
-    for ns in namespaces {
+    let mut deletable_namespaces: Vec<String> = Vec::new();
+    for ns in &namespaces {
+        let has_repos =
+            git::bare::namespace::has_any_repository(server.project_root(), &ns.name);
+        if ns.owner_id == user_id && !has_repos {
+            deletable_namespaces.push(ns.name.clone());
+        }
         let repos =
             git::bare::get_repos_with_info(server.project_root(), &ns.name).unwrap_or_else(|e| {
                 log::error!("Failed to get repos for namespace '{}': {e}", ns.name);
@@ -80,7 +86,7 @@ pub async fn settings_page(
             })
             .collect();
         if !deletable_repos.is_empty() {
-            repos_by_namespace.push((ns.name, deletable_repos));
+            repos_by_namespace.push((ns.name.clone(), deletable_repos));
         }
     }
 
@@ -178,6 +184,39 @@ pub async fn settings_page(
                                         "Delete"
                                     }
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        div class="ba b--white-20 br2 pa4 bg-black-20 mt4" {
+            h2 class="f4 fw6 white mb3" { "Delete Namespace" }
+
+            @if deletable_namespaces.is_empty() {
+                p class="f6 white-50 ma0" { "No namespaces available for deletion. You can only delete namespaces you own that have no repositories." }
+            } @else {
+                p class="f6 white-70 mb3" { "Select a namespace to permanently delete it. This action cannot be undone." }
+
+                div id="delete-namespace-result" {}
+
+                div class="flex flex-column" {
+                    @for ns_name in &deletable_namespaces {
+                        form
+                            class="flex justify-between items-center pa2 bb b--white-10"
+                            hx-post="/settings/delete-namespace/"
+                            hx-target="#delete-namespace-result"
+                            hx-swap="innerHTML"
+                            hx-confirm=(format!("Are you sure you want to permanently delete the namespace '{}'? This cannot be undone.", ns_name))
+                        {
+                            input type="hidden" name="namespace" value=(ns_name);
+                            span class="f6 white" { (ns_name) }
+                            button
+                                type="submit"
+                                class="pa1 bg-dark-red white bn br1 pointer hover-bg-red f6"
+                            {
+                                "Delete"
                             }
                         }
                     }
@@ -313,4 +352,77 @@ pub async fn delete_repo(
                 .body(render_error("Failed to delete repository").into_string())
         }
     }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct NamespaceForm {
+    pub namespace: String,
+}
+
+#[post("/settings/delete-namespace/")]
+pub async fn delete_namespace(
+    req: HttpRequest,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<FigContext>,
+    form: web::Form<NamespaceForm>,
+) -> impl Responder {
+    let Some(cookie) = req.cookie("session") else {
+        return HttpResponse::Unauthorized()
+            .body(render_error("Not logged in. Please log in first.").into_string());
+    };
+    let token = cookie.value().to_string();
+
+    let Some(user_id) = auth_state.validate_token(&token).await else {
+        return HttpResponse::Unauthorized()
+            .body(render_error("Session expired. Please log in again.").into_string());
+    };
+
+    let db = auth_state.db();
+
+    let namespace = match db.get_namespace_by_name(&form.namespace).await {
+        Ok(Some(ns)) => ns,
+        Ok(None) => {
+            return HttpResponse::NotFound()
+                .body(render_error("Namespace not found").into_string());
+        }
+        Err(e) => {
+            log::error!("Database error: {e}");
+            return HttpResponse::InternalServerError()
+                .body(render_error("Database error").into_string());
+        }
+    };
+
+    if namespace.owner_id != user_id {
+        return HttpResponse::Forbidden()
+            .body(render_error("Only the namespace owner can delete it").into_string());
+    }
+
+    if git::bare::namespace::has_any_repository(server.project_root(), &form.namespace) {
+        return HttpResponse::BadRequest().body(
+            render_error(
+                "Cannot delete namespace: it still contains repositories. Delete all repositories first.",
+            )
+            .into_string(),
+        );
+    }
+
+    if let Err(e) = db.delete_namespace(&namespace.id).await {
+        log::error!("Failed to delete namespace: {e}");
+        return HttpResponse::InternalServerError()
+            .body(render_error("Failed to delete namespace").into_string());
+    }
+
+    let namespace_dir = Path::new(server.project_root()).join(&form.namespace);
+    if namespace_dir.is_dir() {
+        let _ = std::fs::remove_dir(&namespace_dir);
+    }
+
+    info!(
+        "Deleted namespace '{}' by user: {}",
+        form.namespace, user_id
+    );
+
+    HttpResponse::Ok()
+        .content_type("text/html")
+        .body(render_success("Namespace deleted successfully.").into_string())
 }

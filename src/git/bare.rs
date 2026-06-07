@@ -4,6 +4,20 @@ use std::path::Path;
 use chrono::Utc;
 use serde::Deserialize;
 
+pub mod namespace {
+    use std::path::Path;
+
+    pub fn has_any_repository(root: &str, namespace: &str) -> bool {
+        let namespace_dir = Path::new(root).join(namespace);
+        if !namespace_dir.is_dir() {
+            return false;
+        }
+        namespace_dir
+            .read_dir()
+            .is_ok_and(|mut entries| entries.next().is_some())
+    }
+}
+
 /// Result of listing repository files
 #[derive(Default)]
 pub struct RepoFiles {

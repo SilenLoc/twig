@@ -96,6 +96,7 @@ async fn main() -> std::io::Result<()> {
             .service(view::settings::settings_page)
             .service(view::settings::update_email)
             .service(view::settings::delete_repo)
+            .service(view::settings::delete_namespace)
             .service(view::namespace::handler)
             .service(view::namespace::create_repo_form_handler)
             .service(view::namespace::create_repo_handler)
