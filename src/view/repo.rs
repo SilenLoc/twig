@@ -793,11 +793,11 @@ fn render_markdown_view(
     maud::html! {
         div class="flex flex-column flex-row-ns" style="height: 100%;" {
             // Left sidebar with markdown files
-            div class="w-100 w4-ns w5-l br-ns b--white-20 pr3-ns mb3 mb0-ns overflow-x-auto overflow-y-auto-ns" style="max-height: 300px; min-width: 0;" {
+            div class="w-100 w4-ns w5-l br-ns b--white-20 pr3-ns mb3 mb0-ns overflow-x-auto overflow-y-auto-ns" style="max-height: 70vh; min-width: 0;" {
                 @if markdown_files.len() > 1 {
                     h3 class="f5 fw6 mb2 white" { "Markdown Files" }
                 }
-                ul class="list pl0 flex flex-row flex-row-ns flex-column-ns overflow-x-auto mb0" {
+                ul class="list pl0 flex flex-row flex-column-ns overflow-x-auto overflow-y-auto-ns mb0" {
                     @for file in markdown_files {
                         @let is_active = file == current_file;
                         li class="mb1 mr2 mr0-ns flex-shrink-0 flex-shrink-0-ns" {
