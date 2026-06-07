@@ -100,16 +100,14 @@ pub async fn handler(
     };
 
     let content = maud::html! {
-        // Breadcrumb navigation
-        div class="mb4 f6 white-70" {
+        div class="mb3 mb4-ns f6 white-70" {
             a href="/" class="link white-70 hover-white no-underline" { "Namespaces" }
             span class="mh2" { "/" }
             span class="white" { (namespace) }
         }
 
-        // Header with namespace name and Create repo button
-        div class="flex justify-between items-center mb4" {
-            h1 class="f3 fw6 white ma0" {
+        div class="flex flex-wrap justify-between items-center mb3 mb4-ns" {
+            h1 class="f3 fw6 white ma0 mb2 mb0-ns" {
                 "Namespace: " (namespace)
             }
             @if has_access {
@@ -124,11 +122,9 @@ pub async fn handler(
             }
         }
 
-        // Container for the create repo form (initially empty)
-        div id="create-repo-container" class="mb4" {}
+        div id="create-repo-container" class="mb3 mb4-ns" {}
 
-        // Search box
-        div class="mb4" {
+        div class="mb3 mb4-ns" {
             form
                 method="GET"
                 action=(format!("/{}", namespace))
@@ -140,7 +136,7 @@ pub async fn handler(
                     value=(search_query)
                     placeholder="Search repositories..."
                     class="flex-auto pa2 bg-black white ba b--white-30 br1 mr2"
-                    style="outline: none;"
+                    style="outline: none; min-width: 0;"
                     onfocus="this.style.borderColor='white'"
                     onblur="this.style.borderColor='rgba(255,255,255,0.3)'";
                 button
@@ -160,12 +156,10 @@ pub async fn handler(
             }
         }
 
-        // Repository list section
-        div class="ba b--white-20 br2 bg-black-20 overflow-hidden" {
-            // Table header
+        div class="ba b--white-20 br2 bg-black-20 overflow-hidden overflow-x-auto" {
             div class="flex pa3 bb b--white-20 bg-black-30 white-70 f6 fw6" {
                 div class="flex-auto" { "Repository" }
-                div class="tr" style="width: 150px;" { "Last Commit" }
+                div class="tr dn db-ns" style="min-width: 150px;" { "Last Commit" }
             }
 
             @if repos.is_empty() {
@@ -186,7 +180,7 @@ pub async fn handler(
                             div class="flex-auto" {
                                 span class="f5" { (repo.name) }
                             }
-                            div class="tr white-60 f6" style="width: 150px;" {
+                            div class="tr white-60 f6 dn db-ns" style="min-width: 150px;" {
                                 @match repo.last_commit_date {
                                     Some(date) => { (format_date(&date)) }
                                     None => { "No commits" }

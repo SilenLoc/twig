@@ -67,8 +67,7 @@ pub async fn settings_page(
     let mut repos_by_namespace: Vec<(String, Vec<git::bare::RepoInfo>)> = Vec::new();
     let mut deletable_namespaces: Vec<String> = Vec::new();
     for ns in &namespaces {
-        let has_repos =
-            git::bare::namespace::has_any_repository(server.project_root(), &ns.name);
+        let has_repos = git::bare::namespace::has_any_repository(server.project_root(), &ns.name);
         if ns.owner_id == user_id && !has_repos {
             deletable_namespaces.push(ns.name.clone());
         }
@@ -91,28 +90,27 @@ pub async fn settings_page(
     }
 
     let content = maud::html! {
-        // Breadcrumb navigation
         div class="mb4 f6 white-70" {
             a href="/" class="link white-70 hover-white no-underline" { "Home" }
             span class="mh2" { "/" }
             span class="white" { "Settings" }
         }
 
-        h1 class="f3 fw6 white mb4" { "User Settings" }
+        h1 class="f3 fw6 white mb3 mb4-ns" { "User Settings" }
 
-        div class="ba b--white-20 br2 pa4 bg-black-20 mb4" {
+        div class="ba b--white-20 br2 pa3 pa4-ns bg-black-20 mb3 mb4-ns" {
             h2 class="f4 fw6 white mb3" { "Profile Information" }
 
-            div class="mb4" {
+            div class="mb3 mb4-ns" {
                 label class="db f6 white-70 mb2" { "Username" }
                 p class="f5 white ma0" { (user.username) }
             }
 
-            div class="mb4" {
+            div class="mb3 mb4-ns" {
                 label class="db f6 white-70 mb2" { "Email" }
                 @match &user.email {
                     Some(email) => {
-                        p class="f5 white ma0" { (email) }
+                        p class="f5 white ma0" style="word-break: break-all;" { (email) }
                     }
                     None => {
                         p class="f5 white-50 ma0" { "Not set" }
@@ -120,7 +118,7 @@ pub async fn settings_page(
                 }
             }
 
-            hr class="bt b--white-20 mv4";
+            hr class="bt b--white-20 mv3 mv4-ns";
 
             h3 class="f5 fw6 white mb3" { "Update Email" }
 
@@ -128,7 +126,6 @@ pub async fn settings_page(
                 hx-post="/settings/email"
                 hx-target="#settings-result"
                 hx-swap="innerHTML"
-                class="mb3"
             {
                 div class="mb3" {
                     label class="db f6 white-70 mb2" for="email" { "Email Address" }
@@ -152,7 +149,7 @@ pub async fn settings_page(
             div id="settings-result" {}
         }
 
-        div class="ba b--white-20 br2 pa4 bg-black-20" {
+        div class="ba b--white-20 br2 pa3 pa4-ns bg-black-20" {
             h2 class="f4 fw6 white mb3" { "Delete Repository" }
 
             @if repos_by_namespace.is_empty() {
@@ -168,7 +165,7 @@ pub async fn settings_page(
                         div class="flex flex-column" {
                             @for repo in repos {
                                 form
-                                    class="flex justify-between items-center pa2 bb b--white-10"
+                                    class="flex flex-wrap justify-between items-center pa2 bb b--white-10"
                                     hx-post="/settings/delete-repo"
                                     hx-target="#delete-repo-result"
                                     hx-swap="innerHTML"
@@ -176,7 +173,7 @@ pub async fn settings_page(
                                 {
                                     input type="hidden" name="namespace" value=(ns);
                                     input type="hidden" name="repo_name" value=(repo.name);
-                                    span class="f6 white" { (repo.name) }
+                                    span class="f6 white mb1 mb0-ns" { (repo.name) }
                                     button
                                         type="submit"
                                         class="pa1 bg-dark-red white bn br1 pointer hover-bg-red f6"
@@ -191,7 +188,7 @@ pub async fn settings_page(
             }
         }
 
-        div class="ba b--white-20 br2 pa4 bg-black-20 mt4" {
+        div class="ba b--white-20 br2 pa3 pa4-ns bg-black-20 mt3 mt4-ns" {
             h2 class="f4 fw6 white mb3" { "Delete Namespace" }
 
             @if deletable_namespaces.is_empty() {
@@ -204,14 +201,14 @@ pub async fn settings_page(
                 div class="flex flex-column" {
                     @for ns_name in &deletable_namespaces {
                         form
-                            class="flex justify-between items-center pa2 bb b--white-10"
+                            class="flex flex-wrap justify-between items-center pa2 bb b--white-10"
                             hx-post="/settings/delete-namespace/"
                             hx-target="#delete-namespace-result"
                             hx-swap="innerHTML"
                             hx-confirm=(format!("Are you sure you want to permanently delete the namespace '{}'? This cannot be undone.", ns_name))
                         {
                             input type="hidden" name="namespace" value=(ns_name);
-                            span class="f6 white" { (ns_name) }
+                            span class="f6 white mb1 mb0-ns" { (ns_name) }
                             button
                                 type="submit"
                                 class="pa1 bg-dark-red white bn br1 pointer hover-bg-red f6"

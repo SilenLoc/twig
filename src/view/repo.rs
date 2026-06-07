@@ -417,7 +417,7 @@ fn render_git_error(e: &git2::Error) -> Markup {
 /// A scrollable container for tab content
 fn scrollable_container(content: &Markup) -> Markup {
     maud::html! {
-        div class="overflow-y-auto flex-auto" style="max-height: calc(100vh - 14rem);" {
+        div class="overflow-y-auto flex-auto" {
             (content)
         }
     }
@@ -462,7 +462,7 @@ fn render_tabs(
     }
 
     maud::html! {
-        div id="tab-nav" hx-swap-oob="true" class="flex bb b--white-20 mb3" {
+        div id="tab-nav" hx-swap-oob="true" class="flex flex-wrap bb b--white-20 mb3" {
             @for (tab_id, tab_label) in all_tabs {
                 @let is_active = tab_id == active_tab;
                 @let active_classes = if is_active { "white fw6 bg-white-10" } else { "white-70 hover-white" };
@@ -522,8 +522,7 @@ fn render_repo(
     };
 
     maud::html! {
-        // Breadcrumb navigation
-        div class="mb4 f6 white-70" {
+        div class="mb3 mb4-ns f6 white-70" {
             a href="/" class="link white-70 hover-white no-underline" { "Namespaces" }
             span class="mh2" { "/" }
             a href=(format!("/{}", namespace)) class="link white-70 hover-white no-underline" { (namespace) }
@@ -772,7 +771,7 @@ fn render_present_view(
     }
 
     maud::html! {
-        div id="present-container" style="display: flex; flex-direction: column; min-height: calc(100vh - 14rem);" {
+        div id="present-container" style="display: flex; flex-direction: column; min-height: 50vh;" {
             (render_slide_content(namespace, repo, 0, slides))
         }
         style {
@@ -792,18 +791,20 @@ fn render_markdown_view(
     markdown_files: &[String],
 ) -> Markup {
     maud::html! {
-        div class="flex" style="height: 100%;" {
+        div class="flex flex-column flex-row-ns" style="height: 100%;" {
             // Left sidebar with markdown files
-            div class="w4 w5-ns br b--white-20 pr3 overflow-y-auto" style="max-height: calc(100vh - 14rem); min-width: 200px;" {
-                h3 class="f5 fw6 mb2 white" { "Markdown Files" }
-                ul class="list pl0" {
+            div class="w-100 w4-ns w5-l br-ns b--white-20 pr3-ns mb3 mb0-ns overflow-x-auto overflow-y-auto-ns" style="max-height: 300px; min-width: 0;" {
+                @if markdown_files.len() > 1 {
+                    h3 class="f5 fw6 mb2 white" { "Markdown Files" }
+                }
+                ul class="list pl0 flex flex-row flex-row-ns flex-column-ns overflow-x-auto mb0" {
                     @for file in markdown_files {
                         @let is_active = file == current_file;
-                        li class="mb1" {
+                        li class="mb1 mr2 mr0-ns flex-shrink-0 flex-shrink-0-ns" {
                             @if is_active {
                                 a
                                     href=(format!("/{}/{}/md/{}", namespace, repo, file))
-                                    class="white fw6 no-underline db pa1"
+                                    class="white fw6 no-underline db pa1 nowrap"
                                     hx-get=(format!("/{}/{}/md/{}", namespace, repo, file))
                                     hx-target="#markdown-view"
                                 {
@@ -813,7 +814,7 @@ fn render_markdown_view(
                             @if !is_active {
                                 a
                                     href=(format!("/{}/{}/md/{}", namespace, repo, file))
-                                    class="white-70 hover-white no-underline db pa1"
+                                    class="white-70 hover-white no-underline db pa1 nowrap"
                                     hx-get=(format!("/{}/{}/md/{}", namespace, repo, file))
                                     hx-target="#markdown-view"
                                 {
@@ -826,7 +827,7 @@ fn render_markdown_view(
             }
 
             // Right content area
-            div id="markdown-view" class="flex-auto pl3 overflow-y-auto" style="max-height: calc(100vh - 14rem);" {
+            div id="markdown-view" class="flex-auto pl0 pl3-ns overflow-y-auto" {
                 (render_markdown_content_only(namespace, repo, current_file, content))
             }
         }
@@ -863,12 +864,12 @@ fn render_commit(commit: &Commit) -> Markup {
     let commit_message = commit.commit_message();
     maud::html! {
         div class="commit ba b--white-20 br2 pa3 bg-black-20" {
-            div class="flex items-center mb2" {
+            div class="flex flex-wrap items-center mb2" {
                 code class="f7 mr2 ph2 pv1 bg-white-10 br1 white" {
                     (hash.chars().take(7).collect::<String>())
                 }
-                span class="f6 white-70" { (author) }
-                span class="f6 white-50 ml2" { (date.format("%Y-%m-%d %H:%M")) }
+                span class="f6 white-70 mr2" { (author) }
+                span class="f6 white-50" { (date.format("%Y-%m-%d %H:%M")) }
             }
             p class="f5 white ma0" { (commit_message) }
         }

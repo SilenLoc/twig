@@ -44,7 +44,7 @@ version = "1"
 [package]
 edition = "2024"
 name = "fig"
-version = "0.1.63"
+version = "0.1.64"
 
 [profile.release]
 codegen-units = 1

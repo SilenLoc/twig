@@ -7,7 +7,7 @@ use crate::auth::FigContext;
 
 fn wrap_auth_content(content: &maud::Markup) -> maud::Markup {
     maud::html! {
-        div id="auth-content" class="flex flex-column items-center justify-center" style="min-height: calc(100vh - 5rem); padding: 2rem 1rem;" {
+        div id="auth-content" class="flex flex-column items-center justify-center" style="min-height: 60vh; padding: 1rem 0;" {
             div class="w-100 mw6" {
                 (content)
             }

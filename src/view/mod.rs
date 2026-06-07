@@ -26,19 +26,19 @@ pub fn render_layout(main_content: &maud::Markup, username: Option<&str>) -> mau
                     ".markdown-body tr:nth-child(even) { background-color: rgba(255,255,255,0.05); }"
                 }
             }
-            body hx-ext="response-targets" class="w-100 sans-serif ma0 bg-black white" style="height: 100vh; overflow: hidden;" {
-                nav class="dt w-100 bg-black bb b--white-20 fixed top-0 left-0 right-0 z-1" {
-                    div class="dtc v-mid pa3" {
+            body hx-ext="response-targets" class="w-100 sans-serif ma0 bg-black white" style="min-height: 100vh;" {
+                nav class="flex items-center justify-between flex-wrap bg-black bb b--white-20 pa3" style="position: sticky; top: 0; z-index: 10;" {
+                    div {
                         a href="/" class="link white-90 hover-white no-underline fw6 f4 flex items-center" {
                             img src="/assets/fig.svg" alt="Fig logo" style="width: 24px; height: 24px; margin-right: 0.5rem;";
                             "Fig"
                         }
                     }
-                    div class="dtc v-mid tr pa3" {
+                    div class="flex items-center" {
                         @match username {
                             Some(name) => {
-                                span class="white-70 f6 mr3" { (name) }
-                                a href="/settings" class="link white-70 hover-white no-underline f6 mr3" {
+                                span class="white-70 f6 mr2 mr3-ns dn dib-ns" { (name) }
+                                a href="/settings" class="link white-70 hover-white no-underline f6 mr2 mr3-ns" {
                                     "Settings"
                                 }
                                 form method="POST" action="/auth/logout" class="dib ma0" {
@@ -51,7 +51,7 @@ pub fn render_layout(main_content: &maud::Markup, username: Option<&str>) -> mau
                                 }
                             }
                             None => {
-                                a href="/auth/login" class="link white-70 hover-white no-underline f6 mr3" {
+                                a href="/auth/login" class="link white-70 hover-white no-underline f6 mr2 mr3-ns" {
                                     "Login"
                                 }
                                 a href="/auth/signup" class="link white-70 hover-white no-underline f6" {
@@ -61,10 +61,8 @@ pub fn render_layout(main_content: &maud::Markup, username: Option<&str>) -> mau
                         }
                     }
                 }
-                main id="feature" class="flex flex-column" style="padding-top: 5rem; padding-left: 10px; padding-right: 10px; padding-bottom: 10px; height: 100vh; overflow: hidden;" {
-                    div class="w-100 flex-auto" style="overflow: hidden; display: flex; flex-direction: column;" {
-                        (main_content)
-                    }
+                main id="feature" class="pa3" {
+                    (main_content)
                 }
             }
         }
