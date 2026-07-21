@@ -59,6 +59,8 @@ struct TabContentContext<'a> {
     tabs_config: &'a [String],
     present_config: &'a PresentConfig,
     present_slides: &'a [PresentSlide],
+    license_content: Option<&'a str>,
+    has_license: bool,
 }
 
 #[get("/{namespace}/{repo}")]
@@ -104,6 +106,8 @@ pub async fn handler(
             };
 
             let present_slides = load_present_slides(&handle, &fig_config.present);
+            let license_content = handle.get_license_content();
+            let has_license = handle.has_license();
 
             render_repo(
                 namespace,
@@ -117,6 +121,8 @@ pub async fn handler(
                 &fig_config.tabs,
                 &fig_config.present,
                 &present_slides,
+                Some(&license_content),
+                has_license,
             )
         }
         Err(e) => render_git_error(&e),
@@ -174,6 +180,8 @@ pub async fn tab_handler(
             };
 
             let present_slides = load_present_slides(&handle, &fig_config.present);
+            let license_content = handle.get_license_content();
+            let has_license = handle.has_license();
 
             let ctx = TabContentContext {
                 namespace,
@@ -188,6 +196,8 @@ pub async fn tab_handler(
                 tabs_config: &fig_config.tabs,
                 present_config: &fig_config.present,
                 present_slides: &present_slides,
+                license_content: Some(&license_content),
+                has_license,
             };
             if req.headers().get("HX-Request").is_some() {
                 let has_config = fig_content.is_some();
@@ -258,6 +268,8 @@ pub async fn markdown_handler(
         Ok(commits) => {
             let files = files_result.unwrap_or_default();
             let markdown_files = files.markdown_files;
+            let license_content = handle.get_license_content();
+            let has_license = handle.has_license();
 
             if req.headers().get("HX-Request").is_some() {
                 let content = render_markdown_content_only(
@@ -283,6 +295,8 @@ pub async fn markdown_handler(
                     tabs_config: &fig_config.tabs,
                     present_config: &fig_config.present,
                     present_slides: &present_slides,
+                    license_content: Some(&license_content),
+                    has_license,
                 };
                 let content = render_tab_content(ctx);
                 Ok(super::render_layout(&content, username.as_deref()))
@@ -445,6 +459,7 @@ fn render_tabs(
                 "commits" => all_tabs.push(("commits", "Commits")),
                 "config" if has_config => all_tabs.push(("config", "Config")),
                 "present" if has_present => all_tabs.push(("present", "Present")),
+                "license" => all_tabs.push(("license", "License")),
                 _ => {}
             }
         }
@@ -459,6 +474,7 @@ fn render_tabs(
         if has_present {
             all_tabs.push(("present", "Present"));
         }
+        all_tabs.push(("license", "License"));
     }
 
     maud::html! {
@@ -493,6 +509,8 @@ fn render_repo(
     tabs_config: &[String],
     present_config: &PresentConfig,
     present_slides: &[PresentSlide],
+    license_content: Option<&str>,
+    has_license: bool,
 ) -> Markup {
     // Determine default tab based on configuration and available files
     let default_tab = if !tabs_config.is_empty() {
@@ -519,6 +537,8 @@ fn render_repo(
         tabs_config,
         present_config,
         present_slides,
+        license_content,
+        has_license,
     };
 
     maud::html! {
@@ -612,6 +632,7 @@ fn render_tab_content_inner(ctx: TabContentContext<'_>) -> Markup {
             ctx.present_config,
             ctx.present_slides,
         ),
+        "license" => render_license_view(ctx.license_content),
         _ => {
             // Unknown tab - show Markdown by default if available, then Commits
             let new_tab = if !ctx.markdown_files.is_empty() {
@@ -632,6 +653,8 @@ fn render_tab_content_inner(ctx: TabContentContext<'_>) -> Markup {
                 tabs_config: ctx.tabs_config,
                 present_config: ctx.present_config,
                 present_slides: ctx.present_slides,
+                license_content: ctx.license_content,
+                has_license: ctx.has_license,
             };
             render_tab_content_inner(new_ctx)
         }
@@ -654,6 +677,23 @@ fn render_config_view(fig_content: Option<&str>, fig_filename: Option<&str>) -> 
             } @else {
                 div class="pa3 white-50 bg-black-20 br2" {
                     "No configuration file found. Create a .fig.toml file in the repository root to configure ignore patterns."
+                }
+            }
+        }
+    }
+}
+
+fn render_license_view(license_content: Option<&str>) -> Markup {
+    maud::html! {
+        div {
+            h2 class="f4 fw6 mb3 white" { "License" }
+            @if let Some(content) = license_content {
+                div class="markdown-body white lh-copy pa3 bg-black-20 br2 overflow-x-auto" {
+                    (maud::PreEscaped(content))
+                }
+            } @else {
+                div class="pa3 white-50 bg-black-20 br2" {
+                    "No license information available."
                 }
             }
         }

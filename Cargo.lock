@@ -971,7 +971,7 @@ checksum = "a043dc74da1e37d6afe657061213aa6f425f855399a11d3463c6ecccc4dfda1f"
 
 [[package]]
 name = "fig"
-version = "0.1.64"
+version = "0.1.67"
 dependencies = [
  "actix-multipart",
  "actix-web",
