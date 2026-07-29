@@ -1,4 +1,5 @@
 [dependencies]
+actix-http = "3"
 actix-multipart = "0.7"
 actix-web = "4"
 argon2 = "0.5"
@@ -37,9 +38,9 @@ version = "1"
 features = ["v4"]
 version = "1.23.0"
 
-[dev-dependencies.tokio]
-features = ["full"]
-version = "1"
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+serde_json = "1.0"
 
 [package]
 edition = "2024"
@@ -68,7 +69,6 @@ excludes = [
     "skills",
     "tests",
 ]
-host = "fedora@vps"
 includes = [
     "Cargo.toml",
     "assets",

@@ -235,6 +235,13 @@ pub async fn update_email(
     auth_state: web::Data<FigContext>,
     form: web::Form<UpdateEmailForm>,
 ) -> impl Responder {
+    // Validate email format (basic validation) before requiring a session,
+    // so malformed input is rejected as BAD_REQUEST regardless of auth state.
+    if form.email.is_empty() || !form.email.contains('@') {
+        return HttpResponse::BadRequest()
+            .body(render_error("Please enter a valid email address").into_string());
+    }
+
     // Get user from session
     let Some(cookie) = req.cookie("session") else {
         return HttpResponse::Unauthorized()
@@ -246,12 +253,6 @@ pub async fn update_email(
         return HttpResponse::Unauthorized()
             .body(render_error("Session expired. Please log in again.").into_string());
     };
-
-    // Validate email format (basic validation)
-    if form.email.is_empty() || !form.email.contains('@') {
-        return HttpResponse::BadRequest()
-            .body(render_error("Please enter a valid email address").into_string());
-    }
 
     let db = auth_state.db();
 

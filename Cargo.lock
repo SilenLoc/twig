@@ -973,6 +973,7 @@ checksum = "a043dc74da1e37d6afe657061213aa6f425f855399a11d3463c6ecccc4dfda1f"
 name = "fig"
 version = "0.1.67"
 dependencies = [
+ "actix-http",
  "actix-multipart",
  "actix-web",
  "argon2",
@@ -989,6 +990,7 @@ dependencies = [
  "rand 0.8.5",
  "reqwest",
  "serde",
+ "serde_json",
  "tokio",
  "toml",
  "turso",

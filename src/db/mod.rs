@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::sync::OnceCell;
@@ -10,15 +11,16 @@ pub mod tickets;
 pub mod tokens;
 pub mod users;
 
+#[derive(Clone)]
 pub struct Database {
-    db: OnceCell<turso::Database>,
+    db: Arc<OnceCell<turso::Database>>,
     db_path: String,
 }
 
 impl Database {
     pub fn new(db_path: &str) -> Self {
         Self {
-            db: OnceCell::new(),
+            db: Arc::new(OnceCell::new()),
             db_path: db_path.to_owned(),
         }
     }

@@ -1,0 +1,18 @@
+[env]
+# Project-specific environment variables
+PROJECT_ROOT = "tests/git/srv"
+API_KEY = "secure"
+RESET_DB = "true"
+PORT = "8080"
+
+[tools]
+rust = { version = "1.97" }
+
+[tasks.run]
+run = 'cargo run'
+
+[tasks.verify]
+run = ['cargo fmt --check', 'cargo check', 'cargo clippy', 'cargo test']
+
+[tasks.fmt]
+run = ['cargo fmt', 'cargo clippy --fix --allow-dirty']
