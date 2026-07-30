@@ -74,7 +74,7 @@ version = "1"
 [package]
 edition = "2024"
 name = "fig"
-version = "0.1.75"
+version = "0.1.76"
 
 [profile.release]
 codegen-units = 1
@@ -95,6 +95,7 @@ excludes = [
     "fig.db",
     "fig.db-wal",
     "justfile",
+    "mise.toml",
     "skills",
     "tests",
 ]
