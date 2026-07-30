@@ -16,6 +16,7 @@ mod tests {
             "/tmp/test_fig.db".to_string(),
             "secure".to_string(),
             true,
+            1.0,
         );
 
         let db = Database::new(config.db_path());
@@ -56,6 +57,7 @@ mod tests {
             "/tmp/test_fig.db".to_string(),
             "secure".to_string(),
             true,
+            1.0,
         );
 
         let db = Database::new(config.db_path());

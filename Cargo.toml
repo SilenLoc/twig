@@ -52,6 +52,14 @@ default-features = false
 features = ["rustls-tls"]
 version = "0.12"
 
+[dependencies.sentry]
+features = [
+    "actix",
+    "log",
+    "logs",
+]
+version = "0.49.0"
+
 [dependencies.serde]
 features = ["derive"]
 version = "1.0"
@@ -74,7 +82,7 @@ version = "1"
 [package]
 edition = "2024"
 name = "fig"
-version = "0.1.76"
+version = "0.1.77"
 
 [profile.release]
 codegen-units = 1

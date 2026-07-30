@@ -6,6 +6,7 @@ pub struct Server {
     db_path: String,
     api_key: String,
     reset_db: bool,
+    traces_sample_rate: f32,
 }
 
 impl Server {
@@ -16,6 +17,7 @@ impl Server {
         db_path: String,
         api_key: String,
         reset_db: bool,
+        traces_sample_rate: f32,
     ) -> Self {
         Server {
             address,
@@ -24,6 +26,7 @@ impl Server {
             db_path,
             api_key,
             reset_db,
+            traces_sample_rate,
         }
     }
 
@@ -64,6 +67,10 @@ impl Server {
         }
     }
 
+    pub fn traces_sample_rate(&self) -> f32 {
+        self.traces_sample_rate
+    }
+
     /// Returns the API key, generating a random one if not provided.
     /// Logs a warning when generating a random key.
     pub fn effective_api_key(&self) -> String {
@@ -93,6 +100,10 @@ pub fn from_env() -> Server {
     let db_path = std::env::var("DB_PATH").unwrap_or_else(|_| "fig.db".to_string());
     let api_key = std::env::var("API_KEY").unwrap_or_default();
     let reset_db = std::env::var("RESET_DB").unwrap_or_default() == "true";
+    let traces_sample_rate = std::env::var("SENTRY_TRACES_SAMPLE_RATE")
+        .ok()
+        .and_then(|s| s.parse::<f32>().ok())
+        .unwrap_or(1.0);
 
     Server::new(
         ("0.0.0.0".to_string(), port),
@@ -101,6 +112,7 @@ pub fn from_env() -> Server {
         db_path,
         api_key,
         reset_db,
+        traces_sample_rate,
     )
 }
 
@@ -140,6 +152,7 @@ mod tests {
             "fig.db".to_string(),
             "mykey".to_string(),
             false,
+            1.0,
         );
         assert_eq!(server.address(), ("127.0.0.1".to_string(), 8080));
         assert_eq!(server.log_level(), "debug");
@@ -156,6 +169,7 @@ mod tests {
             "fig.db".to_string(),
             "apikey".to_string(),
             false,
+            1.0,
         );
         let cloned = server.clone();
         assert_eq!(cloned.project_root(), server.project_root());
@@ -171,6 +185,7 @@ mod tests {
             "fig.db".to_string(),
             "my-secret-key".to_string(),
             false,
+            1.0,
         );
         assert_eq!(server.effective_api_key(), "my-secret-key");
     }
@@ -184,6 +199,7 @@ mod tests {
             String::new(),
             String::new(),
             false,
+            1.0,
         );
         let key = server.effective_api_key();
         assert!(!key.is_empty());
@@ -199,6 +215,7 @@ mod tests {
             "/tmp/fig_test_no_reset.db".to_string(),
             "key".to_string(),
             false,
+            1.0,
         );
         server.maybe_reset_database();
     }
@@ -212,6 +229,7 @@ mod tests {
             "fig.db".to_string(),
             "key".to_string(),
             false,
+            1.0,
         );
         let addr = server.address();
         assert_eq!(addr, ("0.0.0.0".to_string(), 3000));

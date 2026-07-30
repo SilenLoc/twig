@@ -35,6 +35,10 @@ Be sure to set follwoing environment variables:
 DB_PATH=/storage/<your_choice>
 PROJECT_ROOT=/storage/<your_choice>
 
+# Optional: Sentry instrumentation (errors, traces, logs)
+# SENTRY_DSN=https://<key>@o<orgId>.ingest.sentry.io/<projectId>
+# SENTRY_TRACES_SAMPLE_RATE=1.0
+
 ## Documentation
 
 | Document | Description |

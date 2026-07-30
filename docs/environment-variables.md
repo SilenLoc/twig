@@ -6,3 +6,5 @@
 | `DB_PATH` | Path to the SQLite database file | `fig.db` |
 | `API_KEY` | API key for user signup endpoint | Auto-generated |
 | `RESET_DB` | Set to `true` to delete the database on startup | `false` |
+| `SENTRY_DSN` | Sentry project DSN. If unset, Sentry instrumentation is disabled | unset |
+| `SENTRY_TRACES_SAMPLE_RATE` | Fraction of transactions sent to Sentry (0.0–1.0) | `1.0` |

@@ -143,6 +143,8 @@ docker run -p 8080:80 silenloc/fig
 | `DB_PATH` | Path to the SQLite database file | `fig.db` |
 | `API_KEY` | API key for ticket generation (auto-generated if not set or empty) | Auto-generated |
 | `RESET_DB` | Set to `true` to delete the database file on startup | `false` |
+| `SENTRY_DSN` | Sentry project DSN. If unset, Sentry instrumentation is disabled | unset |
+| `SENTRY_TRACES_SAMPLE_RATE` | Fraction of transactions sent to Sentry (0.0–1.0) | `1.0` |
 
 > Note: `mise.toml` overrides these for local development (`PORT=8080`, `API_KEY=secure`, `RESET_DB=true`).
 
