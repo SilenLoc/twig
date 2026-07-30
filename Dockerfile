@@ -25,10 +25,7 @@ FROM base-builder AS builder
 # Copy dependency recipe (cached layer if dependencies haven't changed)
 COPY --from=planner /app/recipe.json recipe.json
 
-# Copy vendored path dependencies and lockfile required by cargo-chef cook.
-# These must be present because Cargo.toml references `vendor/uuid` as a
-# path dependency, so cargo resolves it before cooking can begin.
-COPY vendor ./vendor
+# Copy lockfile required by cargo-chef cook to resolve dependencies.
 COPY Cargo.toml Cargo.lock ./
 
 # Build dependencies (cached if recipe.json is unchanged)

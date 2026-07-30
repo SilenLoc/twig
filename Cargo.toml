@@ -61,7 +61,7 @@ features = ["full"]
 version = "1"
 
 [dependencies.uuid]
-path = "vendor/uuid"
+features = ["v4"]
 version = "1.23.0"
 
 [dev-dependencies]
@@ -74,7 +74,7 @@ version = "1"
 [package]
 edition = "2024"
 name = "fig"
-version = "0.1.73"
+version = "0.1.74"
 
 [profile.release]
 codegen-units = 1

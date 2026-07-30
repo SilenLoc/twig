@@ -16,3 +16,6 @@ run = ['cargo fmt --check', 'cargo check', 'cargo clippy', 'cargo test']
 
 [tasks.fmt]
 run = ['cargo fmt', 'cargo clippy --fix --allow-dirty']
+
+[tasks.docker]
+run = ['docker run -p 8080:8080 silenloc/fig:latest']
