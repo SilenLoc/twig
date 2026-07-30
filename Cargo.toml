@@ -1,25 +1,51 @@
 [dependencies]
-actix-http = "3"
 actix-multipart = "0.7"
-actix-web = "4"
 argon2 = "0.5"
 base64 = "0.22"
-chrono = "0.4"
 env_logger = "0.11"
-git2 = "0.18"
 glob = "0.3"
 hex = "0.4"
 log = "0.4"
 migs = "0.1.7"
 pulldown-cmark = "0.12"
-rand = "0.8"
 toml = "0.8"
 turso = "0.5.3"
 xshell = "0.2.7"
 
+[dependencies.actix-http]
+default-features = false
+features = ["http2"]
+version = "3"
+
+[dependencies.actix-web]
+default-features = false
+features = [
+    "macros",
+    "cookies",
+    "http2",
+]
+version = "4"
+
+[dependencies.chrono]
+default-features = false
+features = [
+    "clock",
+    "std",
+]
+version = "0.4"
+
+[dependencies.git2]
+default-features = false
+version = "0.18"
+
 [dependencies.maud]
 features = ["actix-web"]
 version = "0.27.0"
+
+[dependencies.rand]
+default-features = false
+features = ["getrandom"]
+version = "0.8"
 
 [dependencies.reqwest]
 default-features = false
@@ -48,7 +74,7 @@ version = "1"
 [package]
 edition = "2024"
 name = "fig"
-version = "0.1.72"
+version = "0.1.73"
 
 [profile.release]
 codegen-units = 1
