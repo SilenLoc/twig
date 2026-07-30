@@ -8,27 +8,22 @@ Fig is a Git server and web UI built with Rust (Actix-web). It serves Git reposi
 
 ## Build/Lint/Test Commands
 
-### Essential Commands (use these via `just`)
+### Task runner (mise)
+
+The project uses `mise` (see `mise.toml`) for project tasks. There is no `justfile`.
 
 ```bash
-# Full verification (runs all checks, tests, and hurl tests)
-just verify
+# Full verification (fmt check, check, clippy, test)
+mise run verify
 
-# Format code
-just fmt
+# Format code and auto-fix clippy
+mise run fmt
 
 # Run the application
-just run
+mise run run
 
-# Run hurl acceptance tests (requires server running)
-just hurl test
-
-# Run a single hurl test file
-just hurl test health.hurl
-
-# Start/stop Docker environment
-just up      # kill, docker stop, docker run, hurl test
-just down    # docker stop
+# Run the Docker image (publishes port 8080 -> 8080)
+mise run docker
 ```
 
 ### Direct Cargo Commands
@@ -46,7 +41,7 @@ cargo fmt
 # Run unit tests
 cargo test
 
-# Run a specific test
+# Run a single test
 cargo test <test_name>
 
 # Build release
@@ -55,18 +50,15 @@ cargo build --release
 
 ### Docker Commands
 
+There is no `just docker` recipe; build with `docker build` directly. The Dockerfile
+uses `cargo-chef` for dependency caching and exposes port `80` in the runtime stage.
+
 ```bash
 # Build Docker image
-just docker build
+docker build -t silenloc/fig .
 
-# Run Docker container
-just docker run
-
-# Stop Docker container
-just docker stop
-
-# Build and push release
-just docker release <version>
+# Run Docker container (map host port to container port 80)
+docker run -p 8080:80 silenloc/fig
 ```
 
 ## Code Style Guidelines
@@ -108,7 +100,10 @@ just docker release <version>
 
 ### HTML/Views
 
-- **Always use `htm` and `t.css` for creating views** - do not change CSS without reason
+- **Use the bundled `h.js` (htmx) and `t.css` (Tachyons) for creating views** - do not change CSS without reason
+  - Static assets live in `assets/` and are embedded via `include_str!` in `src/assets.rs`
+  - Served as `h.js`, `hx-response-targets.js`, `t.css`, `fig.svg` under `/assets/...`
+  - `h.js` is htmx; `hx-response-targets.js` is the htmx response-targets extension
 - Use `maud` for HTML templating
 - Use `maud::html!` macro for markup
 - Use `maud::DOCTYPE` for doctype declaration
@@ -128,22 +123,28 @@ just docker release <version>
 - Return `impl Responder` or specific types like `AwResult<maud::Markup>`
 - Extract path params with `web::Path<Params>` using a `#[derive(Deserialize)]` struct
 - Access config via `web::Data<config::Server>`
+- Access auth context via `web::Data<auth::FigContext>`
 
 ### Testing
 
-- **Always use hurl commands/recipes to run format and test**
-- Hurl tests are in `tests/*.hurl`
-- Variables in `tests/variables`
-- Run `just hurl test` for acceptance tests
-- To run a single test: `just hurl test <file.hurl>`
+- **Tests are native Actix-web tests** colocated in `#[cfg(test)] mod tests` blocks within each module (see `src/main.rs`, `src/auth/mod.rs`, `src/auth/handlers.rs`, `src/config.rs`).
+- Use `actix_web::test::TestRequest` and `test::init_service` / `test::call_service` to exercise the app service tree.
+- Run tests with `cargo test` (or `mise run verify` for the full fmt+check+clippy+test pipeline).
+- Run a single test with `cargo test <test_name>`.
+- Tests use temporary databases under `/tmp` (e.g. `/tmp/test_fig_*.db`) and call `Database::init_tables()` before assertions.
 
-### Environment Variables
+## Environment Variables
 
-- `PORT`: Server port (default: 8080)
-- `LOG_LEVEL`: Logging level (default: info)
-- `PROJECT_ROOT`: Git repositories root path (default: /srv/git)
-- `DB_PATH`: Path to the SQLite database file (default: fig.db)
-- `API_KEY`: API key for user signup endpoint (auto-generated if not set)
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PORT` | Server port (mapped to bind address `0.0.0.0`) | `80` |
+| `LOG_LEVEL` | Logging level (error, warn, info, debug, trace); also dampens `libsql`, `turso`, and `tracing::span` to `warn` | `info` |
+| `PROJECT_ROOT` | Git repositories root path | `/srv/git` |
+| `DB_PATH` | Path to the SQLite database file | `fig.db` |
+| `API_KEY` | API key for ticket generation (auto-generated if not set or empty) | Auto-generated |
+| `RESET_DB` | Set to `true` to delete the database file on startup | `false` |
+
+> Note: `mise.toml` overrides these for local development (`PORT=8080`, `API_KEY=secure`, `RESET_DB=true`).
 
 ### Git Workflow
 
@@ -152,51 +153,116 @@ just docker release <version>
 
 ## Authentication System
 
-Fig includes a complete authentication system. See `docs/git-auth.md` for Git authentication details.
+Fig includes a complete authentication system based on **session cookies and HTTP Basic Auth**.
+There is no separate `/api/*` surface and no Bearer-token API; the `tokens` table stores
+session tokens that are exchanged via the `session` cookie.
+
+Ticket-based signup is the only admin-gated action and is submitted via the `/auth/ticket`
+form with the `API_KEY` provided as a form field (not an HTTP header).
 
 ### Flow Overview
 
-1. **Get Ticket** (requires API Key) → Returns one-time signup ticket
-2. **Signup** (requires ticket) → Creates account
-3. **Login** → Sets session cookie (UI) or returns Bearer token (API)
-4. **Create Namespace** → Uses session (UI) or Bearer token (API)
-5. **Git Operations** → Uses Basic Auth with username/password
+1. **Get Ticket** (requires API Key, submitted as a form field on `/auth/ticket`) → Returns one-time signup ticket
+2. **Signup** (`/auth/signup`, requires ticket) → Creates account
+3. **Login** (`/auth/login`) → Sets `session` cookie
+4. **Create Namespace** (`/auth/namespace`, requires `session` cookie) → Creates namespace + directory under `PROJECT_ROOT`
+5. **Git Operations** (`/{namespace}/{repo}/...`) → Public read; pushes require Basic Auth (username:password)
 
 ### Authentication by Endpoint Type
 
 | Endpoint Type | Auth Method |
 |--------------|-------------|
-| Git operations (`git push`) | Basic Auth (username:password) |
-| Web UI pages (`/auth/*`) | Session cookies |
-| API endpoints (`/api/*`) | API Key, Basic Auth, or Bearer token |
+| Git clone/fetch | None (public read) |
+| Git push | Basic Auth (username:password) |
 | Init repo (`POST /init`) | Basic Auth |
+| Web UI pages (`/`, `/auth/*`, `/settings`, `/{namespace}`) | Session cookie (`session`) optional; login required for mutating actions |
+| Ticket generation (`POST /auth/ticket`) | API Key (form field `api_key`) |
+| Signup (`POST /auth/signup`) | Single-use ticket (form field `ticket`) |
 
 ### Database Schema
 
-The system uses libsql (SQLite) for storing:
+The system uses `turso` (the libSQL client) over a local SQLite file for storing auth data.
+Schema is defined with the `migs` crate in `src/db/migration.rs` and applied on startup by
+`Database::create_tables()` (runs `PRAGMA journal_mode = WAL;` then each migration in order).
+
+Tables:
+
 - **users**: User accounts with hashed passwords
 - **namespaces**: Namespace definitions with owners
 - **namespace_members**: Many-to-many relationship for namespace access
 - **tickets**: Single-use tickets for signup
-- **tokens**: Session tokens for API/UI authentication
+- **tokens**: Session tokens for cookie-based UI authentication
 
 ### Security
 
 - Passwords are hashed using Argon2 (memory-hard password hashing)
-- API key required for ticket generation to prevent unauthorized account creation
+- API key required for ticket generation to prevent unauthorized account creation; if `API_KEY` is unset/empty a random 64-character hex key is generated at startup
 - Tickets are single-use for signup only
 - Per-namespace access control
-- Sessions expire after 30 days of inactivity
+- Sessions are stored as 64-character hex tokens; a token is considered valid for **30 days from creation** (`created_at`), not from last activity
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Git Backend](docs/git-backend.md) | Git HTTP backend usage and workflows |
+| [UI Documentation](docs/ui.md) | Web interface guide and page descriptions |
+| [Environment Variables](docs/environment-variables.md) | Configuration options reference |
+
+## Source Layout
+
+```
+src/
+├── assets.rs        # Static asset embedding (t.css, h.js, hx-response-targets.js, fig.svg)
+├── config.rs        # Server config from env (Server struct, from_env, maybe_reset_database)
+├── git_backend.rs   # Git smart-HTTP handler
+├── main.rs          # App wiring, routes, native Actix-web tests
+├── auth/            # Auth types, hashing, FigContext, UI form handlers
+│   ├── mod.rs
+│   └── handlers.rs
+├── db/              # turso/libSQL Database wrapper + per-table ops + migs migrations
+│   ├── mod.rs
+│   ├── migration.rs
+│   ├── namespaces.rs
+│   ├── tickets.rs
+│   ├── tokens.rs
+│   └── users.rs
+├── git/             # Git repo operations (init, bare repo, repo browsing)
+│   ├── mod.rs
+│   ├── bare.rs
+│   └── repo.rs
+├── md/              # Markdown rendering (pulldown-cmark)
+│   └── mod.rs
+└── view/            # Maud HTML views (layout, overview, namespace, repo, settings, auth, session_auth)
+    ├── mod.rs
+    ├── overview.rs
+    ├── namespace.rs
+    ├── repo.rs
+    ├── settings.rs
+    ├── auth.rs
+    └── session_auth.rs
+```
 
 ## Dependencies
 
 Key crates used:
-- `actix-web`: Web framework
-- `maud`: HTML templating
-- `git2`: Git operations
-- `xshell`: Shell command execution
-- `serde`: Serialization
-- `chrono`: Date/time handling
-- `libsql`: SQLite database for auth data
+
+- `actix-web`: Web framework (v4, features: macros, cookies, http2)
+- `actix-multipart`: Multipart form support
+- `maud`: HTML templating (v0.27, with `actix-web` feature)
+- `git2`: Git operations (v0.18)
+- `xshell`: Shell command execution (used by `git::repo::init`)
+- `turso`: libSQL client for local SQLite database (auth data)
+- `migs`: Compile-time SQL migrations macro (used in `src/db/migration.rs`)
 - `argon2`: Password hashing
-- `base64`: Base64 encoding/decoding
+- `base64`: Base64 encoding/decoding (Basic Auth)
+- `chrono`: Date/time handling
+- `pulldown-cmark`: Markdown rendering (`src/md/mod.rs`)
+- `uuid`: v4 IDs for users/namespaces
+- `rand`: Cryptographic RNG for tokens
+- `hex`: Hex-encoding for session tokens
+- `toml`: TOML parsing
+- `serde`: Serialization
+- `tokio`: Async runtime
+- `env_logger`: Logging
+- `reqwest`: HTTP client (rustls-tls)
