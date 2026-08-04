@@ -1,5 +1,5 @@
 use actix_web::{
-    App, HttpResponse, HttpServer, Responder, get, guard,
+    App, HttpServer, guard,
     web::{self},
 };
 use db::Database;
@@ -13,19 +13,10 @@ mod config;
 mod db;
 mod git;
 mod git_backend;
+mod health;
 mod integration_tests;
 mod md;
 mod view;
-
-#[get("/health")]
-async fn health() -> impl Responder {
-    HttpResponse::Ok()
-}
-
-#[get("/up")]
-async fn up() -> impl Responder {
-    HttpResponse::Ok().finish()
-}
 
 fn main() -> std::io::Result<()> {
     let config = config::from_env();
@@ -125,8 +116,8 @@ fn main() -> std::io::Result<()> {
                         .start_transaction(true)
                         .finish(),
                 )
-                .service(health)
-                .service(up)
+                .service(health::health)
+                .service(health::up)
                 .service(assets::assets)
                 // Auth UI endpoints (HTML forms)
                 .service(view::auth::ticket_page)

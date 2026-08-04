@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+#MISE description="Cut a release: build & push silenloc/fig:<v>, then bump the patch version in Cargo.toml"
+#MISE depends=["oci"]
+# Always run, even if nothing changed: no `sources`/`outputs` markers, which
+# would otherwise let mise cache-skip the task when Cargo.toml is older than
+# the last produced icon index. Releasing must always push + bump.
+
+# Cut a release: build & push `silenloc/fig:<v>` using the version currently
+# in Cargo.toml, then bump the patch version for the next dev cycle.
+#
+# Steps:
+#   1. Read `v` from [package].version in Cargo.toml (awk scoped to [package]
+#      so dependency `version = "..."` lines are ignored).
+#   2. `mise run oci` builds ./mise-oci (declared as a dependency via #MISE).
+#   3. `mise oci push --image-dir` reuses that layout and pushes
+#      `silenloc/fig:<v>` via skopeo (or crane), which expects auth to be
+#      configured already (e.g. `docker login ghcr.io`, REGISTRY_AUTH_FILE,
+#      ~/.config/containers/auth.json).
+#   4. Bump the patch component of [package].version in-place, preparing
+#      Cargo.toml for the next dev iteration.
+
+# mise's `oci` subcommand is experimental, so MISE_EXPERIMENTAL must be set.
+export MISE_EXPERIMENTAL=1
+
+# 1. Read the current version from Cargo.toml's [package].version line.
+v=$(awk '/^\[package\]/      { p=1; next }
+         p && /^version = / { sub(/^version = /, ""); gsub(/"/, ""); print; exit }' Cargo.toml)
+
+# 2. Push the already-built image layout as silenloc/fig:<v>.
+mise oci push --image-dir ./mise-oci "silenloc/fig:$v"
+
+# 3. Compute next patch version.
+major=$(echo "$v" | cut -d. -f1)
+minor=$(echo "$v" | cut -d. -f2)
+patch=$(echo "$v" | cut -d. -f3)
+patch=$((patch + 1))
+nv="$major.$minor.$patch"
+
+# 4. Rewrite the first `version = "..."` line under [package] in-place.
+awk -v new="$nv" '
+  /^\[package\]/      { p=1; print; next }
+  p && /^version = / { $0 = "version = \"" new "\""; p=0 }
+  { print }
+' Cargo.toml > Cargo.toml.tmp && mv Cargo.toml.tmp Cargo.toml
+
+# 5. Commit the bumped Cargo.toml and push to the default branch.
+git add .
+git commit -m "chore: release $v"
+git push
+
+echo "released silenloc/fig:$v; bumped Cargo.toml to $nv"

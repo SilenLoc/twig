@@ -17,5 +17,59 @@ run = ['cargo fmt --check', 'cargo check', 'cargo clippy', 'cargo test']
 [tasks.fmt]
 run = ['cargo fmt', 'cargo clippy --fix --allow-dirty']
 
+# Build the release binary, then build the OCI image layout from [oci] below.
+# Produces an OCI image-layout dir at ./mise-oci consumable by skopeo/crane/podman.
+# `mise oci build` is experimental, so MISE_EXPERIMENTAL must be enabled.
+[tasks.oci]
+run = [
+    'cargo build --release',
+    'MISE_EXPERIMENTAL=1 mise oci build -o ./mise-oci',
+]
+
+# Run the image built by `mise run oci` (container listens on :80, see [oci].env).
+# See mise-tasks/release for the release flow (build, push silenloc/fig:<v>, bump version).
 [tasks.docker]
-run = ['docker run -p 8080:8080 silenloc/fig:0.1.76']
+run = ['docker run -p 8080:80 silenloc/fig']
+
+
+# OCI image config — runtime stage of the (former) Dockerfile.
+#
+# NOTE: `mise oci build` layers mise-managed tools and [[oci.copy]] entries onto
+# `from`. Unlike a Dockerfile, there is no `RUN` step, so the apt-get runtime
+# deps the Dockerfile installed (git, ca-certificates, libssl3) must come from
+# the base image. fig links git2 with default-features=false and reqwest with
+# rustls-tls, so libopenssl is not needed at runtime; `git` (used by git::repo
+# shell-outs) and `ca-certificates` (for Sentry/HTTPS) do need to be present in
+# the base. debian:bookworm-slim lacks them — use a base that ships them, e.g.
+# a custom `silenloc/fig-base:bookworm` derived from `debian:bookworm-slim`
+# with `apt-get install -y git ca-certificates`.
+[oci]
+from        = "debian:bookworm-slim"   # base image ref
+# tag       = "silenloc/fig:latest"    # passed via `mise oci build -t <tag>` instead
+workdir     = "/app"                    # WORKDIR
+entrypoint  = ["./fig"]                 # ENTRYPOINT
+cmd         = []                        # CMD
+# Run as non-root (matches the dev-image convention).
+user        = "nonroot"
+user_id     = 1000                      # tar layer entry UID (file ownership)
+group_id    = 1000                      # tar layer entry GID (defaults to user_id)
+mount_point = "/mise"                   # where tools install in the image
+
+# Prebuilt release binary (built by `cargo build --release` in the oci task).
+# Source: target/release/fig  →  /app/fig  (matches Dockerfile's COPY).
+[[oci.copy]]
+host  = "target/release/fig"
+image = "/app/fig"
+
+# Extra env baked into the image config (image-only — won't shadow MISE_*).
+# PORT=80 mirrors the Dockerfile's `EXPOSE 80` / app default.
+# `fig` itself reads these env vars: PORT, LOG_LEVEL, PROJECT_ROOT, DB_PATH,
+# API_KEY, RESET_DB, SENTRY_DSN, SENTRY_TRACES_SAMPLE_RATE.
+[oci.env]
+PORT = "80"
+
+# Labels baked into the image config.
+[oci.labels]
+"org.opencontainers.image.source" = "https://fig.silenlocatelli.ch/silen/fig"
+"org.opencontainers.image.title"   = "fig"
+"org.opencontainers.image.description" = "Fig — Git server and web UI"

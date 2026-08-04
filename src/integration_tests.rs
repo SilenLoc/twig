@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::{assets, auth, config, db::Database, health, up, view};
+    use crate::{assets, auth, config, db::Database, health, view};
     use actix_http::Request;
     use actix_web::{App, http::StatusCode, test, web};
 
@@ -32,8 +32,8 @@ mod tests {
                 .app_data(config_data)
                 .app_data(auth_state)
                 .app_data(web::PayloadConfig::new(1 << 29))
-                .service(health)
-                .service(up),
+                .service(health::health)
+                .service(health::up),
         )
         .await;
 
@@ -73,8 +73,8 @@ mod tests {
                 .app_data(config_data)
                 .app_data(auth_state)
                 .app_data(web::PayloadConfig::new(1 << 29))
-                .service(health)
-                .service(up)
+                .service(health::health)
+                .service(health::up)
                 .service(assets::assets)
                 .service(view::auth::ticket_page)
                 .service(view::auth::signup_page)
