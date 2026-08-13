@@ -63,7 +63,11 @@ fn main() -> std::io::Result<()> {
         }
     });
     log::set_boxed_logger(Box::new(logger)).expect("install logger");
-    log::set_max_level(log::LevelFilter::Trace);
+    let max_level = config
+        .log_level()
+        .parse::<log::LevelFilter>()
+        .unwrap_or(log::LevelFilter::Info);
+    log::set_max_level(max_level);
 
     actix_web::rt::System::new().block_on(async move {
         info!("{config}");
