@@ -22,6 +22,12 @@ mise run fmt
 # Run the application
 mise run run
 
+# Build the OCI image layout (experimental; writes ./mise-oci)
+mise run oci
+
+# Cut a release: bump patch version, build & push silenloc/fig:<v>
+mise run release
+
 # Run the Docker image (publishes port 8080 -> 8080)
 mise run docker
 ```
@@ -48,17 +54,24 @@ cargo test <test_name>
 cargo build --release
 ```
 
-### Docker Commands
+### Docker / OCI Commands
 
-There is no `just docker` recipe; build with `docker build` directly. The Dockerfile
-uses `cargo-chef` for dependency caching and exposes port `80` in the runtime stage.
+There is no `just docker` recipe. The project uses `mise` for image builds (`mise run oci`)
+and a release script (`mise run release`). The Dockerfile uses `cargo-chef` for dependency
+caching and exposes port `80` in the runtime stage.
 
 ```bash
-# Build Docker image
+# Build Docker image directly
 docker build -t silenloc/fig .
 
 # Run Docker container (map host port to container port 80)
 docker run -p 8080:80 silenloc/fig
+
+# Build OCI image layout with mise
+mise run oci
+
+# Bump patch version, build, push silenloc/fig:<v>, and commit Cargo.toml
+mise run release
 ```
 
 ## Code Style Guidelines
@@ -151,7 +164,9 @@ docker run -p 8080:80 silenloc/fig
 ### Git Workflow
 
 - Do not run `git commit`, `git push`, or destructive git operations unless explicitly asked
-- The project uses semantic-release for automated versioning
+- Releases are cut with `mise run release` (see `mise-tasks/release`), which bumps the patch
+  version in `Cargo.toml`, builds the OCI image, pushes `silenloc/fig:<v>`, commits the bumped
+  `Cargo.toml`, and pushes to the default branch
 
 ## Authentication System
 
@@ -215,27 +230,29 @@ Tables:
 
 ```
 src/
-├── assets.rs        # Static asset embedding (t.css, h.js, hx-response-targets.js, fig.svg)
-├── config.rs        # Server config from env (Server struct, from_env, maybe_reset_database)
-├── git_backend.rs   # Git smart-HTTP handler
-├── main.rs          # App wiring, routes, native Actix-web tests
-├── auth/            # Auth types, hashing, FigContext, UI form handlers
+├── assets.rs           # Static asset embedding (t.css, h.js, hx-response-targets.js, fig.svg)
+├── config.rs           # Server config from env (Server struct, from_env, maybe_reset_database)
+├── git_backend.rs      # Git smart-HTTP handler
+├── health.rs           # Health check endpoints (/health, /up)
+├── integration_tests.rs  # Actix-web integration tests
+├── main.rs             # App wiring, routes, native Actix-web tests
+├── auth/               # Auth types, hashing, FigContext, UI form handlers
 │   ├── mod.rs
 │   └── handlers.rs
-├── db/              # turso/libSQL Database wrapper + per-table ops + migs migrations
+├── db/                 # turso/libSQL Database wrapper + per-table ops + migs migrations
 │   ├── mod.rs
 │   ├── migration.rs
 │   ├── namespaces.rs
 │   ├── tickets.rs
 │   ├── tokens.rs
 │   └── users.rs
-├── git/             # Git repo operations (init, bare repo, repo browsing)
+├── git/                # Git repo operations (init, bare repo, repo browsing)
 │   ├── mod.rs
 │   ├── bare.rs
 │   └── repo.rs
-├── md/              # Markdown rendering (pulldown-cmark)
+├── md/                 # Markdown rendering (pulldown-cmark)
 │   └── mod.rs
-└── view/            # Maud HTML views (layout, overview, namespace, repo, settings, auth, session_auth)
+└── view/               # Maud HTML views (layout, overview, namespace, repo, settings, auth, session_auth)
     ├── mod.rs
     ├── overview.rs
     ├── namespace.rs
@@ -249,22 +266,22 @@ src/
 
 Key crates used:
 
-- `actix-web`: Web framework (v4, features: macros, cookies, http2)
-- `actix-multipart`: Multipart form support
+- `actix-web`: Web framework (v4, default-features disabled; features: macros, cookies, http2)
+- `actix-http`: HTTP primitives for Actix (default-features disabled; features: http2)
 - `maud`: HTML templating (v0.27, with `actix-web` feature)
-- `git2`: Git operations (v0.18)
-- `xshell`: Shell command execution (used by `git::repo::init`)
-- `turso`: libSQL client for local SQLite database (auth data)
+- `git2`: Git operations (v0.18, default-features disabled)
+- `xshell`: Shell command execution (used by `git::repo::init` and `git_backend`)
+- `turso`: libSQL client for local SQLite database (auth data; `default-features = false`)
 - `migs`: Compile-time SQL migrations macro (used in `src/db/migration.rs`)
 - `argon2`: Password hashing
 - `base64`: Base64 encoding/decoding (Basic Auth)
-- `chrono`: Date/time handling
+- `chrono`: Date/time handling (`default-features = false`; features: clock, std)
 - `pulldown-cmark`: Markdown rendering (`src/md/mod.rs`)
 - `uuid`: v4 IDs for users/namespaces
-- `rand`: Cryptographic RNG for tokens
+- `rand`: Cryptographic RNG for tokens (`default-features = false`; feature: getrandom)
 - `hex`: Hex-encoding for session tokens
 - `toml`: TOML parsing
 - `serde`: Serialization
-- `tokio`: Async runtime
-- `env_logger`: Logging
-- `reqwest`: HTTP client (rustls-tls)
+- `tokio`: Async runtime (features: macros, rt-multi-thread, sync)
+- `env_logger`: Logging (`default-features = false`; feature: humantime)
+- `sentry`: Error tracking and request monitoring (default-features disabled; features: actix, log, logs, ureq)
