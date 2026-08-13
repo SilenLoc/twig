@@ -11,3 +11,30 @@ pub async fn get_username_from_request(
     let db = auth_state.db();
     db.get_username_by_token(token.value()).await.ok().flatten()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{auth::FigContext, db::Database};
+    use actix_web::test;
+
+    #[tokio::test]
+    async fn test_get_username_from_request_without_cookie() {
+        let db = Database::new("/tmp/test_fig_session_auth_no_cookie.db");
+        let auth_state = web::Data::new(FigContext::new(db, "key".to_string()));
+        let req = test::TestRequest::default().to_http_request();
+        let result = get_username_from_request(&req, &auth_state).await;
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_username_from_request_with_invalid_cookie() {
+        let db = Database::new("/tmp/test_fig_session_auth_invalid_cookie.db");
+        let auth_state = web::Data::new(FigContext::new(db, "key".to_string()));
+        let req = test::TestRequest::default()
+            .cookie(actix_web::cookie::Cookie::new("session", "invalid-token"))
+            .to_http_request();
+        let result = get_username_from_request(&req, &auth_state).await;
+        assert!(result.is_none());
+    }
+}

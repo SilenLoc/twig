@@ -70,3 +70,42 @@ impl Database {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_database_new_stores_path() {
+        let db = Database::new("/tmp/test_fig_new.db");
+        assert_eq!(db.db_path, "/tmp/test_fig_new.db");
+    }
+
+    #[tokio::test]
+    async fn test_database_conn_creates_file() {
+        let db_path = format!("/tmp/test_fig_conn_{}.db", uuid::Uuid::new_v4());
+        let db = Database::new(&db_path);
+
+        let conn = db.conn().await;
+        assert!(conn.is_ok(), "conn should succeed: {conn:?}");
+        assert!(
+            std::path::Path::new(&db_path).exists(),
+            "db file should be created"
+        );
+
+        // Cleanup
+        let _ = std::fs::remove_file(&db_path);
+    }
+
+    #[tokio::test]
+    async fn test_database_init_tables_succeeds() {
+        let db_path = format!("/tmp/test_fig_init_{}.db", uuid::Uuid::new_v4());
+        let db = Database::new(&db_path);
+
+        let result = db.init_tables().await;
+        assert!(result.is_ok(), "init_tables should succeed: {result:?}");
+
+        // Cleanup
+        let _ = std::fs::remove_file(&db_path);
+    }
+}

@@ -84,3 +84,63 @@ pub fn render_success(message: &str) -> maud::Markup {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_render_layout_contains_doctype_and_title() {
+        let content = maud::html! { p { "hello" } };
+        let layout = render_layout(&content, Some("testuser"));
+        let html = layout.into_string();
+        assert!(
+            html.contains("<!DOCTYPE html>"),
+            "layout should contain DOCTYPE"
+        );
+        assert!(
+            html.contains("<title>Fig</title>"),
+            "layout should contain title"
+        );
+        assert!(
+            html.contains("/assets/t.css"),
+            "layout should reference t.css"
+        );
+        assert!(
+            html.contains("/assets/h.js"),
+            "layout should reference h.js"
+        );
+        assert!(html.contains("testuser"), "layout should show username");
+    }
+
+    #[test]
+    fn test_render_layout_shows_login_when_no_user() {
+        let content = maud::html! { p { "hello" } };
+        let layout = render_layout(&content, None);
+        let html = layout.into_string();
+        assert!(
+            html.contains("/auth/login"),
+            "layout should show login link"
+        );
+        assert!(
+            html.contains("/auth/signup"),
+            "layout should show signup link"
+        );
+    }
+
+    #[test]
+    fn test_render_error_contains_message() {
+        let markup = render_error("something went wrong");
+        let html = markup.into_string();
+        assert!(html.contains("something went wrong"));
+        assert!(html.contains("bg-dark-red"));
+    }
+
+    #[test]
+    fn test_render_success_contains_message() {
+        let markup = render_success("operation completed");
+        let html = markup.into_string();
+        assert!(html.contains("operation completed"));
+        assert!(html.contains("bg-dark-green"));
+    }
+}

@@ -202,3 +202,62 @@ pub fn bare_init(
 fn sh() -> Result<xshell::Shell, String> {
     xshell::Shell::new().map_err(|e| format!("Failed to create shell: {e}"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_branch_is_main() {
+        assert_eq!(default_branch(), "main");
+    }
+
+    #[test]
+    fn test_init_repo_getters() {
+        let init_repo = InitRepo {
+            namespace: "ns".to_string(),
+            repo: "repo".to_string(),
+            branch: "trunk".to_string(),
+        };
+        assert_eq!(init_repo.namespace(), "ns");
+        assert_eq!(init_repo.repo(), "repo");
+        assert_eq!(init_repo.branch(), "trunk");
+    }
+
+    #[test]
+    fn test_create_repo_creates_directory_structure() {
+        let temp_root = format!("/tmp/test_fig_repo_{}", uuid::Uuid::new_v4());
+        let result = create_repo(&temp_root, "myns", "myrepo", "main");
+        assert!(result.is_ok(), "create_repo failed: {result:?}");
+
+        let repo_path = Path::new(&temp_root).join("myns").join("myrepo");
+        assert!(repo_path.exists(), "repo directory should exist");
+        assert!(
+            repo_path.join("HEAD").exists(),
+            "bare repo HEAD should exist"
+        );
+
+        // Cleanup
+        let _ = std::fs::remove_dir_all(&temp_root);
+    }
+
+    #[test]
+    fn test_bare_init_creates_valid_repository() {
+        let temp_dir = format!("/tmp/test_fig_bare_init_{}", uuid::Uuid::new_v4());
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        let repo_path = Path::new(&temp_dir);
+        let result = bare_init(repo_path, "main", "Test Author", "test@example.com");
+        assert!(result.is_ok(), "bare_init failed: {result:?}");
+
+        let git_dir = repo_path.join("HEAD");
+        assert!(git_dir.exists(), "HEAD should exist after bare_init");
+
+        // Verify git2 can open it
+        let repo = git2::Repository::open(repo_path);
+        assert!(repo.is_ok(), "repo should be openable by git2");
+
+        // Cleanup
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+}

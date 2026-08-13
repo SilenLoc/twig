@@ -234,3 +234,163 @@ impl Database {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::auth::{Namespace, User};
+
+    async fn setup_db_with_user() -> (Database, String, String) {
+        let db_path = format!("/tmp/test_fig_namespaces_{}.db", uuid::Uuid::new_v4());
+        let db = Database::new(&db_path);
+        db.init_tables().await.expect("init tables");
+
+        let user_id = uuid::Uuid::new_v4().to_string();
+        let user = User {
+            id: user_id.clone(),
+            username: "nsuser".to_string(),
+            email: Some("ns@example.com".to_string()),
+            password_hash: "hash".to_string(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+        };
+        db.create_user(&user).await.expect("create user");
+
+        (db, db_path, user_id)
+    }
+
+    fn test_namespace(owner_id: &str) -> Namespace {
+        Namespace {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: "testns".to_string(),
+            owner_id: owner_id.to_string(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_create_and_get_namespace_by_name() {
+        let (db, db_path, user_id) = setup_db_with_user().await;
+        let namespace = test_namespace(&user_id);
+
+        db.create_namespace(&namespace)
+            .await
+            .expect("create namespace");
+
+        let retrieved = db
+            .get_namespace_by_name(&namespace.name)
+            .await
+            .expect("get namespace");
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().id, namespace.id);
+
+        // Cleanup
+        let _ = std::fs::remove_file(&db_path);
+    }
+
+    #[tokio::test]
+    async fn test_get_all_namespaces_with_owners() {
+        let (db, db_path, user_id) = setup_db_with_user().await;
+        let namespace = test_namespace(&user_id);
+
+        db.create_namespace(&namespace)
+            .await
+            .expect("create namespace");
+
+        let result = db
+            .get_all_namespaces_with_owners()
+            .await
+            .expect("get all namespaces");
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].0.name, namespace.name);
+        assert_eq!(result[0].1, "nsuser");
+
+        // Cleanup
+        let _ = std::fs::remove_file(&db_path);
+    }
+
+    #[tokio::test]
+    async fn test_user_has_namespace_access_owner() {
+        let (db, db_path, user_id) = setup_db_with_user().await;
+        let namespace = test_namespace(&user_id);
+
+        db.create_namespace(&namespace)
+            .await
+            .expect("create namespace");
+
+        let has_access = db
+            .user_has_namespace_access(&user_id, &namespace.name)
+            .await
+            .expect("check access");
+        assert!(has_access);
+
+        // Cleanup
+        let _ = std::fs::remove_file(&db_path);
+    }
+
+    #[tokio::test]
+    async fn test_user_has_namespace_access_denied() {
+        let (db, db_path, user_id) = setup_db_with_user().await;
+        let namespace = test_namespace(&user_id);
+
+        db.create_namespace(&namespace)
+            .await
+            .expect("create namespace");
+
+        let other_user_id = uuid::Uuid::new_v4().to_string();
+        let has_access = db
+            .user_has_namespace_access(&other_user_id, &namespace.name)
+            .await
+            .expect("check access");
+        assert!(!has_access);
+
+        // Cleanup
+        let _ = std::fs::remove_file(&db_path);
+    }
+
+    #[tokio::test]
+    async fn test_search_namespaces_with_owners() {
+        let (db, db_path, user_id) = setup_db_with_user().await;
+        let namespace = test_namespace(&user_id);
+
+        db.create_namespace(&namespace)
+            .await
+            .expect("create namespace");
+
+        let result = db
+            .search_namespaces_with_owners("test")
+            .await
+            .expect("search namespaces");
+        assert_eq!(result.len(), 1);
+
+        let no_result = db
+            .search_namespaces_with_owners("xyz")
+            .await
+            .expect("search namespaces");
+        assert!(no_result.is_empty());
+
+        // Cleanup
+        let _ = std::fs::remove_file(&db_path);
+    }
+
+    #[tokio::test]
+    async fn test_delete_namespace() {
+        let (db, db_path, user_id) = setup_db_with_user().await;
+        let namespace = test_namespace(&user_id);
+
+        db.create_namespace(&namespace)
+            .await
+            .expect("create namespace");
+        db.delete_namespace(&namespace.id)
+            .await
+            .expect("delete namespace");
+
+        let retrieved = db
+            .get_namespace_by_name(&namespace.name)
+            .await
+            .expect("get namespace");
+        assert!(retrieved.is_none());
+
+        // Cleanup
+        let _ = std::fs::remove_file(&db_path);
+    }
+}

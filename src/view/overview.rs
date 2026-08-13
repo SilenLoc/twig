@@ -129,3 +129,20 @@ pub async fn index(
         Ok(super::render_layout(&content, username.as_deref()))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_search_query_deserialization() {
+        let query: SearchQuery = serde_urlencoded::from_str("q=rust").unwrap();
+        assert_eq!(query.q, Some("rust".to_string()));
+    }
+
+    #[test]
+    fn test_search_query_empty() {
+        let query: SearchQuery = serde_urlencoded::from_str("").unwrap();
+        assert_eq!(query.q, None);
+    }
+}

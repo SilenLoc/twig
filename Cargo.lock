@@ -1058,13 +1058,13 @@ dependencies = [
  "hex",
  "log",
  "maud",
- "migs",
  "pulldown-cmark",
  "rand 0.8.7",
  "reqwest 0.12.28",
  "sentry",
  "serde",
  "serde_json",
+ "serde_urlencoded",
  "tokio",
  "toml",
  "turso",
@@ -1666,15 +1666,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "inventory"
-version = "0.3.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4f0c30c76f2f4ccee3fe55a2435f691ca00c0e4bd87abe4f4a851b1d4dac39b"
-dependencies = [
- "rustversion",
-]
-
-[[package]]
 name = "io-uring"
 version = "0.7.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1993,27 +1984,6 @@ name = "miette-derive"
 version = "7.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db5b29714e950dbb20d5e6f74f9dcec4edbcc1067bb7f8ed198c097b8c1a818b"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
-name = "migs"
-version = "0.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf9b3764ddba338e7a87e93e53592f0b199a73a8888b8ddd47942441f5cb9db7"
-dependencies = [
- "inventory",
- "migs-macro",
-]
-
-[[package]]
-name = "migs-macro"
-version = "0.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c010ab10ee643bbf5207d45c70b82288e8dc9067624703d26cb304bc7c1ce76e"
 dependencies = [
  "proc-macro2",
  "quote",

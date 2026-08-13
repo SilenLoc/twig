@@ -56,3 +56,78 @@ impl Database {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::auth::Ticket;
+
+    async fn setup_db() -> (Database, String) {
+        let db_path = format!("/tmp/test_fig_tickets_{}.db", uuid::Uuid::new_v4());
+        let db = Database::new(&db_path);
+        db.init_tables().await.expect("init tables");
+        (db, db_path)
+    }
+
+    fn test_ticket() -> Ticket {
+        Ticket {
+            id: uuid::Uuid::new_v4().to_string(),
+            user_id: None,
+            used: false,
+            created_at: chrono::Utc::now().to_rfc3339(),
+            used_at: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_create_and_get_ticket() {
+        let (db, db_path) = setup_db().await;
+        let ticket = test_ticket();
+
+        db.create_ticket(&ticket).await.expect("create ticket");
+
+        let retrieved = db.get_ticket(&ticket.id).await.expect("get ticket");
+        assert!(retrieved.is_some());
+        let retrieved = retrieved.unwrap();
+        assert_eq!(retrieved.id, ticket.id);
+        assert!(retrieved.user_id.is_none());
+        assert!(!retrieved.used);
+
+        // Cleanup
+        let _ = std::fs::remove_file(&db_path);
+    }
+
+    #[tokio::test]
+    async fn test_mark_ticket_used() {
+        let (db, db_path) = setup_db().await;
+        let ticket = test_ticket();
+
+        db.create_ticket(&ticket).await.expect("create ticket");
+        db.mark_ticket_used(&ticket.id).await.expect("mark used");
+
+        let retrieved = db
+            .get_ticket(&ticket.id)
+            .await
+            .expect("get ticket")
+            .unwrap();
+        assert!(retrieved.used);
+        assert!(retrieved.used_at.is_some());
+
+        // Cleanup
+        let _ = std::fs::remove_file(&db_path);
+    }
+
+    #[tokio::test]
+    async fn test_get_ticket_not_found() {
+        let (db, db_path) = setup_db().await;
+
+        let retrieved = db
+            .get_ticket("nonexistent-ticket")
+            .await
+            .expect("query should not fail");
+        assert!(retrieved.is_none());
+
+        // Cleanup
+        let _ = std::fs::remove_file(&db_path);
+    }
+}

@@ -169,3 +169,68 @@ fn is_git() -> impl guard::Guard {
             .is_some_and(|ua| ua.starts_with("git/"))
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use actix_web::{HttpResponse, test as aw_test, web};
+
+    #[actix_web::test]
+    async fn test_is_git_guard_matches_git_user_agent() {
+        let app = aw_test::init_service(
+            actix_web::App::new().route(
+                "/{namespace}/{repo}/{endpoint:.*}",
+                web::get()
+                    .guard(is_git())
+                    .to(|| async { HttpResponse::Ok().body("git") }),
+            ),
+        )
+        .await;
+
+        let req = aw_test::TestRequest::get()
+            .uri("/ns/repo/info/refs")
+            .insert_header(("User-Agent", "git/2.43.0"))
+            .to_request();
+        let resp = aw_test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
+    }
+
+    #[actix_web::test]
+    async fn test_is_git_guard_rejects_non_git_user_agent() {
+        let app = aw_test::init_service(
+            actix_web::App::new().route(
+                "/{namespace}/{repo}/{endpoint:.*}",
+                web::get()
+                    .guard(is_git())
+                    .to(|| async { HttpResponse::Ok().body("git") }),
+            ),
+        )
+        .await;
+
+        let req = aw_test::TestRequest::get()
+            .uri("/ns/repo/info/refs")
+            .insert_header(("User-Agent", "Mozilla/5.0"))
+            .to_request();
+        let resp = aw_test::call_service(&app, req).await;
+        assert_eq!(resp.status(), actix_web::http::StatusCode::NOT_FOUND);
+    }
+
+    #[actix_web::test]
+    async fn test_is_git_guard_rejects_missing_user_agent() {
+        let app = aw_test::init_service(
+            actix_web::App::new().route(
+                "/{namespace}/{repo}/{endpoint:.*}",
+                web::get()
+                    .guard(is_git())
+                    .to(|| async { HttpResponse::Ok().body("git") }),
+            ),
+        )
+        .await;
+
+        let req = aw_test::TestRequest::get()
+            .uri("/ns/repo/info/refs")
+            .to_request();
+        let resp = aw_test::call_service(&app, req).await;
+        assert_eq!(resp.status(), actix_web::http::StatusCode::NOT_FOUND);
+    }
+}

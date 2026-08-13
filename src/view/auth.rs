@@ -380,3 +380,60 @@ pub fn render_login_success(username: &str) -> maud::Markup {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_render_ticket_success_contains_ticket() {
+        let ticket = "abc-123-test";
+        let markup = render_ticket_success(ticket);
+        let html = markup.into_string();
+        assert!(html.contains(ticket), "ticket should be displayed");
+        assert!(
+            html.contains("Ticket Generated"),
+            "success heading should be present"
+        );
+        assert!(
+            html.contains("/auth/signup"),
+            "link to signup should be present"
+        );
+    }
+
+    #[test]
+    fn test_render_signup_success_contains_username() {
+        let username = "testuser";
+        let markup = render_signup_success(username);
+        let html = markup.into_string();
+        assert!(html.contains(username), "username should be displayed");
+        assert!(
+            html.contains("Account Created"),
+            "success heading should be present"
+        );
+        assert!(
+            html.contains("/auth/login"),
+            "link to login should be present"
+        );
+        assert!(
+            html.contains("/auth/namespace"),
+            "link to namespace should be present"
+        );
+    }
+
+    #[test]
+    fn test_render_login_success_contains_username() {
+        let username = "testuser";
+        let markup = render_login_success(username);
+        let html = markup.into_string();
+        assert!(html.contains(username), "username should be displayed");
+        assert!(
+            html.contains("Login Successful"),
+            "success heading should be present"
+        );
+        assert!(
+            html.contains("/auth/namespace"),
+            "link to namespace should be present"
+        );
+    }
+}

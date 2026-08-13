@@ -424,3 +424,28 @@ pub async fn delete_namespace(
         .content_type("text/html")
         .body(render_success("Namespace deleted successfully.").into_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_namespace_form_deserialization() {
+        let form: NamespaceForm = serde_urlencoded::from_str("namespace=my-namespace").unwrap();
+        assert_eq!(form.namespace, "my-namespace");
+    }
+
+    #[test]
+    fn test_update_email_form_deserialization() {
+        let form: UpdateEmailForm = serde_urlencoded::from_str("email=test@example.com").unwrap();
+        assert_eq!(form.email, "test@example.com");
+    }
+
+    #[test]
+    fn test_delete_repo_form_deserialization() {
+        let form: DeleteRepoForm =
+            serde_urlencoded::from_str("namespace=ns&repo_name=repo").unwrap();
+        assert_eq!(form.namespace, "ns");
+        assert_eq!(form.repo_name, "repo");
+    }
+}

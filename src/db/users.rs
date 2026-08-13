@@ -72,3 +72,94 @@ impl Database {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::auth::User;
+
+    async fn setup_db() -> (Database, String) {
+        let db_path = format!("/tmp/test_fig_users_{}.db", uuid::Uuid::new_v4());
+        let db = Database::new(&db_path);
+        db.init_tables().await.expect("init tables");
+        (db, db_path)
+    }
+
+    fn test_user() -> User {
+        User {
+            id: uuid::Uuid::new_v4().to_string(),
+            username: "testuser".to_string(),
+            email: Some("test@example.com".to_string()),
+            password_hash: "hash".to_string(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_create_and_get_user_by_username() {
+        let (db, db_path) = setup_db().await;
+        let user = test_user();
+
+        db.create_user(&user).await.expect("create user");
+
+        let retrieved = db
+            .get_user_by_username(&user.username)
+            .await
+            .expect("get user by username");
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().id, user.id);
+
+        // Cleanup
+        let _ = std::fs::remove_file(&db_path);
+    }
+
+    #[tokio::test]
+    async fn test_get_user_by_id() {
+        let (db, db_path) = setup_db().await;
+        let user = test_user();
+
+        db.create_user(&user).await.expect("create user");
+
+        let retrieved = db.get_user_by_id(&user.id).await.expect("get user by id");
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().username, user.username);
+
+        // Cleanup
+        let _ = std::fs::remove_file(&db_path);
+    }
+
+    #[tokio::test]
+    async fn test_get_user_by_username_not_found() {
+        let (db, db_path) = setup_db().await;
+
+        let retrieved = db
+            .get_user_by_username("nonexistent")
+            .await
+            .expect("query should not fail");
+        assert!(retrieved.is_none());
+
+        // Cleanup
+        let _ = std::fs::remove_file(&db_path);
+    }
+
+    #[tokio::test]
+    async fn test_update_user_email() {
+        let (db, db_path) = setup_db().await;
+        let user = test_user();
+
+        db.create_user(&user).await.expect("create user");
+        db.update_user_email(&user.id, "new@example.com")
+            .await
+            .expect("update email");
+
+        let retrieved = db
+            .get_user_by_id(&user.id)
+            .await
+            .expect("get user")
+            .unwrap();
+        assert_eq!(retrieved.email, Some("new@example.com".to_string()));
+
+        // Cleanup
+        let _ = std::fs::remove_file(&db_path);
+    }
+}

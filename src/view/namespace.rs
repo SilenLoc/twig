@@ -360,3 +360,97 @@ pub async fn create_repo_handler(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_date_years() {
+        let date = chrono::Utc::now() - chrono::Duration::days(800);
+        let result = format_date(&date);
+        assert!(
+            result.contains("years ago"),
+            "expected years ago, got {result}"
+        );
+    }
+
+    #[test]
+    fn test_format_date_months() {
+        let date = chrono::Utc::now() - chrono::Duration::days(100);
+        let result = format_date(&date);
+        assert!(
+            result.contains("months ago"),
+            "expected months ago, got {result}"
+        );
+    }
+
+    #[test]
+    fn test_format_date_days() {
+        let date = chrono::Utc::now() - chrono::Duration::days(5);
+        let result = format_date(&date);
+        assert!(
+            result.contains("days ago"),
+            "expected days ago, got {result}"
+        );
+    }
+
+    #[test]
+    fn test_format_date_hours() {
+        let date = chrono::Utc::now() - chrono::Duration::hours(3);
+        let result = format_date(&date);
+        assert!(
+            result.contains("hours ago"),
+            "expected hours ago, got {result}"
+        );
+    }
+
+    #[test]
+    fn test_format_date_minutes() {
+        let date = chrono::Utc::now() - chrono::Duration::minutes(10);
+        let result = format_date(&date);
+        assert!(
+            result.contains("minutes ago"),
+            "expected minutes ago, got {result}"
+        );
+    }
+
+    #[test]
+    fn test_format_date_just_now() {
+        let date = chrono::Utc::now();
+        assert_eq!(format_date(&date), "just now");
+    }
+
+    #[test]
+    fn test_params_deserialization() {
+        let params: Params = serde_urlencoded::from_str("namespace=my-ns").unwrap();
+        assert_eq!(params.namespace, "my-ns");
+    }
+
+    #[test]
+    fn test_create_repo_form_deserialization() {
+        let form: CreateRepoForm =
+            serde_urlencoded::from_str("repo_name=my-repo&branch=main").unwrap();
+        assert_eq!(form.repo_name, "my-repo");
+        assert_eq!(form.branch, "main");
+    }
+
+    #[test]
+    fn test_create_repo_form_default_branch() {
+        let form: CreateRepoForm = serde_urlencoded::from_str("repo_name=my-repo").unwrap();
+        assert_eq!(form.repo_name, "my-repo");
+        assert_eq!(form.branch, "main");
+    }
+
+    #[test]
+    fn test_search_query_deserialization() {
+        let query: SearchQuery = serde_urlencoded::from_str("q=search-term").unwrap();
+        assert_eq!(query.q, Some("search-term".to_string()));
+    }
+
+    #[test]
+    fn test_search_query_empty() {
+        let query: SearchQuery = serde_urlencoded::from_str("").unwrap();
+        assert_eq!(query.q, None);
+    }
+}
