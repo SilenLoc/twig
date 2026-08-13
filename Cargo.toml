@@ -74,7 +74,7 @@ serde_urlencoded = "0.7"
 [package]
 edition = "2024"
 name = "fig"
-version = "0.1.85"
+version = "0.1.86"
 
 [profile.release]
 codegen-units = 1
@@ -82,28 +82,3 @@ lto = "thin"
 opt-level = 3
 panic = "abort"
 strip = true
-
-[spruce]
-additional_tools = ["git"]
-excludes = [
-    "AGENTS.md",
-    "Cargo.lock",
-    "LICENSE",
-    "README.md",
-    "docker.just",
-    "docs",
-    "fig.db",
-    "fig.db-wal",
-    "justfile",
-    "mise.toml",
-    "skills",
-    "tests",
-]
-includes = [
-    "Cargo.toml",
-    "assets",
-    "src",
-]
-mode = "alpha"
-namespace = "silenloc"
-runtime_deps = ["git"]
