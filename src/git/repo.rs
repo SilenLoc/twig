@@ -171,7 +171,23 @@ pub fn bare_init(
 
     // Create initial commit with .fig.toml file
     // Use git plumbing commands to create a commit in a bare repo
-    let blob_content = "# Created with Fig\n\nignore_for_view = []\n";
+    let blob_content = r#"# Created with Fig
+# All configuration options are listed below, commented out with their defaults.
+
+# Files or folders to ignore in the file browser view.
+# Examples: "docs/temp", "skills/", "notes.txt"
+#ignore_for_view = []
+
+# Tabs to display. If empty or not present, all tabs are shown.
+#tabs = []
+
+# Whether the repository can be deleted from the UI.
+#deleteable = false
+
+[present]
+# Markdown files to include in the presentation view.
+#files = []
+"#;
     let blob_hash = cmd!(sh, "git hash-object -w --stdin")
         .stdin(blob_content)
         .read()

@@ -74,7 +74,7 @@ serde_urlencoded = "0.7"
 [package]
 edition = "2024"
 name = "fig"
-version = "0.1.89"
+version = "0.1.90"
 
 [profile.release]
 codegen-units = 1
