@@ -8,12 +8,16 @@ set -euo pipefail
 
 # Cut a release:
 #   1. Bump the patch component of [package].version in-place.
-#   2. `mise run oci` builds ./mise-oci using the newly bumped version.
-#   3. `mise oci push --image-dir` pushes `silenloc/fig:<v>` via skopeo
-#      (or crane), which expects auth to be configured already
-#      (e.g. `docker login ghcr.io`, REGISTRY_AUTH_FILE,
-#      ~/.config/containers/auth.json).
+#   2. `docker build` builds the image from the Dockerfile using the newly
+#      bumped version.
+#   3. `docker push` pushes `silenloc/fig:<v>` (expects `docker login` to be
+#      configured already).
 #   4. Commit the bumped Cargo.toml and push to the default branch.
+#
+# Note: releases use `docker build` rather than `mise oci build` because the
+# experimental OCI builder cannot RUN commands — it can neither apt-install
+# the runtime `git` dependency nor create the non-root user, both of which
+# broke the 0.1.86–0.1.88 images on the VPS.
 
 # 1. Read the current version from Cargo.toml's [package].version line
 #    (awk scoped to [package] so dependency `version = "..."` lines are ignored).
@@ -34,14 +38,11 @@ awk -v new="$nv" '
   { print }
 ' Cargo.toml > Cargo.toml.tmp && mv Cargo.toml.tmp Cargo.toml
 
-# mise's `oci` subcommand is experimental, so MISE_EXPERIMENTAL must be set.
-export MISE_EXPERIMENTAL=1
+# 4. Build the release image from the Dockerfile using the bumped version.
+docker build -t "silenloc/fig:$nv" .
 
-# 4. Build the release image layout using the bumped version.
-mise run oci
-
-# 5. Push the built image layout as silenloc/fig:<nv>.
-mise oci push --image-dir ./mise-oci "silenloc/fig:$nv"
+# 5. Push the image as silenloc/fig:<nv>.
+docker push "silenloc/fig:$nv"
 
 # 6. Commit the bumped Cargo.toml and push to the default branch.
 git add .
