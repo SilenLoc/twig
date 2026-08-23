@@ -16,7 +16,11 @@ pub fn render_layout(main_content: &maud::Markup, username: Option<&str>) -> mau
                 meta name="viewport" content="width=device-width, initial-scale=1";
                 title { "Fig" }
                 link rel="icon" type="image/svg+xml" href="/assets/fig.svg";
+                link rel="preconnect" href="https://fonts.googleapis.com";
+                link rel="preconnect" href="https://fonts.gstatic.com" crossorigin;
+                link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Bricolage+Grotesque:opsz,wght@12..96,300..700&display=swap";
                 link rel="stylesheet" href="/assets/t.css";
+                link rel="stylesheet" href="/assets/fig.css";
                 script src="/assets/h.js" {}
                 script src="/assets/hx-response-targets.js" {}
                 style {
@@ -27,42 +31,49 @@ pub fn render_layout(main_content: &maud::Markup, username: Option<&str>) -> mau
                 }
             }
             body hx-ext="response-targets" class="w-100 sans-serif ma0 bg-black white" style="min-height: 100vh;" {
-                nav class="flex items-center justify-between flex-wrap bg-black bb b--white-20 pa3" style="position: sticky; top: 0; z-index: 10;" {
-                    div {
-                        a href="/" class="link white-90 hover-white no-underline fw6 f4 flex items-center" {
-                            img src="/assets/fig.svg" alt="Fig logo" style="width: 24px; height: 24px; margin-right: 0.5rem;";
+                nav class="flex items-center bg-black bb b--white-20 pa3" style="position: sticky; top: 0; z-index: 10;" {
+                    div class="tf-container flex items-center justify-between flex-wrap" {
+                        div {
+                        a
+                            href="/"
+                            class="display link white hover-white no-underline f3"
+                            style="letter-spacing: 0.04em;"
+                        {
                             "Fig"
                         }
                     }
-                    div class="flex items-center" {
+                    div class="flex items-center tf-kicker" {
                         @match username {
                             Some(name) => {
-                                span class="white-70 f6 mr2 mr3-ns dn dib-ns" { (name) }
-                                a href="/settings" class="link white-70 hover-white no-underline f6 mr2 mr3-ns" {
+                                span class="white-40 mr2 mr4-ns dn dib-ns" { (name) }
+                                a href="/settings" class="link white-70 hover-white no-underline mr2 mr4-ns" {
                                     "Settings"
                                 }
                                 form method="POST" action="/auth/logout" class="dib ma0" {
                                     button
                                         type="submit"
-                                        class="link white-70 hover-white no-underline f6 bg-transparent bn pointer pa0"
+                                        class="link white-70 hover-white no-underline bg-transparent bn pointer pa0"
                                     {
                                         "Logout"
                                     }
                                 }
                             }
                             None => {
-                                a href="/auth/login" class="link white-70 hover-white no-underline f6 mr2 mr3-ns" {
+                                a href="/auth/login" class="link white-70 hover-white no-underline mr2 mr4-ns" {
                                     "Login"
                                 }
-                                a href="/auth/signup" class="link white-70 hover-white no-underline f6" {
+                                a href="/auth/signup" class="link white no-underline" {
                                     "Signup"
                                 }
                             }
                         }
                     }
+                    }
                 }
                 main id="feature" class="pa3" {
-                    (main_content)
+                    div class="tf-container" {
+                        (main_content)
+                    }
                 }
             }
         }

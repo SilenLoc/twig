@@ -100,22 +100,23 @@ pub async fn handler(
     };
 
     let content = maud::html! {
-        div class="mb3 mb4-ns f6 white-70" {
-            a href="/" class="link white-70 hover-white no-underline" { "Namespaces" }
+        div class="mb3 mb4-ns tf-kicker white-50" {
+            a href="/" class="link white-50 hover-white no-underline" { "Namespaces" }
             span class="mh2" { "/" }
             span class="white" { (namespace) }
         }
 
-        div class="flex flex-wrap justify-between items-center mb3 mb4-ns" {
-            h1 class="f3 fw6 white ma0 mb2 mb0-ns" {
-                "Namespace: " (namespace)
-            }
+        h1 class="tf-hero white ma0 mb3 mb4-ns word-wrap" style="overflow-wrap: anywhere;" {
+            (namespace)
+        }
+
+        div class="flex flex-wrap justify-between items-end mb3 mb4-ns" {
             @if has_access {
                 button
                     hx-get=(format!("/{}/create-repo-form", namespace))
                     hx-target="#create-repo-container"
                     hx-swap="innerHTML"
-                    class="pa2 bg-white black bn br1 pointer hover-bg-white-90 f6"
+                    class="tf-btn"
                 {
                     "Create repo"
                 }
@@ -135,20 +136,18 @@ pub async fn handler(
                     name="q"
                     value=(search_query)
                     placeholder="Search repositories..."
-                    class="flex-auto pa2 bg-black white ba b--white-30 br1 mr2"
-                    style="outline: none; min-width: 0;"
-                    onfocus="this.style.borderColor='white'"
-                    onblur="this.style.borderColor='rgba(255,255,255,0.3)'";
+                    class="tf-input flex-auto mr2"
+                    style="min-width: 0;";
                 button
                     type="submit"
-                    class="pa2 bg-white-10 white bn br1 pointer hover-bg-white-20"
+                    class="tf-btn tf-btn-ghost"
                 {
                     "Search"
                 }
                 @if !search_query.is_empty() {
                     a
                         href=(format!("/{}", namespace))
-                        class="ml2 pa2 link white-70 hover-white no-underline"
+                        class="ml2 pa2 link white-70 hover-white no-underline tf-kicker"
                     {
                         "Clear"
                     }
@@ -156,8 +155,8 @@ pub async fn handler(
             }
         }
 
-        div class="ba b--white-20 br2 bg-black-20 overflow-hidden overflow-x-auto" {
-            div class="flex pa3 bb b--white-20 bg-black-30 white-70 f6 fw6" {
+        div class="ba b--white-20 bg-black-20 overflow-hidden overflow-x-auto" {
+            div class="flex pa3 bb b--white-20 white-50 f6 fw6 tf-kicker" {
                 div class="flex-auto" { "Repository" }
                 div class="tr dn db-ns" style="min-width: 150px;" { "Last Commit" }
             }
@@ -175,12 +174,12 @@ pub async fn handler(
                     @for repo in repos {
                         a
                             href=(format!("{}/{}", namespace, repo.name))
-                            class="flex pa3 bb b--white-10 link white-90 hover-white hover-bg-white-10 no-underline items-center"
+                            class="flex pa3 bb b--white-10 link white hover-white hover-bg-white-10 no-underline items-baseline"
                         {
                             div class="flex-auto" {
-                                span class="f5" { (repo.name) }
+                                span class="f4 fw6" style="letter-spacing: -0.01em;" { (repo.name) }
                             }
-                            div class="tr white-60 f6 dn db-ns" style="min-width: 150px;" {
+                            div class="tr white-50 f6 dn db-ns" style="min-width: 150px;" {
                                 @match repo.last_commit_date {
                                     Some(date) => { (format_date(&date)) }
                                     None => { "No commits" }
@@ -208,12 +207,12 @@ pub async fn create_repo_form_handler(
     let namespace = &params.namespace;
 
     let form = maud::html! {
-        div class="ba b--white-20 br2 pa3 bg-black-20" {
+        div class="ba b--white-20 pa3 bg-black-20" {
             div class="flex justify-between items-center mb3" {
-                h2 class="f4 fw6 white ma0" { "Create Repository" }
+                h2 class="tf-section white ma0" { "Create Repository" }
                 button
                     onclick="document.getElementById('create-repo-container').innerHTML = ''"
-                    class="pa1 bg-transparent white bn pointer hover-white-70 f6"
+                    class="pa1 bg-transparent white bn pointer hover-white-70 tf-kicker"
                 {
                     "✕ Cancel"
                 }
@@ -226,29 +225,29 @@ pub async fn create_repo_form_handler(
                 hx-on::after-request="if(event.detail.successful) { setTimeout(() => { document.getElementById('create-repo-container').innerHTML = ''; window.location.reload(); }, 1500); }"
             {
                 div class="mb3" {
-                    label class="db f6 white-70 mb2" for="repo_name" { "Repository Name" }
+                    label class="db tf-kicker white-50 mb2" for="repo_name" { "Repository Name" }
                     input
                         type="text"
                         name="repo_name"
                         id="repo_name"
                         required
                         minlength="1"
-                        class="db w-100 pa2 bg-black white ba b--white-30 br1"
+                        class="tf-input db w-100"
                         placeholder="Enter repository name (e.g., my-project)";
                 }
                 div class="mb3" {
-                    label class="db f6 white-70 mb2" for="branch" { "Default Branch" }
+                    label class="db tf-kicker white-50 mb2" for="branch" { "Default Branch" }
                     input
                         type="text"
                         name="branch"
                         id="branch"
                         value="main"
-                        class="db w-100 pa2 bg-black white ba b--white-30 br1"
+                        class="tf-input db w-100"
                         placeholder="main";
                 }
                 button
                     type="submit"
-                    class="w-100 pa2 bg-white black bn br1 pointer hover-bg-white-90"
+                    class="tf-btn tf-btn-block"
                 {
                     "Create Repository"
                 }

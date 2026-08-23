@@ -22,9 +22,9 @@ pub async fn ticket_page(
 ) -> AwResult<maud::Markup> {
     let username = get_username_from_request(&req, &auth_state).await;
     let content = maud::html! {
-        h1 class="f3 fw6 mb4 white tc" { "Get Signup Ticket" }
+        h1 class="tf-title mb4 white tc" { "Get Signup Ticket" }
 
-        div class="ba b--white-20 br2 pa4 bg-black-20 mb4" {
+        div class="ba b--white-20 pa4 bg-black-20 mb4" {
             p class="f6 white-70 mb2" {
                 "To create an account, you first need a signup ticket."
             }
@@ -38,22 +38,22 @@ pub async fn ticket_page(
             hx-target="#ticket-result"
             hx-target-error="#ticket-result"
             hx-swap="innerHTML"
-            class="ba b--white-20 br2 pa4 bg-black-20"
+            class="ba b--white-20 pa4 bg-black-20"
         {
             div class="mb4" {
-                label class="db f6 white-70 mb2" for="api_key" { "API Key" }
+                label class="db tf-kicker white-50 mb2" for="api_key" { "API Key" }
                 input
                     type="password"
                     name="api_key"
                     id="api_key"
                     required
-                    class="db w-100 pa2 bg-black white ba b--white-30 br1"
+                    class="tf-input db w-100"
                     placeholder="Enter your API key";
             }
 
             button
                 type="submit"
-                class="w-100 pa2 bg-white black bn br1 pointer hover-bg-white-90"
+                class="tf-btn tf-btn-block"
             {
                 "Generate Ticket"
             }
@@ -86,9 +86,9 @@ pub async fn signup_page(
 ) -> AwResult<maud::Markup> {
     let username = get_username_from_request(&req, &auth_state).await;
     let content = maud::html! {
-        h1 class="f3 fw6 mb4 white tc" { "Create Account" }
+        h1 class="tf-title mb4 white tc" { "Create Account" }
 
-        div class="ba b--white-20 br2 pa4 bg-black-20 mb4" {
+        div class="ba b--white-20 pa4 bg-black-20 mb4" {
             p class="f6 white-70" {
                 "Enter your signup ticket along with your desired username and password."
             }
@@ -99,57 +99,57 @@ pub async fn signup_page(
             hx-target="#signup-result"
             hx-target-error="#signup-result"
             hx-swap="innerHTML"
-            class="ba b--white-20 br2 pa4 bg-black-20"
+            class="ba b--white-20 pa4 bg-black-20"
         {
             div class="mb3" {
-                label class="db f6 white-70 mb2" for="ticket" { "Signup Ticket" }
+                label class="db tf-kicker white-50 mb2" for="ticket" { "Signup Ticket" }
                 input
                     type="text"
                     name="ticket"
                     id="ticket"
                     required
-                    class="db w-100 pa2 bg-black white ba b--white-30 br1"
+                    class="tf-input db w-100"
                     placeholder="Enter your signup ticket";
             }
 
             div class="mb3" {
-                label class="db f6 white-70 mb2" for="username" { "Username" }
+                label class="db tf-kicker white-50 mb2" for="username" { "Username" }
                 input
                     type="text"
                     name="username"
                     id="username"
                     required
                     minlength="3"
-                    class="db w-100 pa2 bg-black white ba b--white-30 br1"
+                    class="tf-input db w-100"
                     placeholder="Choose a username (min 3 characters)";
             }
 
             div class="mb3" {
-                label class="db f6 white-70 mb2" for="email" { "Email" }
+                label class="db tf-kicker white-50 mb2" for="email" { "Email" }
                 input
                     type="email"
                     name="email"
                     id="email"
                     required
-                    class="db w-100 pa2 bg-black white ba b--white-30 br1"
+                    class="tf-input db w-100"
                     placeholder="Enter your email address";
             }
 
             div class="mb4" {
-                label class="db f6 white-70 mb2" for="password" { "Password" }
+                label class="db tf-kicker white-50 mb2" for="password" { "Password" }
                 input
                     type="password"
                     name="password"
                     id="password"
                     required
                     minlength="8"
-                    class="db w-100 pa2 bg-black white ba b--white-30 br1"
+                    class="tf-input db w-100"
                     placeholder="Choose a password (min 8 characters)";
             }
 
             button
                 type="submit"
-                class="w-100 pa2 bg-white black bn br1 pointer hover-bg-white-90"
+                class="tf-btn tf-btn-block"
             {
                 "Create Account"
             }
@@ -187,40 +187,40 @@ pub async fn login_page(
 ) -> AwResult<maud::Markup> {
     let username = get_username_from_request(&req, &auth_state).await;
     let content = maud::html! {
-        h1 class="f3 fw6 mb4 white tc" { "Log In" }
+        h1 class="tf-title mb4 white tc" { "Log In" }
 
         form
             hx-post="/auth/login"
             hx-target="#login-result"
             hx-target-error="#login-result"
             hx-swap="innerHTML"
-            class="ba b--white-20 br2 pa4 bg-black-20"
+            class="ba b--white-20 pa4 bg-black-20"
         {
             div class="mb3" {
-                label class="db f6 white-70 mb2" for="username" { "Username" }
+                label class="db tf-kicker white-50 mb2" for="username" { "Username" }
                 input
                     type="text"
                     name="username"
                     id="username"
                     required
-                    class="db w-100 pa2 bg-black white ba b--white-30 br1"
+                    class="tf-input db w-100"
                     placeholder="Enter your username";
             }
 
             div class="mb4" {
-                label class="db f6 white-70 mb2" for="password" { "Password" }
+                label class="db tf-kicker white-50 mb2" for="password" { "Password" }
                 input
                     type="password"
                     name="password"
                     id="password"
                     required
-                    class="db w-100 pa2 bg-black white ba b--white-30 br1"
+                    class="tf-input db w-100"
                     placeholder="Enter your password";
             }
 
             button
                 type="submit"
-                class="w-100 pa2 bg-white black bn br1 pointer hover-bg-white-90"
+                class="tf-btn tf-btn-block"
             {
                 "Log In"
             }
@@ -253,9 +253,9 @@ pub async fn namespace_page(
 ) -> AwResult<maud::Markup> {
     let username = get_username_from_request(&req, &auth_state).await;
     let content = maud::html! {
-        h1 class="f3 fw6 mb4 white tc" { "Create Namespace" }
+        h1 class="tf-title mb4 white tc" { "Create Namespace" }
 
-        div class="ba b--white-20 br2 pa4 bg-black-20 mb4" {
+        div class="ba b--white-20 pa4 bg-black-20 mb4" {
             p class="f6 white-70 mb2" {
                 "Create a new namespace for your repositories."
             }
@@ -269,23 +269,23 @@ pub async fn namespace_page(
             hx-target="#namespace-result"
             hx-target-error="#namespace-result"
             hx-swap="innerHTML"
-            class="ba b--white-20 br2 pa4 bg-black-20"
+            class="ba b--white-20 pa4 bg-black-20"
         {
             div class="mb3" {
-                label class="db f6 white-70 mb2" for="name" { "Namespace Name" }
+                label class="db tf-kicker white-50 mb2" for="name" { "Namespace Name" }
                 input
                     type="text"
                     name="name"
                     id="name"
                     required
                     minlength="2"
-                    class="db w-100 pa2 bg-black white ba b--white-30 br1"
+                    class="tf-input db w-100"
                     placeholder="Enter namespace name (e.g., my-org)";
             }
 
             button
                 type="submit"
-                class="w-100 pa2 bg-white black bn br1 pointer hover-bg-white-90"
+                class="tf-btn tf-btn-block"
             {
                 "Create Namespace"
             }
@@ -313,20 +313,20 @@ pub async fn namespace_page(
 // Handler for successful ticket generation
 pub fn render_ticket_success(ticket: &str) -> maud::Markup {
     maud::html! {
-        div class="ba b--green br2 pa3 bg-dark-green" {
-            h2 class="f4 fw6 mb3 white" { "Ticket Generated!" }
+        div class="bt b--white pa3 bg-black-20" style="border-top-width: 3px;" {
+            h2 class="tf-section mb3 white" { "Ticket Generated!" }
             p class="f6 white mb2" {
                 "Your one-time signup ticket has been generated."
             }
-            p class="f6 white-90 mb3" {
+            p class="f6 white-70 mb3" {
                 "Use this ticket to create your account (it can only be used once):"
             }
-            code class="db pa2 bg-black-50 white br1 mb3 f6" style="word-break: break-all;" {
+            code class="db pa2 bg-black-50 white mb3 f6" style="word-break: break-all;" {
                 (ticket)
             }
             a
                 href="/auth/signup"
-                class="db tc pa2 bg-white black bn br1 pointer hover-bg-white-90 no-underline"
+                class="tf-btn tf-btn-block"
             {
                 "Create Your Account →"
             }
@@ -337,21 +337,21 @@ pub fn render_ticket_success(ticket: &str) -> maud::Markup {
 // Handler for successful signup
 pub fn render_signup_success(username: &str) -> maud::Markup {
     maud::html! {
-        div class="ba b--green br2 pa3 bg-dark-green" {
-            h2 class="f4 fw6 mb3 white" { "Account Created!" }
+        div class="bt b--white pa3 bg-black-20" style="border-top-width: 3px;" {
+            h2 class="tf-section mb3 white" { "Account Created!" }
             p class="f6 white mb2" {
                 "Welcome, " (username) "! Your account has been created successfully."
             }
             div class="flex flex-column" {
                 a
                     href="/auth/login"
-                    class="db tc pa2 bg-white black bn br1 pointer hover-bg-white-90 no-underline mb2"
+                    class="tf-btn tf-btn-block mb2"
                 {
                     "Log In →"
                 }
                 a
                     href="/auth/namespace"
-                    class="db tc pa2 bg-white-20 white bn br1 pointer hover-bg-white-30 no-underline"
+                    class="tf-btn tf-btn-ghost tf-btn-block"
                 {
                     "Create a Namespace →"
                 }
@@ -363,17 +363,17 @@ pub fn render_signup_success(username: &str) -> maud::Markup {
 // Handler for login success
 pub fn render_login_success(username: &str) -> maud::Markup {
     maud::html! {
-        div class="ba b--green br2 pa3 bg-dark-green" {
-            h2 class="f4 fw6 mb3 white" { "Login Successful!" }
+        div class="bt b--white pa3 bg-black-20" style="border-top-width: 3px;" {
+            h2 class="tf-section mb3 white" { "Login Successful!" }
             p class="f6 white mb2" {
                 "Welcome back, " (username) "!"
             }
-            p class="f6 white-90 mb3" {
+            p class="f6 white-70 mb3" {
                 "You are now logged in. You can create as many namespaces as you want."
             }
             a
                 href="/auth/namespace"
-                class="db tc pa2 bg-white black bn br1 pointer hover-bg-white-90 no-underline"
+                class="tf-btn tf-btn-block"
             {
                 "Create Namespace →"
             }

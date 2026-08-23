@@ -1,6 +1,7 @@
 use actix_web::{HttpRequest, HttpResponse, Responder, get};
 
 const TCSS: &str = include_str!("../assets/t.css");
+const FIGCSS: &str = include_str!("../assets/fig.css");
 const HTMX: &str = include_str!("../assets/h.js");
 const HTMX_RESPONSE_TARGETS: &str = include_str!("../assets/hx-response-targets.js");
 const FIG_SVG: &str = include_str!("../assets/fig.svg");
@@ -17,6 +18,10 @@ pub async fn assets(req: HttpRequest) -> impl Responder {
             .content_type("text/css; charset=utf-8")
             .insert_header(("Cache-Control", CACHE_CONTROL_VALUE))
             .body(TCSS),
+        "fig.css" => HttpResponse::Ok()
+            .content_type("text/css; charset=utf-8")
+            .insert_header(("Cache-Control", CACHE_CONTROL_VALUE))
+            .body(FIGCSS),
         "h.js" => HttpResponse::Ok()
             .content_type("application/javascript; charset=utf-8")
             .insert_header(("Cache-Control", CACHE_CONTROL_VALUE))
@@ -55,6 +60,7 @@ mod tests {
 
         for (path, expected_type) in [
             ("/assets/t.css", "text/css"),
+            ("/assets/fig.css", "text/css"),
             ("/assets/h.js", "application/javascript"),
             ("/assets/hx-response-targets.js", "application/javascript"),
             ("/assets/fig.svg", "image/svg+xml"),

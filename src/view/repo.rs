@@ -478,13 +478,18 @@ fn render_tabs(
     }
 
     maud::html! {
-        div id="tab-nav" hx-swap-oob="true" class="flex flex-wrap bb b--white-20 mb3" {
+        div id="tab-nav" hx-swap-oob="true" class="flex flex-wrap mb3 bb b--white-20" {
             @for (tab_id, tab_label) in all_tabs {
                 @let is_active = tab_id == active_tab;
-                @let active_classes = if is_active { "white fw6 bg-white-10" } else { "white-70 hover-white" };
+                @let active_classes = if is_active {
+                    "white bg-transparent"
+                } else {
+                    "white-50 hover-white bg-transparent"
+                };
                 a
                     href=(format!("/{}/{}/tab/{}", namespace, repo, tab_id))
-                    class=(format!("pa2 ph3 {} no-underline pointer hover-bg-white-10", active_classes))
+                    class=(format!("tf-tab pa2 ph3 {} no-underline pointer", active_classes))
+                    style=(if is_active { "box-shadow: inset 0 -2px 0 #fff;" } else { "" })
                     hx-get=(format!("/{}/{}/tab/{}", namespace, repo, tab_id))
                     hx-target="#tab-content"
                     hx-push-url=(format!("/{}/{}", namespace, repo))
@@ -542,12 +547,16 @@ fn render_repo(
     };
 
     maud::html! {
-        div class="mb3 mb4-ns f6 white-70" {
-            a href="/" class="link white-70 hover-white no-underline" { "Namespaces" }
+        div class="mb3 mb4-ns tf-kicker white-50" {
+            a href="/" class="link white-50 hover-white no-underline" { "Namespaces" }
             span class="mh2" { "/" }
-            a href=(format!("/{}", namespace)) class="link white-70 hover-white no-underline" { (namespace) }
+            a href=(format!("/{}", namespace)) class="link white-50 hover-white no-underline" { (namespace) }
             span class="mh2" { "/" }
             span class="white" { (repo) }
+        }
+
+        h1 class="tf-hero white ma0 mb3 mb4-ns" style="overflow-wrap: anywhere;" {
+            (repo)
         }
 
         // Tab navigation
@@ -614,7 +623,7 @@ fn render_tab_content_inner(ctx: TabContentContext<'_>) -> Markup {
         "commits" => {
             maud::html! {
                 div {
-                    h2 class="f4 fw6 mb3 white" { "Commits" }
+                    h2 class="tf-section mb3 white" { "Commits" }
                     ol class="list pl0" {
                         @for commit in ctx.commits {
                             li class="mb3" {
@@ -666,16 +675,16 @@ fn render_config_view(fig_content: Option<&str>, fig_filename: Option<&str>) -> 
 
     maud::html! {
         div {
-            h2 class="f4 fw6 mb3 white" { "Configuration" }
-            p class="f6 white-70 mb3" {
+            h2 class="tf-section mb3 white" { "Configuration" }
+            p class="f6 white-50 mb3" {
                 "Repository configuration from " (config_filename)
             }
             @if let Some(content) = fig_content {
-                pre class="pa3 bg-black-20 br2 overflow-x-auto" {
+                pre class="pa3 bg-black-20 overflow-x-auto" {
                     code class="f6 white lh-copy" { (content) }
                 }
             } @else {
-                div class="pa3 white-50 bg-black-20 br2" {
+                div class="pa3 white-50 bg-black-20" {
                     "No configuration file found. Create a .fig.toml file in the repository root to configure ignore patterns."
                 }
             }
@@ -686,13 +695,13 @@ fn render_config_view(fig_content: Option<&str>, fig_filename: Option<&str>) -> 
 fn render_license_view(license_content: Option<&str>) -> Markup {
     maud::html! {
         div {
-            h2 class="f4 fw6 mb3 white" { "License" }
+            h2 class="tf-section mb3 white" { "License" }
             @if let Some(content) = license_content {
-                div class="markdown-body white lh-copy pa3 bg-black-20 br2 overflow-x-auto" {
+                div class="markdown-body white lh-copy pa3 bg-black-20 overflow-x-auto" {
                     (maud::PreEscaped(content))
                 }
             } @else {
-                div class="pa3 white-50 bg-black-20 br2" {
+                div class="pa3 white-50 bg-black-20" {
                     "No license information available."
                 }
             }
@@ -725,11 +734,11 @@ fn render_slide_content(
 
     maud::html! {
         div class="flex items-center justify-between mb3" {
-            div class="f4 fw6 white" { "Presentation" }
+            div class="tf-section white" { "Presentation" }
             div class="flex items-center" {
-                span class="f6 white-70 mr3" { (current_index + 1) " / " (slide_count) }
+                span class="f6 white-50 mr3" { (current_index + 1) " / " (slide_count) }
                 button
-                    class="f6 link white-70 hover-white bg-transparent bn pointer pa1 mr2"
+                    class="tf-kicker link white-70 hover-white bg-transparent bn pointer pa1 mr2"
                     onclick="document.getElementById('present-container').requestFullscreen()"
                 {
                     "Fullscreen"
@@ -771,7 +780,7 @@ fn render_slide_content(
                         hx-get=(format!("/{}/{}/slide/{}", namespace, repo, i))
                         hx-target="#present-container"
                         hx-swap="innerHTML"
-                        style="width: 10px; height: 10px; border-radius: 50%; margin: 0 4px; border: none; cursor: pointer;"
+                        style="width: 28px; height: 3px; margin: 0 4px; border: none; cursor: pointer; padding: 0;"
                     {}
                 }
             }
@@ -835,7 +844,7 @@ fn render_markdown_view(
             // Left sidebar with markdown files
             div class="w-100 w4-ns w5-l br-ns b--white-20 pr3-ns mb3 mb0-ns overflow-x-auto overflow-y-auto-ns" style="max-height: 70vh; min-width: 0;" {
                 @if markdown_files.len() > 1 {
-                    h3 class="f5 fw6 mb2 white" { "Markdown Files" }
+                    h3 class="tf-kicker white-50 mb2 mt0" { "Markdown Files" }
                 }
                 ul class="list pl0 flex flex-row flex-column-ns overflow-x-auto overflow-y-auto-ns mb0" {
                     @for file in markdown_files {
@@ -903,15 +912,15 @@ fn render_commit(commit: &Commit) -> Markup {
     let date = commit.date();
     let commit_message = commit.commit_message();
     maud::html! {
-        div class="commit ba b--white-20 br2 pa3 bg-black-20" {
-            div class="flex flex-wrap items-center mb2" {
-                code class="f7 mr2 ph2 pv1 bg-white-10 br1 white" {
+        div class="commit bt bb b--white-20 pa3" style="border-top-width: 3px;" {
+            div class="flex flex-wrap items-baseline mb2 tf-kicker" {
+                code class="mr2 white bg-transparent f6" style="letter-spacing: 0.08em;" {
                     (hash.chars().take(7).collect::<String>())
                 }
-                span class="f6 white-70 mr2" { (author) }
-                span class="f6 white-50" { (date.format("%Y-%m-%d %H:%M")) }
+                span class="white-50 mr2" { (author) }
+                span class="white-30" { (date.format("%Y-%m-%d %H:%M")) }
             }
-            p class="f5 white ma0" { (commit_message) }
+            p class="f4 ma0" style="font-weight: 600; letter-spacing: -0.01em;" { (commit_message) }
         }
     }
 }

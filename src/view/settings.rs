@@ -90,30 +90,30 @@ pub async fn settings_page(
     }
 
     let content = maud::html! {
-        div class="mb4 f6 white-70" {
-            a href="/" class="link white-70 hover-white no-underline" { "Home" }
+        div class="mb3 mb4-ns tf-kicker white-50" {
+            a href="/" class="link white-50 hover-white no-underline" { "Home" }
             span class="mh2" { "/" }
             span class="white" { "Settings" }
         }
 
-        h1 class="f3 fw6 white mb3 mb4-ns" { "User Settings" }
+        h1 class="tf-hero white mb3 mb4-ns" { "Settings" }
 
-        div class="ba b--white-20 br2 pa3 pa4-ns bg-black-20 mb3 mb4-ns" {
-            h2 class="f4 fw6 white mb3" { "Profile Information" }
+        div class="ba b--white-20 pa3 pa4-ns bg-black-20 mb3 mb4-ns" {
+            h2 class="tf-section white mb3" { "Profile Information" }
 
             div class="mb3 mb4-ns" {
-                label class="db f6 white-70 mb2" { "Username" }
+                label class="db tf-kicker white-50 mb2" { "Username" }
                 p class="f5 white ma0" { (user.username) }
             }
 
             div class="mb3 mb4-ns" {
-                label class="db f6 white-70 mb2" { "Email" }
+                label class="db tf-kicker white-50 mb2" { "Email" }
                 @match &user.email {
                     Some(email) => {
                         p class="f5 white ma0" style="word-break: break-all;" { (email) }
                     }
                     None => {
-                        p class="f5 white-50 ma0" { "Not set" }
+                        p class="f5 white-40 ma0" { "Not set" }
                     }
                 }
             }
@@ -128,19 +128,19 @@ pub async fn settings_page(
                 hx-swap="innerHTML"
             {
                 div class="mb3" {
-                    label class="db f6 white-70 mb2" for="email" { "Email Address" }
+                    label class="db tf-kicker white-50 mb2" for="email" { "Email Address" }
                     input
                         type="email"
                         name="email"
                         id="email"
                         required
                         value=(user.email.as_deref().unwrap_or(""))
-                        class="db w-100 pa2 bg-black white ba b--white-30 br1"
+                        class="tf-input db w-100"
                         placeholder="Enter your email address";
                 }
                 button
                     type="submit"
-                    class="pa2 bg-white black bn br1 pointer hover-bg-white-90"
+                    class="tf-btn"
                 {
                     "Save Email"
                 }
@@ -149,11 +149,11 @@ pub async fn settings_page(
             div id="settings-result" {}
         }
 
-        div class="ba b--white-20 br2 pa3 pa4-ns bg-black-20" {
-            h2 class="f4 fw6 white mb3" { "Delete Repository" }
+        div class="ba b--white-20 pa3 pa4-ns bg-black-20" {
+            h2 class="tf-section white mb3" { "Delete Repository" }
 
             @if repos_by_namespace.is_empty() {
-                p class="f6 white-50 ma0" { "You don't have any repositories to delete." }
+                p class="f6 white-40 ma0" { "You don't have any repositories to delete." }
             } @else {
                 p class="f6 white-70 mb3" { "Select a repository to permanently delete it. This action cannot be undone." }
 
@@ -161,7 +161,7 @@ pub async fn settings_page(
 
                 @for (ns, repos) in repos_by_namespace {
                     div class="mb3" {
-                        h4 class="f6 fw6 white-70 mb2" { (ns) }
+                        h4 class="tf-kicker white-50 mb2" { (ns) }
                         div class="flex flex-column" {
                             @for repo in repos {
                                 form
@@ -176,7 +176,8 @@ pub async fn settings_page(
                                     span class="f6 white mb1 mb0-ns" { (repo.name) }
                                     button
                                         type="submit"
-                                        class="pa1 bg-dark-red white bn br1 pointer hover-bg-red f6"
+                                        class="tf-btn tf-btn-danger f7"
+                                        style="padding: 0.4rem 0.9rem;"
                                     {
                                         "Delete"
                                     }
@@ -188,11 +189,11 @@ pub async fn settings_page(
             }
         }
 
-        div class="ba b--white-20 br2 pa3 pa4-ns bg-black-20 mt3 mt4-ns" {
-            h2 class="f4 fw6 white mb3" { "Delete Namespace" }
+        div class="ba b--white-20 pa3 pa4-ns bg-black-20 mt3 mt4-ns" {
+            h2 class="tf-section white mb3" { "Delete Namespace" }
 
             @if deletable_namespaces.is_empty() {
-                p class="f6 white-50 ma0" { "No namespaces available for deletion. You can only delete namespaces you own that have no repositories." }
+                p class="f6 white-40 ma0" { "No namespaces available for deletion. You can only delete namespaces you own that have no repositories." }
             } @else {
                 p class="f6 white-70 mb3" { "Select a namespace to permanently delete it. This action cannot be undone." }
 
@@ -211,7 +212,8 @@ pub async fn settings_page(
                             span class="f6 white mb1 mb0-ns" { (ns_name) }
                             button
                                 type="submit"
-                                class="pa1 bg-dark-red white bn br1 pointer hover-bg-red f6"
+                                class="tf-btn tf-btn-danger f7"
+                                style="padding: 0.4rem 0.9rem;"
                             {
                                 "Delete"
                             }

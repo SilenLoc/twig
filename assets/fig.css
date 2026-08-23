@@ -1,0 +1,214 @@
+/* Fig — Type-First Design theme
+   Letterforms are the primary visual material: oversized display headlines
+   (Anton), a quiet reading face (Bricolage Grotesque), stark black/white
+   fields, zero radii, buttons and containers subordinate to the type. */
+
+:root {
+  --fig-display: "Anton", "Arial Narrow", "Impact", sans-serif;
+  --fig-body: "Bricolage Grotesque", system-ui, -apple-system, sans-serif;
+}
+
+body {
+  font-family: var(--fig-body);
+  overflow-x: hidden;
+}
+
+::selection {
+  background: #fff;
+  color: #000;
+}
+
+/* ---- Shape language: baselines and boxes, never curves ---------------- */
+
+.br1,
+.br2,
+.br3,
+.br4,
+.br-100 {
+  border-radius: 0 !important;
+}
+
+/* ---- Shared page grid --------------------------------------------------- */
+
+/* Centered column shared by nav and main so everything aligns */
+.tf-container {
+  width: 100%;
+  max-width: 72rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* ---- Display type ------------------------------------------------------ */
+
+.display {
+  font-family: var(--fig-display);
+  font-weight: 400;
+  text-transform: uppercase;
+  line-height: 0.82;
+  letter-spacing: -0.01em;
+}
+
+/* Monumental page headline; small optical correction so Anton's
+   letterforms sit flush with body text */
+.tf-hero {
+  font-family: var(--fig-display);
+  font-weight: 400;
+  text-transform: uppercase;
+  line-height: 0.85;
+  letter-spacing: -0.01em;
+  font-size: clamp(1.25rem, 2.5vw, 2rem);
+  margin-left: -0.04em;
+  margin-bottom: 0.75em;
+}
+
+/* Large title for inner pages (auth, settings) */
+.tf-title {
+  font-family: var(--fig-display);
+  font-weight: 400;
+  text-transform: uppercase;
+  line-height: 0.9;
+  letter-spacing: 0;
+  font-size: clamp(1rem, 1.75vw, 1.25rem);
+  margin-left: -0.03em;
+}
+
+/* Section headings carry the display voice at moderate scale */
+.tf-section {
+  font-family: var(--fig-display);
+  font-weight: 400;
+  text-transform: uppercase;
+  line-height: 0.9;
+  font-size: clamp(1.25rem, 2.5vw, 1.75rem);
+}
+
+/* Small tracked label — navigation, meta, column headers */
+.tf-kicker {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.32em;
+}
+
+/* ---- Controls: shared height so inputs, search fields and buttons align - */
+
+:root {
+  --fig-control-h: 2.5rem;
+}
+
+/* ---- Buttons: visually subordinate, square, typographic ---------------- */
+
+.tf-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--fig-control-h);
+  padding: 0 1.4rem;
+  background: #fff;
+  color: #000;
+  border: none;
+  border-radius: 0;
+  font-family: var(--fig-body);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  text-decoration: none;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tf-btn:hover {
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.tf-btn-ghost {
+  background: transparent;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+}
+
+.tf-btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.tf-btn-danger {
+  background: #7f1d1d;
+  color: #fff;
+}
+
+.tf-btn-danger:hover {
+  background: #dc2626;
+}
+
+.tf-btn-block {
+  display: flex;
+  width: 100%;
+  text-align: center;
+}
+
+/* ---- Inputs: quiet fields with hairline rules -------------------------- */
+
+.tf-input {
+  height: var(--fig-control-h);
+  padding: 0 0.75rem;
+  background: #000;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 0;
+  font-family: var(--fig-body);
+  font-size: 1rem;
+  outline: none;
+}
+
+.tf-input:focus {
+  border-color: #fff;
+}
+
+/* ---- Tabs: underline-first navigation ---------------------------------- */
+
+.tf-tab {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.28em;
+}
+
+/* ---- Markdown reading surface ------------------------------------------ */
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4 {
+  font-family: var(--fig-display);
+  font-weight: 400;
+  text-transform: uppercase;
+  line-height: 0.9;
+}
+
+.markdown-body h1 {
+  font-size: clamp(1.25rem, 3vw, 2rem);
+}
+
+.markdown-body h2 {
+  font-size: clamp(1.125rem, 2.25vw, 1.625rem);
+}
+
+.markdown-body h3 {
+  font-size: clamp(1rem, 1.75vw, 1.375rem);
+}
+
+.markdown-body a {
+  color: #fff;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+
+.markdown-body a:hover {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.markdown-body code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.1em 0.35em;
+}

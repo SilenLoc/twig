@@ -45,12 +45,15 @@ pub async fn index(
     };
 
     let content = maud::html! {
-        div class="flex flex-wrap justify-between items-center mb3 mb4-ns" {
-            h1 class="f3 fw6 white ma0 mb2 mb0-ns" { "Namespaces" }
+        div class="pt3 pt4-ns" {
+            h1 class="tf-hero white ma0" { "Namespaces" }
+        }
+
+        div class="flex flex-wrap justify-between items-end mb3 mb4-ns" {
             @if username.is_some() {
                 a
                     href="/auth/namespace"
-                    class="pa2 bg-white black bn br1 pointer hover-bg-white-90 f6 no-underline"
+                    class="tf-btn"
                 {
                     "Create namespace"
                 }
@@ -68,20 +71,18 @@ pub async fn index(
                     name="q"
                     value=(search_query)
                     placeholder="Search namespaces..."
-                    class="flex-auto pa2 bg-black white ba b--white-30 br1 mr2"
-                    style="outline: none; min-width: 0;"
-                    onfocus="this.style.borderColor='white'"
-                    onblur="this.style.borderColor='rgba(255,255,255,0.3)'";
+                    class="tf-input flex-auto mr2"
+                    style="min-width: 0;";
                 button
                     type="submit"
-                    class="pa2 bg-white-10 white bn br1 pointer hover-bg-white-20"
+                    class="tf-btn tf-btn-ghost"
                 {
                     "Search"
                 }
                 @if !search_query.is_empty() {
                     a
                         href="/"
-                        class="ml2 pa2 link white-70 hover-white no-underline"
+                        class="ml2 pa2 link white-70 hover-white no-underline tf-kicker"
                     {
                         "Clear"
                     }
@@ -89,8 +90,8 @@ pub async fn index(
             }
         }
 
-        div class="ba b--white-20 br2 bg-black-20 overflow-hidden overflow-x-auto" {
-            div class="flex pa3 bb b--white-20 bg-black-30 white-70 f6 fw6" {
+        div class="ba b--white-20 bg-black-20 overflow-hidden overflow-x-auto" {
+            div class="flex pa3 bb b--white-20 white-50 f6 fw6 tf-kicker" {
                 div class="flex-auto" { "Namespace" }
                 div class="tr dn db-ns" style="min-width: 150px;" { "Owner" }
             }
@@ -108,12 +109,12 @@ pub async fn index(
                     @for (namespace, owner) in namespaces {
                         a
                             href=(format!("{}", namespace.name))
-                            class="flex pa3 bb b--white-10 link white-90 hover-white hover-bg-white-10 no-underline items-center"
+                            class="flex pa3 bb b--white-10 link white hover-white hover-bg-white-10 no-underline items-baseline"
                         {
                             div class="flex-auto" {
-                                span class="f5" { (namespace.name) }
+                                span class="f4 fw6" style="letter-spacing: -0.01em;" { (namespace.name) }
                             }
-                            div class="tr white-60 f6 dn db-ns" style="min-width: 150px;" {
+                            div class="tr white-50 f6 dn db-ns" style="min-width: 150px;" {
                                 (owner)
                             }
                         }
