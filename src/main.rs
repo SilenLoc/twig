@@ -147,6 +147,7 @@ fn main() -> std::io::Result<()> {
                 .service(view::repo::tab_handler)
                 .service(view::repo::slide_handler)
                 .service(view::repo::markdown_handler)
+                .service(view::repo::content_handler)
                 // Git endpoints with auth
                 .service(git::repo::init)
                 .route(

@@ -7,7 +7,7 @@ use serde::Deserialize;
 use crate::{
     auth::FigContext,
     config,
-    git::bare::{Commit, Depth, PresentConfig, RepoHandle},
+    git::bare::{Commit, Depth, PresentConfig, RepoHandle, TreeEntry, is_safe_repo_path},
     md,
 };
 
@@ -40,6 +40,13 @@ struct SlideParams {
     index: usize,
 }
 
+#[derive(Deserialize)]
+struct ContentParams {
+    namespace: String,
+    repo: String,
+    path: String,
+}
+
 /// A rendered slide for the presentation view
 struct PresentSlide {
     html: String,
@@ -61,6 +68,9 @@ struct TabContentContext<'a> {
     present_slides: &'a [PresentSlide],
     license_content: Option<&'a str>,
     has_license: bool,
+    content_path: &'a str,
+    content_entries: &'a [TreeEntry],
+    content_file_bytes: Option<&'a [u8]>,
 }
 
 #[get("/{namespace}/{repo}")]
@@ -108,6 +118,7 @@ pub async fn handler(
             let present_slides = load_present_slides(&handle, &fig_config.present);
             let license_content = handle.get_license_content();
             let has_license = handle.has_license();
+            let content_entries = handle.list_dir("", Some(fig_config)).unwrap_or_default();
 
             render_repo(
                 namespace,
@@ -123,6 +134,7 @@ pub async fn handler(
                 &present_slides,
                 Some(&license_content),
                 has_license,
+                &content_entries,
             )
         }
         Err(e) => render_git_error(&e),
@@ -182,6 +194,12 @@ pub async fn tab_handler(
             let present_slides = load_present_slides(&handle, &fig_config.present);
             let license_content = handle.get_license_content();
             let has_license = handle.has_license();
+            let (content_path, content_entries) = if tab == "content" {
+                let entries = handle.list_dir("", Some(fig_config)).unwrap_or_default();
+                ("", entries)
+            } else {
+                ("", Vec::new())
+            };
 
             let ctx = TabContentContext {
                 namespace,
@@ -198,6 +216,9 @@ pub async fn tab_handler(
                 present_slides: &present_slides,
                 license_content: Some(&license_content),
                 has_license,
+                content_path,
+                content_entries: &content_entries,
+                content_file_bytes: None,
             };
             if req.headers().get("HX-Request").is_some() {
                 let has_config = fig_content.is_some();
@@ -243,6 +264,10 @@ pub async fn markdown_handler(
     let file_path = &params.file_path;
     let username = get_username_from_request(&req, &auth_state).await;
 
+    if !is_safe_repo_path(file_path) {
+        return render_not_found_for_request(&req, username.as_deref());
+    }
+
     let handle = match RepoHandle::open(server.project_root(), namespace, repo) {
         Ok(h) => h,
         Err(e) => {
@@ -282,6 +307,7 @@ pub async fn markdown_handler(
             } else {
                 let selected_content = file_result.ok().flatten();
                 let present_slides = load_present_slides(&handle, &fig_config.present);
+                let empty_entries: Vec<TreeEntry> = Vec::new();
                 let ctx = TabContentContext {
                     namespace,
                     repo,
@@ -297,6 +323,112 @@ pub async fn markdown_handler(
                     present_slides: &present_slides,
                     license_content: Some(&license_content),
                     has_license,
+                    content_path: "",
+                    content_entries: &empty_entries,
+                    content_file_bytes: None,
+                };
+                let content = render_tab_content(ctx);
+                Ok(super::render_layout(&content, username.as_deref()))
+            }
+        }
+        Err(e) => {
+            let content = render_git_error(&e);
+            if req.headers().get("HX-Request").is_some() {
+                Ok(content)
+            } else {
+                Ok(super::render_layout(&content, username.as_deref()))
+            }
+        }
+    }
+}
+
+#[get("/{namespace}/{repo}/content/{path:.*}")]
+pub async fn content_handler(
+    req: HttpRequest,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<FigContext>,
+    params: web::Path<ContentParams>,
+) -> AwResult<Markup> {
+    let namespace = &params.namespace;
+    let repo = &params.repo;
+    let path = params.path.trim_matches('/').to_string();
+    let username = get_username_from_request(&req, &auth_state).await;
+
+    if !is_safe_repo_path(&path) {
+        return render_not_found_for_request(&req, username.as_deref());
+    }
+
+    let handle = match RepoHandle::open(server.project_root(), namespace, repo) {
+        Ok(h) => h,
+        Err(e) => {
+            let content = render_git_error(&e);
+            return if req.headers().get("HX-Request").is_some() {
+                Ok(content)
+            } else {
+                Ok(super::render_layout(&content, username.as_deref()))
+            };
+        }
+    };
+
+    let fig_result = handle.load_config_with_raw();
+    let fig_config = &fig_result.config;
+    let fig_content = fig_result.raw.as_deref();
+    let fig_filename = fig_result.filename.as_deref();
+
+    let commits_result = handle.get_commits(Depth::default());
+
+    match commits_result {
+        Ok(commits) => {
+            let entries = handle.list_dir(&path, Some(fig_config)).unwrap_or_default();
+            let file_bytes = if path.is_empty() || !entries.is_empty() {
+                None
+            } else {
+                handle.read_blob_bytes(&path).ok().flatten()
+            };
+
+            if req.headers().get("HX-Request").is_some() {
+                let has_config = fig_content.is_some();
+                let has_present = !fig_config.present.files.is_empty();
+                let inner =
+                    render_content_view(namespace, repo, &path, &entries, file_bytes.as_deref());
+                let tabs = render_tabs(
+                    namespace,
+                    repo,
+                    "content",
+                    has_config,
+                    &fig_config.tabs,
+                    has_present,
+                );
+                Ok(maud::html! {
+                    (tabs)
+                    (inner)
+                })
+            } else {
+                let files_result = handle.list_files(Some(fig_config));
+                let markdown_files = files_result.unwrap_or_default().markdown_files;
+                let default_file = get_default_markdown_file(&markdown_files);
+                let default_content = default_file.and_then(|f| handle.read_file(f).ok().flatten());
+                let present_slides = load_present_slides(&handle, &fig_config.present);
+                let license_content = handle.get_license_content();
+
+                let ctx = TabContentContext {
+                    namespace,
+                    repo,
+                    tab: "content",
+                    commits: &commits,
+                    markdown_files: &markdown_files,
+                    selected_md_file: default_file,
+                    selected_content: default_content.as_deref(),
+                    fig_content,
+                    fig_filename,
+                    tabs_config: &fig_config.tabs,
+                    present_config: &fig_config.present,
+                    present_slides: &present_slides,
+                    license_content: Some(&license_content),
+                    has_license: handle.has_license(),
+                    content_path: &path,
+                    content_entries: &entries,
+                    content_file_bytes: file_bytes.as_deref(),
                 };
                 let content = render_tab_content(ctx);
                 Ok(super::render_layout(&content, username.as_deref()))
@@ -428,6 +560,19 @@ fn render_git_error(e: &git2::Error) -> Markup {
     }
 }
 
+/// Renders a "Path not found" response, wrapping it in the full layout for
+/// non-HTMX requests.
+fn render_not_found_for_request(req: &HttpRequest, username: Option<&str>) -> AwResult<Markup> {
+    let content = maud::html! {
+        div class="pa3 white-50 bg-black-20" { "Path not found." }
+    };
+    if req.headers().get("HX-Request").is_some() {
+        Ok(content)
+    } else {
+        Ok(super::render_layout(&content, username))
+    }
+}
+
 /// A scrollable container for tab content
 fn scrollable_container(content: &Markup) -> Markup {
     maud::html! {
@@ -456,6 +601,7 @@ fn render_tabs(
         for tab in tabs_config {
             match tab.as_str() {
                 "markdown" => all_tabs.push(("markdown", "Markdown")),
+                "content" => all_tabs.push(("content", "Content")),
                 "commits" => all_tabs.push(("commits", "Commits")),
                 "config" if has_config => all_tabs.push(("config", "Config")),
                 "present" if has_present => all_tabs.push(("present", "Present")),
@@ -466,6 +612,7 @@ fn render_tabs(
     } else {
         // Show all available tabs
         all_tabs.push(("markdown", "Markdown"));
+        all_tabs.push(("content", "Content"));
 
         all_tabs.push(("commits", "Commits"));
         if has_config {
@@ -516,6 +663,7 @@ fn render_repo(
     present_slides: &[PresentSlide],
     license_content: Option<&str>,
     has_license: bool,
+    content_entries: &[TreeEntry],
 ) -> Markup {
     // Determine default tab based on configuration and available files
     let default_tab = if !tabs_config.is_empty() {
@@ -544,6 +692,9 @@ fn render_repo(
         present_slides,
         license_content,
         has_license,
+        content_path: "",
+        content_entries,
+        content_file_bytes: None,
     };
 
     maud::html! {
@@ -635,6 +786,13 @@ fn render_tab_content_inner(ctx: TabContentContext<'_>) -> Markup {
             }
         }
         "config" => render_config_view(ctx.fig_content, ctx.fig_filename),
+        "content" => render_content_view(
+            ctx.namespace,
+            ctx.repo,
+            ctx.content_path,
+            ctx.content_entries,
+            ctx.content_file_bytes,
+        ),
         "present" => render_present_view(
             ctx.namespace,
             ctx.repo,
@@ -664,6 +822,9 @@ fn render_tab_content_inner(ctx: TabContentContext<'_>) -> Markup {
                 present_slides: ctx.present_slides,
                 license_content: ctx.license_content,
                 has_license: ctx.has_license,
+                content_path: ctx.content_path,
+                content_entries: ctx.content_entries,
+                content_file_bytes: ctx.content_file_bytes,
             };
             render_tab_content_inner(new_ctx)
         }
@@ -703,6 +864,173 @@ fn render_license_view(license_content: Option<&str>) -> Markup {
             } @else {
                 div class="pa3 white-50 bg-black-20" {
                     "No license information available."
+                }
+            }
+        }
+    }
+}
+
+/// Returns (href, push-url) pair for a path inside the content tab
+fn content_urls(namespace: &str, repo: &str, path: &str) -> (String, String) {
+    if path.is_empty() {
+        let href = format!("/{namespace}/{repo}/tab/content");
+        (href, format!("/{namespace}/{repo}"))
+    } else {
+        let href = format!("/{namespace}/{repo}/content/{path}");
+        (href.clone(), href)
+    }
+}
+
+fn parent_path(path: &str) -> &str {
+    match path.rfind('/') {
+        Some(i) => &path[..i],
+        None => "",
+    }
+}
+
+/// Precomputed breadcrumb segments: (label, accumulated path, is_last)
+fn breadcrumb_segments(path: &str) -> Vec<(String, String, bool)> {
+    if path.is_empty() {
+        return Vec::new();
+    }
+    let mut segments = Vec::new();
+    let mut acc = String::new();
+    for segment in path.split('/') {
+        if !acc.is_empty() {
+            acc.push('/');
+        }
+        acc.push_str(segment);
+        let is_last = acc == path;
+        segments.push((segment.to_string(), acc.clone(), is_last));
+    }
+    segments
+}
+
+fn render_content_breadcrumbs(namespace: &str, repo: &str, path: &str) -> Markup {
+    maud::html! {
+        div class="mb3 f6 white-50" style="overflow-wrap: anywhere;" {
+            @let (root_href, root_push) = content_urls(namespace, repo, "");
+            a
+                href=(root_href)
+                class="link white-50 hover-white no-underline"
+                hx-get=(root_href)
+                hx-target="#tab-content"
+                hx-push-url=(root_push)
+            {
+                (repo)
+            }
+            @for (segment, acc_path, is_last) in breadcrumb_segments(path) {
+                span class="mh2 white-30" { "/" }
+                @let (href, push) = content_urls(namespace, repo, &acc_path);
+                @if is_last {
+                    span class="white" { (segment) }
+                } @else {
+                    a
+                        href=(href)
+                        class="link white-50 hover-white no-underline"
+                        hx-get=(href)
+                        hx-target="#tab-content"
+                        hx-push-url=(push)
+                    {
+                        (segment)
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn render_content_view(
+    namespace: &str,
+    repo: &str,
+    path: &str,
+    entries: &[TreeEntry],
+    file_bytes: Option<&[u8]>,
+) -> Markup {
+    if !entries.is_empty() || path.is_empty() {
+        return render_content_dir(namespace, repo, path, entries);
+    }
+    match file_bytes {
+        Some(bytes) => render_content_file(namespace, repo, path, bytes),
+        None => maud::html! {
+            div class="pa3 white-50 bg-black-20" { "Path not found." }
+        },
+    }
+}
+
+fn render_content_dir(namespace: &str, repo: &str, path: &str, entries: &[TreeEntry]) -> Markup {
+    maud::html! {
+        div {
+            h2 class="tf-section mb3 white" { "Files" }
+            (render_content_breadcrumbs(namespace, repo, path))
+
+            @if entries.is_empty() && path.is_empty() {
+                div class="pa3 white-50 bg-black-20" { "No files in this repository." }
+            } @else {
+                ul class="list pl0 bt bb b--white-20" {
+                    @if !path.is_empty() {
+                        li class="bb b--white-10" {
+                            @let parent = parent_path(path);
+                            @let (href, push) = content_urls(namespace, repo, parent);
+                            a
+                                href=(href)
+                                class="db pa2 white-50 hover-white no-underline"
+                                hx-get=(href)
+                                hx-target="#tab-content"
+                                hx-push-url=(push)
+                            {
+                                ".."
+                            }
+                        }
+                    }
+                    @for entry in entries {
+                        li class="bb b--white-10" {
+                            @let (href, push) = content_urls(namespace, repo, &entry.path);
+                            a
+                                href=(href)
+                                class="db pa2 no-underline"
+                                style="overflow-wrap: anywhere;"
+                                hx-get=(href)
+                                hx-target="#tab-content"
+                                hx-push-url=(push)
+                            {
+                                @if entry.is_dir {
+                                    span class="fw6 white" { (entry.name) "/" }
+                                } @else {
+                                    span class="white-70 hover-white" { (entry.name) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn render_content_file(namespace: &str, repo: &str, path: &str, bytes: &[u8]) -> Markup {
+    let lower = path.to_ascii_lowercase();
+    let is_binary = bytes.contains(&0);
+
+    maud::html! {
+        div {
+            h2 class="tf-section mb3 white" style="overflow-wrap: anywhere;" { (path) }
+            (render_content_breadcrumbs(namespace, repo, path))
+
+            @if is_binary {
+                div class="pa3 white-50 bg-black-20" {
+                    "Binary file (" (bytes.len()) " bytes). Not displayed."
+                }
+            } @else {
+                @let text = String::from_utf8_lossy(bytes).into_owned();
+                @if lower.ends_with(".md") || lower.ends_with(".markdown") {
+                    div class="markdown-body white lh-copy pa3 bg-black-20 overflow-x-auto" {
+                        (maud::PreEscaped(markdown_to_html(&text, namespace, repo)))
+                    }
+                } @else {
+                    pre class="pa3 bg-black-20 overflow-x-auto" {
+                        code class="f6 white lh-copy" { (text) }
+                    }
                 }
             }
         }
@@ -928,6 +1256,29 @@ fn render_commit(commit: &Commit) -> Markup {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_parent_path() {
+        assert_eq!(parent_path(""), "");
+        assert_eq!(parent_path("README.md"), "");
+        assert_eq!(parent_path("src/main.rs"), "src");
+        assert_eq!(parent_path("a/b/c.txt"), "a/b");
+    }
+
+    #[test]
+    fn test_breadcrumb_segments() {
+        let segs = breadcrumb_segments("src/git");
+        assert_eq!(
+            segs,
+            vec![
+                ("src".to_string(), "src".to_string(), false),
+                ("git".to_string(), "src/git".to_string(), true),
+            ]
+        );
+
+        let segs = breadcrumb_segments("");
+        assert!(segs.is_empty());
+    }
 
     #[test]
     fn test_markdown_to_html() {
