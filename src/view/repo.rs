@@ -492,7 +492,83 @@ pub async fn slide_handler(
 }
 
 /// Converts markdown to HTML, fixing relative links to point to repo root
-fn markdown_to_html(markdown: &str, namespace: &str, repo: &str) -> String {
+/// A destination is external when it carries a URL scheme such as `https:` or
+/// `mailto:`. A bare relative path never does, because a scheme cannot contain
+/// a `/`.
+fn has_url_scheme(dest: &str) -> bool {
+    match dest.find(':') {
+        Some(0) | None => false,
+        Some(i) => {
+            let scheme = &dest[..i];
+            scheme.starts_with(|c: char| c.is_ascii_alphabetic())
+                && scheme
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+        }
+    }
+}
+
+/// Splits a link destination into its path part and the trailing `#fragment`
+/// or `?query` suffix, which must survive path resolution untouched.
+fn split_link_suffix(dest: &str) -> (&str, &str) {
+    match dest.find(['#', '?']) {
+        Some(i) => dest.split_at(i),
+        None => (dest, ""),
+    }
+}
+
+/// Resolves `link` against `base_dir` (a repository-relative directory, empty
+/// for the repository root) into a repository-relative path. `.` segments are
+/// dropped and `..` segments pop a parent, clamped at the repository root.
+fn resolve_relative_path(base_dir: &str, link: &str) -> String {
+    let mut segments: Vec<&str> = if base_dir.is_empty() {
+        Vec::new()
+    } else {
+        base_dir.split('/').collect()
+    };
+
+    for segment in link.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                segments.pop();
+            }
+            other => segments.push(other),
+        }
+    }
+
+    segments.join("/")
+}
+
+/// Rewrites a markdown link destination into a Fig URL. Returns `None` when the
+/// destination is absolute, external or a bare fragment and must be left alone.
+fn rewrite_markdown_link(
+    namespace: &str,
+    repo: &str,
+    base_dir: &str,
+    dest: &str,
+) -> Option<String> {
+    if dest.starts_with('/') || dest.starts_with('#') || has_url_scheme(dest) {
+        return None;
+    }
+
+    let (path_part, suffix) = split_link_suffix(dest);
+    let resolved = resolve_relative_path(base_dir, path_part);
+    if resolved.is_empty() {
+        return None;
+    }
+
+    let lower = resolved.to_ascii_lowercase();
+    if lower.ends_with(".md") || lower.ends_with(".markdown") {
+        Some(format!("/{namespace}/{repo}/md/{resolved}{suffix}"))
+    } else {
+        Some(format!("/{namespace}/{repo}/content/{resolved}{suffix}"))
+    }
+}
+
+/// Renders markdown to HTML. `base_dir` is the repository-relative directory of
+/// the file being rendered and anchors every relative link it contains.
+fn markdown_to_html(markdown: &str, namespace: &str, repo: &str, base_dir: &str) -> String {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_TABLES);
     let parser = Parser::new_ext(markdown, options);
@@ -509,25 +585,11 @@ fn markdown_to_html(markdown: &str, namespace: &str, repo: &str) -> String {
                     title,
                     id,
                 } => {
-                    let dest_str = dest_url.to_string();
-                    // If it's a relative link (doesn't start with http/https or /)
-                    let fixed_dest = if !dest_str.starts_with("http://")
-                        && !dest_str.starts_with("https://")
-                        && !dest_str.starts_with('/')
-                        && !dest_str.starts_with('#')
-                    {
-                        // Check if it's a markdown file
-                        let lower = dest_str.to_ascii_lowercase();
-                        if lower.ends_with(".md") || lower.ends_with(".markdown") {
-                            // Link to the markdown viewer
-                            format!("/{namespace}/{repo}/md/{dest_str}").into()
-                        } else {
-                            // Link to the raw file via repo root
-                            format!("/{namespace}/{repo}/{dest_str}").into()
-                        }
-                    } else {
-                        dest_url
-                    };
+                    let fixed_dest =
+                        match rewrite_markdown_link(namespace, repo, base_dir, &dest_url) {
+                            Some(url) => url.into(),
+                            None => dest_url,
+                        };
                     pulldown_cmark::Tag::Link {
                         link_type,
                         dest_url: fixed_dest,
@@ -1025,7 +1087,7 @@ fn render_content_file(namespace: &str, repo: &str, path: &str, bytes: &[u8]) ->
                 @let text = String::from_utf8_lossy(bytes).into_owned();
                 @if lower.ends_with(".md") || lower.ends_with(".markdown") {
                     div class="markdown-body white lh-copy pa3 bg-black-20 overflow-x-auto" {
-                        (maud::PreEscaped(markdown_to_html(&text, namespace, repo)))
+                        (maud::PreEscaped(markdown_to_html(&text, namespace, repo, parent_path(path))))
                     }
                 } @else {
                     pre class="pa3 bg-black-20 overflow-x-auto" {
@@ -1215,10 +1277,11 @@ fn render_markdown_view(
 fn render_markdown_content_only(
     namespace: &str,
     repo: &str,
-    _current_file: &str,
+    current_file: &str,
     content: Option<&str>,
 ) -> Markup {
-    let html_content = content.map(|md| markdown_to_html(md, namespace, repo));
+    let base_dir = parent_path(current_file);
+    let html_content = content.map(|md| markdown_to_html(md, namespace, repo, base_dir));
 
     maud::html! {
         @if let Some(ref html) = html_content {
@@ -1283,7 +1346,7 @@ mod tests {
     #[test]
     fn test_markdown_to_html() {
         let md = "# Hello\n\nThis is **bold** text.";
-        let html = markdown_to_html(md, "test", "repo");
+        let html = markdown_to_html(md, "test", "repo", "");
         assert!(html.contains("<h1>Hello</h1>"));
         assert!(html.contains("<strong>bold</strong>"));
     }
@@ -1291,11 +1354,71 @@ mod tests {
     #[test]
     fn test_markdown_link_fixing() {
         let md = "[Link](./other.md) and [External](https://example.com)";
-        let html = markdown_to_html(md, "ns", "repo");
-        // Internal markdown links should be fixed
-        assert!(html.contains("/ns/repo/md/./other.md"));
+        let html = markdown_to_html(md, "ns", "repo", "");
+        // Internal markdown links should be fixed and normalized
+        assert!(html.contains("/ns/repo/md/other.md"), "{html}");
         // External links should remain unchanged
         assert!(html.contains("https://example.com"));
+    }
+
+    #[test]
+    fn test_markdown_links_resolve_against_containing_directory() {
+        let md = "[Sibling](other.md) [Nested](sub/deep.md) [Up](../top.md)";
+        let html = markdown_to_html(md, "ns", "repo", "docs/guide");
+        assert!(html.contains("/ns/repo/md/docs/guide/other.md"), "{html}");
+        assert!(
+            html.contains("/ns/repo/md/docs/guide/sub/deep.md"),
+            "{html}"
+        );
+        assert!(html.contains("/ns/repo/md/docs/top.md"), "{html}");
+    }
+
+    #[test]
+    fn test_markdown_non_markdown_links_target_content_route() {
+        let md = "[Image](logo.png) [Dir](sub/)";
+        let html = markdown_to_html(md, "ns", "repo", "foo.bar");
+        assert!(html.contains("/ns/repo/content/foo.bar/logo.png"), "{html}");
+        assert!(html.contains("/ns/repo/content/foo.bar/sub"), "{html}");
+    }
+
+    #[test]
+    fn test_markdown_link_preserves_fragment_and_query() {
+        let md = "[Anchor](other.md#section) [Query](file.txt?raw=1)";
+        let html = markdown_to_html(md, "ns", "repo", "docs");
+        assert!(html.contains("/ns/repo/md/docs/other.md#section"), "{html}");
+        assert!(
+            html.contains("/ns/repo/content/docs/file.txt?raw=1"),
+            "{html}"
+        );
+    }
+
+    #[test]
+    fn test_markdown_link_leaves_absolute_and_scheme_links_alone() {
+        let md = "[Root](/other) [Mail](mailto:a@b.com) [Frag](#here)";
+        let html = markdown_to_html(md, "ns", "repo", "docs");
+        assert!(html.contains("href=\"/other\""), "{html}");
+        assert!(html.contains("href=\"mailto:a@b.com\""), "{html}");
+        assert!(html.contains("href=\"#here\""), "{html}");
+    }
+
+    #[test]
+    fn test_resolve_relative_path() {
+        assert_eq!(resolve_relative_path("", "a.md"), "a.md");
+        assert_eq!(resolve_relative_path("docs", "./a.md"), "docs/a.md");
+        assert_eq!(resolve_relative_path("docs/sub", "../a.md"), "docs/a.md");
+        assert_eq!(resolve_relative_path("docs", "../../../a.md"), "a.md");
+        assert_eq!(resolve_relative_path("docs", "sub/"), "docs/sub");
+        assert_eq!(resolve_relative_path("docs", "."), "docs");
+    }
+
+    #[test]
+    fn test_has_url_scheme() {
+        assert!(has_url_scheme("https://example.com"));
+        assert!(has_url_scheme("mailto:a@b.com"));
+        assert!(!has_url_scheme("docs/a.md"));
+        assert!(!has_url_scheme("docs/a:b.md"));
+        assert!(!has_url_scheme(":leading"));
+        assert!(!has_url_scheme("./a.md"));
     }
 
     #[test]
@@ -1320,7 +1443,7 @@ mod tests {
     #[test]
     fn test_markdown_tables_rendering() {
         let md = "| Header 1 | Header 2 |\n|----------|----------|\n| Cell 1   | Cell 2   |";
-        let html = markdown_to_html(md, "test", "repo");
+        let html = markdown_to_html(md, "test", "repo", "");
         // Tables should be rendered as HTML table elements
         assert!(
             html.contains("<table>"),
