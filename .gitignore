@@ -24,6 +24,10 @@ fig.db-wal
 #.idea/
 
 mise-oci
+
+# Coding agent state
+.omo/
+
 # Added by cargo
 
 /target
