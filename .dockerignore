@@ -28,10 +28,8 @@ AGENTS.md
 LICENSE
 README.md
 docker.just
-docs
 fig.db
 fig.db-wal
 justfile
 skills
 tests
-

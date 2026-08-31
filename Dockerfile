@@ -30,6 +30,7 @@ ENV RUSTFLAGS="-C link-arg=-fuse-ld=mold" \
     CARGO_TERM_COLOR=always
 
 COPY Cargo.toml Cargo.lock ./
+COPY docs ./docs
 COPY assets ./assets
 COPY src ./src
 
