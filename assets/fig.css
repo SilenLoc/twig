@@ -207,3 +207,25 @@ body.sans-serif {
   background: rgba(255, 255, 255, 0.08);
   padding: 0.1em 0.35em;
 }
+
+/* ---- Ticket tracker ----------------------------------------------------- */
+
+/* @mention highlight inside rendered ticket/comment markdown */
+.tf-mention {
+  background: rgba(255, 255, 255, 0.12);
+  padding: 0.05em 0.3em;
+  border-radius: 0;
+}
+
+/* Small uppercase status pill; pair with a tachyons colour class */
+.tf-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15em 0.5em;
+  font-family: var(--fig-body);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.4;
+}

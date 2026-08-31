@@ -73,6 +73,22 @@ const MIGRATIONS: &[Migration] = &[
         name: "create_tokens_created_at_index",
         sql: r"CREATE INDEX IF NOT EXISTS idx_tokens_created_at ON tokens(created_at);",
     },
+    // The `tickets` table holds single-use SIGNUP INVITES. The name is reclaimed by the
+    // namespace-level issue tracker, whose git repo is `/{namespace}/ticket`, so the signup
+    // concept is renamed to `invites`. Historical migrations above are never edited; the rename
+    // is applied as its own step.
+    Migration {
+        name: "rename_tickets_table_to_invites",
+        sql: r"ALTER TABLE tickets RENAME TO invites;",
+    },
+    Migration {
+        name: "drop_old_tickets_user_index",
+        sql: r"DROP INDEX IF EXISTS idx_tickets_user;",
+    },
+    Migration {
+        name: "create_invites_user_index",
+        sql: r"CREATE INDEX IF NOT EXISTS idx_invites_user ON invites(user_id);",
+    },
 ];
 
 impl Database {
@@ -195,9 +211,32 @@ mod tests {
         assert!(tables.contains(&"users".to_string()));
         assert!(tables.contains(&"namespaces".to_string()));
         assert!(tables.contains(&"namespace_members".to_string()));
-        assert!(tables.contains(&"tickets".to_string()));
+        assert!(tables.contains(&"invites".to_string()));
         assert!(tables.contains(&"tokens".to_string()));
         assert!(tables.contains(&"_migrations".to_string()));
+        assert!(
+            !tables.contains(&"tickets".to_string()),
+            "`tickets` must be renamed to `invites`; the name is reclaimed by the issue tracker"
+        );
+
+        let mut rows = db
+            .conn()
+            .await
+            .unwrap()
+            .query(
+                "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'",
+                (),
+            )
+            .await
+            .unwrap();
+
+        let mut indexes = Vec::new();
+        while let Some(row) = rows.next().await.unwrap() {
+            indexes.push(row.get::<String>(0).unwrap());
+        }
+
+        assert!(indexes.contains(&"idx_invites_user".to_string()));
+        assert!(!indexes.contains(&"idx_tickets_user".to_string()));
 
         let mut rows = db
             .conn()

@@ -8,6 +8,7 @@ use crate::config;
 use crate::git::repo::bare_init;
 pub mod bare;
 pub mod repo;
+pub mod reserved;
 
 pub async fn git_handler(
     req: HttpRequest,
@@ -57,8 +58,13 @@ pub async fn git_handler(
         ) => match is_authenticated(&req, &auth_state, &namespace).await {
             Ok(Some(auth_result)) => {
                 if !auth_result.namespace_exists
-                    && let Err(e) =
-                        ensure_namespace_exists(&auth_state, &auth_result.user, &namespace).await
+                    && let Err(e) = ensure_namespace_exists(
+                        &auth_state,
+                        &auth_result.user,
+                        &namespace,
+                        server.project_root(),
+                    )
+                    .await
                 {
                     log::error!("Failed to ensure namespace exists: {e}");
                     return actix_web::HttpResponse::InternalServerError()
@@ -244,11 +250,14 @@ async fn is_authenticated(
     }
 }
 
-/// Ensures a namespace exists in the database, creating it if necessary
+/// Ensures a namespace exists in the database, creating it if necessary.
+/// The reserved ticket repository is created alongside it so the tracker is
+/// available immediately, without waiting for someone to push to it.
 async fn ensure_namespace_exists(
     auth_state: &web::Data<FigContext>,
     user: &User,
     namespace_name: &str,
+    project_root: &str,
 ) -> Result<(), String> {
     let db = auth_state.db();
 
@@ -260,11 +269,45 @@ async fn ensure_namespace_exists(
     let namespace = crate::auth::create_namespace(namespace_name.to_string(), user.id.clone());
     db.create_namespace(&namespace)
         .await
-        .map_err(|e| format!("Failed to create namespace: {e}"))
+        .map_err(|e| format!("Failed to create namespace: {e}"))?;
+
+    if let Err(e) = crate::ticket::repo::ensure_ticket_repo(
+        project_root,
+        namespace_name,
+        &user.username,
+        &git_email(user),
+    ) {
+        // A namespace without its tracker is still usable; the repository is
+        // created lazily on first access rather than failing the push.
+        log::error!("Failed to create ticket repo for '{namespace_name}': {e}");
+    }
+
+    Ok(())
+}
+
+/// Git author address for a user, falling back when no email is on record.
+pub fn git_email(user: &User) -> String {
+    user.email
+        .clone()
+        .unwrap_or_else(|| format!("{}@fig.local", user.username))
 }
 
 /// Ensures a bare repository exists on disk, creating it if necessary
 fn ensure_repo_exists(project_root: &str, namespace: &str, repo_name: &str) -> Result<(), String> {
+    // The ticket repository is server-managed: it carries the ingest hooks and
+    // must never be produced by the generic path.
+    if repo_name == crate::git::reserved::TICKET_REPO {
+        return crate::ticket::repo::ensure_ticket_repo(
+            project_root,
+            namespace,
+            "Fig",
+            "fig@localhost",
+        );
+    }
+    if crate::git::reserved::is_reserved_repo_name(repo_name) {
+        return Err(format!("'{repo_name}' is a reserved repository name"));
+    }
+
     let repo_path = Path::new(project_root).join(namespace).join(repo_name);
 
     if repo_path.exists() {

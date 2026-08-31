@@ -6,6 +6,8 @@ pub mod overview;
 pub mod repo;
 pub mod session_auth;
 pub mod settings;
+pub mod ticket_attachment;
+pub mod tickets;
 
 pub fn render_layout(main_content: &maud::Markup, username: Option<&str>) -> maud::Markup {
     maud::html! {

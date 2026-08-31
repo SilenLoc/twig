@@ -15,15 +15,15 @@ The UI uses **session cookies** for authentication. After logging in, the server
 | View commits/README | No | Public read access |
 | Create namespace | Yes | logged in |
 | Create repository | Yes | logged in |
-| Generate signup ticket | Yes | API key (admin only) |
-| Signup | Yes | Valid ticket (one-time use) |
+| Generate signup invite | Yes | API key (admin only) |
+| Signup | Yes | Valid invite (one-time use) |
 | Login | Yes | Username/password form |
 | Logout | Yes | Clears session |
 
 ### Authentication Flow
 
-1. **Get Signup Ticket** (`/auth/ticket`) - Admin enters API key to generate a ticket
-2. **Create Account** (`/auth/signup`) - User enters ticket, username, and password
+1. **Get Signup Invite** (`/auth/invite`) - Admin enters API key to generate an invite
+2. **Create Account** (`/auth/signup`) - User enters invite, username, and password
 3. **Log In** (`/auth/login`) - User enters credentials, session cookie is set
 4. **Create Namespace** (`/auth/namespace`) - Cookie is sent automatically by browser
 5. **Create Repository** (`/{namespace}`) - Cookie is sent with form submission
@@ -71,15 +71,46 @@ Displays repository details.
   - Commit date
   - Commit message
 
+### Ticket Pages
+
+The issue tracker. Storage format, merge rules and the command-line workflow are
+covered in [Tickets](tickets.md); this section lists only the pages.
+
+#### Ticket List (`/{namespace}/tickets`)
+
+Lists every ticket in the namespace, newest first.
+
+**Features:**
+- Status filter tabs (All / Open / In progress / Blocked / Closed), swapped in
+  via htmx and reflected in the URL
+- Per-row status badge, author, comment count and labels
+- "New ticket" button that loads the creation form inline
+- Empty state showing the `git clone` snippet for the ticket repository
+
+#### Ticket Detail (`/{namespace}/tickets/{number}`)
+
+**Features:**
+- Title, status badge, author and timestamps
+- Labels, assignees and linked repositories
+- Rendered Markdown body; embedded HTML is escaped, `@mentions` are highlighted
+- Comment thread and comment form, posted via htmx without a page reload
+- Status control that updates the ticket in place
+
+#### Attachments (`/{namespace}/ticket/attachment`)
+
+`POST` accepts one image (PNG, JPEG, GIF or WebP, up to 5 MB) and returns the
+Markdown snippet that embeds it. `GET /{namespace}/ticket/attachment/{sha256}`
+serves it. Login and namespace access are required to upload.
+
 ### Authentication Pages
 
-#### Ticket Page (`/auth/ticket`)
-- Form to generate a signup ticket
+#### Invite Page (`/auth/invite`)
+- Form to generate a signup invite
 - Requires API key
 
 #### Signup Page (`/auth/signup`)
 - Form to create a new account
-- Requires valid, unused ticket
+- Requires valid, unused invite
 
 #### Login Page (`/auth/login`)
 - Form to log in

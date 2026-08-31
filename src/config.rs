@@ -7,7 +7,12 @@ pub struct Server {
     api_key: String,
     reset_db: bool,
     traces_sample_rate: f32,
+    attachment_root: String,
 }
+
+/// Where ticket attachments are stored. They live outside `PROJECT_ROOT` so
+/// they are never mistaken for a namespace directory.
+pub const DEFAULT_ATTACHMENT_ROOT: &str = "/srv/attachments";
 
 impl Server {
     #[allow(clippy::too_many_arguments)]
@@ -28,7 +33,20 @@ impl Server {
             api_key,
             reset_db,
             traces_sample_rate,
+            attachment_root: DEFAULT_ATTACHMENT_ROOT.to_string(),
         }
+    }
+
+    /// Overrides the attachment root. Kept out of `new` so the many existing
+    /// call sites stay unchanged.
+    #[must_use]
+    pub fn with_attachment_root(mut self, attachment_root: String) -> Self {
+        self.attachment_root = attachment_root;
+        self
+    }
+
+    pub fn attachment_root(&self) -> &str {
+        &self.attachment_root
     }
 
     pub fn address(&self) -> (String, u16) {
@@ -101,6 +119,8 @@ pub fn from_env() -> Server {
     let db_path = std::env::var("DB_PATH").unwrap_or_else(|_| "fig.db".to_string());
     let api_key = std::env::var("API_KEY").unwrap_or_default();
     let reset_db = std::env::var("RESET_DB").unwrap_or_default() == "true";
+    let attachment_root =
+        std::env::var("ATTACHMENT_ROOT").unwrap_or_else(|_| DEFAULT_ATTACHMENT_ROOT.to_string());
     let traces_sample_rate = std::env::var("SENTRY_TRACES_SAMPLE_RATE")
         .ok()
         .and_then(|s| s.parse::<f32>().ok())
@@ -115,6 +135,7 @@ pub fn from_env() -> Server {
         reset_db,
         traces_sample_rate,
     )
+    .with_attachment_root(attachment_root)
 }
 
 fn ascii(server: &Server) -> String {
@@ -219,6 +240,23 @@ mod tests {
             1.0,
         );
         server.maybe_reset_database();
+    }
+
+    #[test]
+    fn test_attachment_root_defaults_and_overrides() {
+        let server = Server::new(
+            ("0.0.0.0".to_string(), 80),
+            "info".to_string(),
+            "/srv/git".to_string(),
+            "fig.db".to_string(),
+            "key".to_string(),
+            false,
+            1.0,
+        );
+        assert_eq!(server.attachment_root(), DEFAULT_ATTACHMENT_ROOT);
+
+        let server = server.with_attachment_root("/data/attachments".to_string());
+        assert_eq!(server.attachment_root(), "/data/attachments");
     }
 
     #[test]

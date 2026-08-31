@@ -44,7 +44,7 @@ git push http://username:password@your-fig-server/namespace/repo.git main
 
 ### 1. Create Account
 
-1. Get a signup ticket from your Fig administrator
+1. Get a signup invite from your Fig administrator
 2. Sign up at `http://your-fig-server/auth/signup`
 3. Remember your username and password
 

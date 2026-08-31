@@ -50,13 +50,25 @@ mod tests {
         Response = actix_web::dev::ServiceResponse,
         Error = actix_web::Error,
     > {
+        create_test_service_in("/tmp/test_git").await
+    }
+
+    // Helper function to create full test app service rooted at a given
+    // PROJECT_ROOT, for tests that assert on repositories written to disk.
+    async fn create_test_service_in(
+        project_root: &str,
+    ) -> impl actix_web::dev::Service<
+        Request,
+        Response = actix_web::dev::ServiceResponse,
+        Error = actix_web::Error,
+    > {
         // A distinct database per call: nextest runs each test in its own
         // process, and turso takes an exclusive file lock, so a shared path
         // would make concurrent tests fail to open the database.
         let config = config::Server::new(
             ("127.0.0.1".to_string(), 8080),
             "debug".to_string(),
-            "/tmp/test_git".to_string(),
+            project_root.to_string(),
             format!("/tmp/test_fig_service_{}.db", uuid::Uuid::new_v4()),
             "secure".to_string(),
             true,
@@ -79,11 +91,11 @@ mod tests {
                 .service(health::health)
                 .service(health::up)
                 .service(assets::assets)
-                .service(view::auth::ticket_page)
+                .service(view::auth::invite_page)
                 .service(view::auth::signup_page)
                 .service(view::auth::login_page)
                 .service(view::auth::namespace_page)
-                .service(auth::handlers::create_ticket_ui_handler)
+                .service(auth::handlers::create_invite_ui_handler)
                 .service(auth::handlers::signup_ui_handler)
                 .service(auth::handlers::login_ui_handler)
                 .service(auth::handlers::create_namespace_ui_handler)
@@ -96,6 +108,17 @@ mod tests {
                 .service(view::namespace::handler)
                 .service(view::namespace::create_repo_form_handler)
                 .service(view::namespace::create_repo_handler)
+                // Ticket tracker. MUST come before view::repo::handler, which
+                // matches /{namespace}/{repo} and would otherwise swallow these.
+                // Within the group, /tickets/new must precede /tickets/{number}.
+                .service(view::tickets::list_handler)
+                .service(view::tickets::new_form_handler)
+                .service(view::tickets::create_handler)
+                .service(view::tickets::detail_handler)
+                .service(view::tickets::comment_handler)
+                .service(view::tickets::status_handler)
+                .service(view::ticket_attachment::upload_handler)
+                .service(view::ticket_attachment::serve_handler)
                 .service(view::repo::handler)
                 .service(view::repo::tab_handler)
                 .service(view::repo::slide_handler)
@@ -117,14 +140,14 @@ mod tests {
 
     // Auth UI tests - from auth_ui.hurl
     #[actix_web::test]
-    async fn test_ticket_page_loads() {
+    async fn test_invite_page_loads() {
         let app = create_test_service().await;
-        let req = test::TestRequest::get().uri("/auth/ticket").to_request();
+        let req = test::TestRequest::get().uri("/auth/invite").to_request();
         let resp = test::call_service(&app, req).await;
         assert!(resp.status().is_success());
         let body = test::read_body(resp).await;
         let body_str = String::from_utf8(body.to_vec()).unwrap();
-        assert!(body_str.contains("Get Signup Ticket"));
+        assert!(body_str.contains("Get Signup Invite"));
         assert!(body_str.contains("API Key"));
     }
 
@@ -137,7 +160,7 @@ mod tests {
         let body = test::read_body(resp).await;
         let body_str = String::from_utf8(body.to_vec()).unwrap();
         assert!(body_str.contains("Create Account"));
-        assert!(body_str.contains("Signup Ticket"));
+        assert!(body_str.contains("Signup Invite"));
     }
 
     #[actix_web::test]
@@ -164,10 +187,10 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn test_generate_ticket_with_invalid_api_key() {
+    async fn test_generate_invite_with_invalid_api_key() {
         let app = create_test_service().await;
         let req = test::TestRequest::post()
-            .uri("/auth/ticket")
+            .uri("/auth/invite")
             .set_form([("api_key", "invalid_key")])
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -178,26 +201,26 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn test_generate_ticket_with_valid_api_key() {
+    async fn test_generate_invite_with_valid_api_key() {
         let app = create_test_service().await;
         let req = test::TestRequest::post()
-            .uri("/auth/ticket")
+            .uri("/auth/invite")
             .set_form([("api_key", "secure")])
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert!(resp.status().is_success());
         let body = test::read_body(resp).await;
         let body_str = String::from_utf8(body.to_vec()).unwrap();
-        assert!(body_str.contains("Ticket Generated!"));
+        assert!(body_str.contains("Invite Generated!"));
     }
 
     #[actix_web::test]
-    async fn test_signup_with_invalid_ticket() {
+    async fn test_signup_with_invalid_invite() {
         let app = create_test_service().await;
         let req = test::TestRequest::post()
             .uri("/auth/signup")
             .set_form([
-                ("ticket", "invalid-ticket-code"),
+                ("invite", "invalid-invite-code"),
                 ("username", "uiuser"),
                 ("email", "uiuser@example.com"),
                 ("password", "password123"),
@@ -207,7 +230,7 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
         let body = test::read_body(resp).await;
         let body_str = String::from_utf8(body.to_vec()).unwrap();
-        assert!(body_str.contains("Invalid ticket"));
+        assert!(body_str.contains("Invalid invite"));
     }
 
     #[actix_web::test]
@@ -262,6 +285,133 @@ mod tests {
         let body = test::read_body(resp).await;
         let body_str = String::from_utf8(body.to_vec()).unwrap();
         assert!(body_str.contains("valid email address"));
+    }
+
+    // ========== TICKET REPOSITORY PROVISIONING ==========
+
+    /// Pulls the 64-hex-character invite token out of the success fragment.
+    fn extract_invite(html: &str) -> String {
+        html.split(|c: char| !c.is_ascii_hexdigit())
+            .find(|token| token.len() == 64)
+            .expect("invite token in response")
+            .to_string()
+    }
+
+    /// Signs a user up and logs them in, returning the session cookie.
+    async fn signup_and_login<S>(app: &S, username: &str) -> actix_web::cookie::Cookie<'static>
+    where
+        S: actix_web::dev::Service<
+                Request,
+                Response = actix_web::dev::ServiceResponse,
+                Error = actix_web::Error,
+            >,
+    {
+        let req = test::TestRequest::post()
+            .uri("/auth/invite")
+            .set_form([("api_key", "secure")])
+            .to_request();
+        let resp = test::call_service(app, req).await;
+        assert!(
+            resp.status().is_success(),
+            "invite generation should succeed"
+        );
+        let body = test::read_body(resp).await;
+        let invite = extract_invite(&String::from_utf8_lossy(&body));
+
+        let email = format!("{username}@example.com");
+        let req = test::TestRequest::post()
+            .uri("/auth/signup")
+            .set_form([
+                ("invite", invite.as_str()),
+                ("username", username),
+                ("email", email.as_str()),
+                ("password", "password123"),
+            ])
+            .to_request();
+        let resp = test::call_service(app, req).await;
+        assert!(resp.status().is_success(), "signup should succeed");
+
+        let req = test::TestRequest::post()
+            .uri("/auth/login")
+            .set_form([("username", username), ("password", "password123")])
+            .to_request();
+        let resp = test::call_service(app, req).await;
+        assert!(resp.status().is_success(), "login should succeed");
+
+        resp.response()
+            .cookies()
+            .find(|c| c.name() == "session")
+            .expect("login should set a session cookie")
+            .into_owned()
+    }
+
+    #[actix_web::test]
+    async fn test_namespace_creation_creates_ticket_repo() {
+        let root = format!("/tmp/test_fig_ns_{}", uuid::Uuid::new_v4());
+        let app = create_test_service_in(&root).await;
+        let session = signup_and_login(&app, "ticketuser").await;
+
+        let req = test::TestRequest::post()
+            .uri("/auth/namespace")
+            .cookie(session)
+            .set_form([("name", "acme")])
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert!(
+            resp.status().is_success(),
+            "namespace creation should succeed"
+        );
+
+        let repo_path = std::path::Path::new(&root).join("acme").join("ticket");
+        let repo = git2::Repository::open(&repo_path)
+            .expect("ticket repo should be created with the namespace");
+        assert!(repo.is_bare(), "ticket repo must be bare");
+        assert!(
+            repo.refname_to_id("refs/heads/main").is_ok(),
+            "ticket repo should have a seeded main branch"
+        );
+        assert!(
+            repo_path.join("hooks").join("proc-receive").exists(),
+            "ingest hook must be installed"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[actix_web::test]
+    async fn test_cannot_create_repo_with_reserved_ticket_name() {
+        let root = format!("/tmp/test_fig_reserved_{}", uuid::Uuid::new_v4());
+        let app = create_test_service_in(&root).await;
+        let session = signup_and_login(&app, "reserveduser").await;
+
+        let req = test::TestRequest::post()
+            .uri("/auth/namespace")
+            .cookie(session.clone())
+            .set_form([("name", "acme")])
+            .to_request();
+        assert!(test::call_service(&app, req).await.status().is_success());
+
+        for name in ["ticket", "tickets", "settings"] {
+            let req = test::TestRequest::post()
+                .uri("/acme/create-repo")
+                .cookie(session.clone())
+                .set_form([("repo_name", name)])
+                .to_request();
+            let resp = test::call_service(&app, req).await;
+            assert_eq!(
+                resp.status(),
+                StatusCode::BAD_REQUEST,
+                "'{name}' must be refused as a repository name"
+            );
+            let body = test::read_body(resp).await;
+            let body_str = String::from_utf8(body.to_vec()).unwrap();
+            assert!(
+                body_str.contains("reserved"),
+                "refusal should explain the name is reserved, got: {body_str}"
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     // ========== CONTENT TAB TRAVERSAL SECURITY TESTS ==========
@@ -339,6 +489,17 @@ mod tests {
             App::new()
                 .app_data(web::Data::new(config))
                 .app_data(auth_state)
+                // Ticket tracker. MUST come before view::repo::handler, which
+                // matches /{namespace}/{repo} and would otherwise swallow these.
+                // Within the group, /tickets/new must precede /tickets/{number}.
+                .service(view::tickets::list_handler)
+                .service(view::tickets::new_form_handler)
+                .service(view::tickets::create_handler)
+                .service(view::tickets::detail_handler)
+                .service(view::tickets::comment_handler)
+                .service(view::tickets::status_handler)
+                .service(view::ticket_attachment::upload_handler)
+                .service(view::ticket_attachment::serve_handler)
                 .service(view::repo::handler)
                 .service(view::repo::tab_handler)
                 .service(view::repo::content_handler)

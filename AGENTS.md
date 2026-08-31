@@ -154,6 +154,7 @@ mise run release
 | `LOG_LEVEL` | Logging level (error, warn, info, debug, trace); also dampens `libsql`, `turso`, and `tracing::span` to `warn` | `info` |
 | `PROJECT_ROOT` | Git repositories root path | `/srv/git` |
 | `DB_PATH` | Path to the SQLite database file | `fig.db` |
+| `ATTACHMENT_ROOT` | Root directory for ticket image attachments (outside `PROJECT_ROOT`) | `/srv/attachments` |
 | `API_KEY` | API key for ticket generation (auto-generated if not set or empty) | Auto-generated |
 | `RESET_DB` | Set to `true` to delete the database file on startup | `false` |
 | `SENTRY_DSN` | Sentry project DSN. If unset, Sentry instrumentation is disabled | unset |
@@ -174,13 +175,16 @@ Fig includes a complete authentication system based on **session cookies and HTT
 There is no separate `/api/*` surface and no Bearer-token API; the `tokens` table stores
 session tokens that are exchanged via the `session` cookie.
 
-Ticket-based signup is the only admin-gated action and is submitted via the `/auth/ticket`
+Invite-based signup is the only admin-gated action and is submitted via the `/auth/invite`
 form with the `API_KEY` provided as a form field (not an HTTP header).
+
+> The signup concept is called an **invite**. The word *ticket* belongs to the issue tracker
+> (`docs/tickets.md`), whose per-namespace git repository is `/{namespace}/ticket`.
 
 ### Flow Overview
 
-1. **Get Ticket** (requires API Key, submitted as a form field on `/auth/ticket`) → Returns one-time signup ticket
-2. **Signup** (`/auth/signup`, requires ticket) → Creates account
+1. **Get Invite** (requires API Key, submitted as a form field on `/auth/invite`) → Returns one-time signup invite
+2. **Signup** (`/auth/signup`, requires invite) → Creates account
 3. **Login** (`/auth/login`) → Sets `session` cookie
 4. **Create Namespace** (`/auth/namespace`, requires `session` cookie) → Creates namespace + directory under `PROJECT_ROOT`
 5. **Git Operations** (`/{namespace}/{repo}/...`) → Public read; pushes require Basic Auth (username:password)
@@ -193,8 +197,8 @@ form with the `API_KEY` provided as a form field (not an HTTP header).
 | Git push | Basic Auth (username:password) |
 | Init repo (`POST /init`) | Basic Auth |
 | Web UI pages (`/`, `/auth/*`, `/settings`, `/{namespace}`) | Session cookie (`session`) optional; login required for mutating actions |
-| Ticket generation (`POST /auth/ticket`) | API Key (form field `api_key`) |
-| Signup (`POST /auth/signup`) | Single-use ticket (form field `ticket`) |
+| Invite generation (`POST /auth/invite`) | API Key (form field `api_key`) |
+| Signup (`POST /auth/signup`) | Single-use invite (form field `invite`) |
 
 ### Database Schema
 
@@ -207,14 +211,14 @@ Tables:
 - **users**: User accounts with hashed passwords
 - **namespaces**: Namespace definitions with owners
 - **namespace_members**: Many-to-many relationship for namespace access
-- **tickets**: Single-use tickets for signup
+- **invites**: Single-use invites for signup
 - **tokens**: Session tokens for cookie-based UI authentication
 
 ### Security
 
 - Passwords are hashed using Argon2 (memory-hard password hashing)
-- API key required for ticket generation to prevent unauthorized account creation; if `API_KEY` is unset/empty a random 64-character hex key is generated at startup
-- Tickets are single-use for signup only
+- API key required for invite generation to prevent unauthorized account creation; if `API_KEY` is unset/empty a random 64-character hex key is generated at startup
+- Invites are single-use for signup only
 - Per-namespace access control
 - Sessions are stored as 64-character hex tokens; a token is considered valid for **30 days from creation** (`created_at`), not from last activity
 
@@ -225,6 +229,7 @@ Tables:
 | [Git Backend](docs/git-backend.md) | Git HTTP backend usage and workflows |
 | [UI Documentation](docs/ui.md) | Web interface guide and page descriptions |
 | [Environment Variables](docs/environment-variables.md) | Configuration options reference |
+| [Tickets](docs/tickets.md) | Issue tracker: storage format, merge rules, CLI workflow |
 
 ## Source Layout
 
@@ -243,17 +248,31 @@ src/
 │   ├── mod.rs
 │   ├── migration.rs
 │   ├── namespaces.rs
-│   ├── tickets.rs
+│   ├── invites.rs
 │   ├── tokens.rs
 │   └── users.rs
 ├── git/                # Git repo operations (init, bare repo, repo browsing)
 │   ├── mod.rs
 │   ├── bare.rs
+│   ├── reserved.rs     # Reserved repository names
 │   └── repo.rs
 ├── md/                 # Markdown rendering (pulldown-cmark)
 │   └── mod.rs
+├── ticket/             # Issue tracker: git-backed ticket storage and ingest
+│   ├── mod.rs
+│   ├── model.rs        # Ticket TOML schema
+│   ├── merge.rs        # Schema-aware three-way merge
+│   ├── store.rs        # flock + tree/commit/CAS ref updates
+│   ├── ops.rs          # High-level mutations shared by UI and ingest
+│   ├── ingest.rs       # proc-receive hook: validate, merge, commit
+│   ├── pktline.rs      # pkt-line codec for the proc-receive protocol
+│   ├── markdown.rs     # Escaped markdown + @mention highlighting
+│   ├── attachment.rs   # Content-addressed image storage
+│   └── repo.rs         # Ticket repo creation + git hooks
 └── view/               # Maud HTML views (layout, overview, namespace, repo, settings, auth, session_auth)
     ├── mod.rs
+    ├── tickets.rs
+    ├── ticket_attachment.rs
     ├── overview.rs
     ├── namespace.rs
     ├── repo.rs
@@ -276,7 +295,10 @@ Key crates used:
 - `argon2`: Password hashing
 - `base64`: Base64 encoding/decoding (Basic Auth)
 - `chrono`: Date/time handling (`default-features = false`; features: clock, std)
-- `pulldown-cmark`: Markdown rendering (`src/md/mod.rs`)
+- `pulldown-cmark`: Markdown rendering (`src/md/mod.rs`, `src/ticket/markdown.rs`)
+- `fs2`: Cross-process file locking for ticket ingest
+- `sha2`: Content addressing for ticket attachments
+- `actix-multipart`: Attachment uploads
 - `uuid`: v4 IDs for users/namespaces
 - `rand`: Cryptographic RNG for tokens (`default-features = false`; feature: getrandom)
 - `hex`: Hex-encoding for session tokens

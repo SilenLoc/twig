@@ -16,6 +16,7 @@ mod git_backend;
 mod health;
 mod integration_tests;
 mod md;
+mod ticket;
 mod view;
 
 /// Initialises Sentry before the async runtime starts, as the SDK requires.
@@ -91,6 +92,13 @@ fn spawn_database_init(auth_state: web::Data<auth::FigContext>) {
 }
 
 fn main() -> std::io::Result<()> {
+    // Invoked as git's proc-receive hook inside a ticket repository. This runs
+    // before any server or Sentry setup: the hook owns stdout for the pkt-line
+    // protocol, so nothing else may write to it.
+    if std::env::args().nth(1).as_deref() == Some("ticket-ingest") {
+        return ticket::ingest::run().map_err(std::io::Error::other);
+    }
+
     let config = config::from_env();
     let _sentry_guard = init_sentry(&config);
     init_logging(&config);
@@ -133,11 +141,11 @@ fn main() -> std::io::Result<()> {
                 .service(health::up)
                 .service(assets::assets)
                 // Auth UI endpoints (HTML forms)
-                .service(view::auth::ticket_page)
+                .service(view::auth::invite_page)
                 .service(view::auth::signup_page)
                 .service(view::auth::login_page)
                 .service(view::auth::namespace_page)
-                .service(auth::handlers::create_ticket_ui_handler)
+                .service(auth::handlers::create_invite_ui_handler)
                 .service(auth::handlers::signup_ui_handler)
                 .service(auth::handlers::login_ui_handler)
                 .service(auth::handlers::create_namespace_ui_handler)
@@ -152,6 +160,17 @@ fn main() -> std::io::Result<()> {
                 .service(view::namespace::handler)
                 .service(view::namespace::create_repo_form_handler)
                 .service(view::namespace::create_repo_handler)
+                // Ticket tracker. MUST come before view::repo::handler, which
+                // matches /{namespace}/{repo} and would otherwise swallow these.
+                // Within the group, /tickets/new must precede /tickets/{number}.
+                .service(view::tickets::list_handler)
+                .service(view::tickets::new_form_handler)
+                .service(view::tickets::create_handler)
+                .service(view::tickets::detail_handler)
+                .service(view::tickets::comment_handler)
+                .service(view::tickets::status_handler)
+                .service(view::ticket_attachment::upload_handler)
+                .service(view::ticket_attachment::serve_handler)
                 .service(view::repo::handler)
                 .service(view::repo::tab_handler)
                 .service(view::repo::slide_handler)

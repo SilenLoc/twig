@@ -182,6 +182,12 @@ pub fn prepare_cgi_env(
     sh.set_var("GIT_HTTP_EXPORT_ALL", "1");
     sh.set_var("GIT_HTTP_RECEIVE_PACK", "true"); // enables push operations
 
+    // Always set explicitly — empty when nobody is authenticated. The child
+    // process inherits this server's environment, and the ticket ingest hook
+    // takes the pusher's identity from REMOTE_USER, so an inherited value must
+    // never be able to pass for an authenticated user.
+    sh.set_var("REMOTE_USER", authenticated_user.unwrap_or_default());
+
     debug!(
         "Git backend HTTP: preparing CGI env method='{}' path='{}' query='{}' project_root='{}'",
         req.method, req.path_info, req.query_string, project_root
@@ -191,9 +197,6 @@ pub fn prepare_cgi_env(
         GitRequestKind::Push => {
             // Pushes need write access — enforce auth here before proceeding
             sh.set_var("CONTENT_TYPE", req.content_type.clone());
-            if let Some(user) = authenticated_user {
-                sh.set_var("REMOTE_USER", user);
-            }
             debug!(
                 "Git backend HTTP: push operation detected for path='{}'",
                 req.path_info

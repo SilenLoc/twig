@@ -131,6 +131,7 @@ fn create_repo(
     }
 
     let repo: String = repo.into();
+    crate::git::reserved::validate_repo_name(&repo)?;
     let repo = ns.join(repo);
 
     if !repo.exists() {

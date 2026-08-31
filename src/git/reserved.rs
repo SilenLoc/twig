@@ -1,0 +1,131 @@
+//! Repository-name policy.
+//!
+//! Two classes of name are refused for user-created repositories:
+//!
+//! * names that would shadow a namespace-level UI route, because
+//!   `/{namespace}/{repo}` is registered after those routes in `main.rs` and the
+//!   repository would simply be unreachable;
+//! * [`TICKET_REPO`], which is server-managed — it is created together with the
+//!   namespace and carries the ingest hooks, so it must never be produced by the
+//!   ordinary repository-creation paths.
+
+use crate::git::bare::is_safe_component;
+
+/// The per-namespace issue-tracker repository, served at `/{namespace}/ticket`.
+pub const TICKET_REPO: &str = "ticket";
+
+/// Names refused for user-created repositories.
+///
+/// `ticket` (singular) is the git repository; `tickets` (plural) is the
+/// issue-tracker UI path. Both are listed: a repository named `tickets` would be
+/// shadowed by the UI route and become unreachable.
+const RESERVED_REPO_NAMES: &[&str] = &[
+    TICKET_REPO,
+    "tickets",
+    "create-repo",
+    "create-repo-form",
+    "settings",
+    "assets",
+    "health",
+    "up",
+    "auth",
+    "init",
+];
+
+/// Whether `name` is reserved. Compared case-insensitively so the check still
+/// holds on case-insensitive filesystems.
+pub fn is_reserved_repo_name(name: &str) -> bool {
+    RESERVED_REPO_NAMES
+        .iter()
+        .any(|reserved| reserved.eq_ignore_ascii_case(name.trim()))
+}
+
+/// Validates a user-supplied repository name, returning a message suitable for
+/// display when the name is refused.
+pub fn validate_repo_name(name: &str) -> Result<(), String> {
+    let name = name.trim();
+
+    if name.is_empty() {
+        return Err("Repository name must be at least 1 character".to_string());
+    }
+    if !is_safe_component(name) {
+        return Err("Repository name cannot contain '/', '\\' or path references".to_string());
+    }
+    if name.starts_with('.') {
+        return Err("Repository name cannot start with '.'".to_string());
+    }
+    if is_reserved_repo_name(name) {
+        return Err(format!(
+            "'{name}' is a reserved name and cannot be used for a repository"
+        ));
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ticket_repo_is_reserved() {
+        assert!(is_reserved_repo_name(TICKET_REPO));
+        assert!(validate_repo_name("ticket").is_err());
+    }
+
+    #[test]
+    fn test_tickets_ui_path_is_reserved() {
+        // A repo named `tickets` would be shadowed by the /{namespace}/tickets UI route.
+        assert!(validate_repo_name("tickets").is_err());
+    }
+
+    #[test]
+    fn test_reserved_check_is_case_insensitive() {
+        assert!(is_reserved_repo_name("Ticket"));
+        assert!(is_reserved_repo_name("TICKETS"));
+        assert!(validate_repo_name("SeTtInGs").is_err());
+    }
+
+    #[test]
+    fn test_namespace_level_routes_are_reserved() {
+        for name in ["create-repo", "create-repo-form", "settings", "assets"] {
+            assert!(
+                validate_repo_name(name).is_err(),
+                "{name} should be reserved"
+            );
+        }
+    }
+
+    #[test]
+    fn test_ordinary_names_are_allowed() {
+        for name in ["fig", "my-repo", "repo.git", "a", "Ticketing", "ticketz"] {
+            assert!(
+                validate_repo_name(name).is_ok(),
+                "{name} should be allowed: {:?}",
+                validate_repo_name(name)
+            );
+        }
+    }
+
+    #[test]
+    fn test_empty_name_is_refused() {
+        assert!(validate_repo_name("").is_err());
+        assert!(validate_repo_name("   ").is_err());
+    }
+
+    #[test]
+    fn test_path_traversal_is_refused() {
+        for name in ["..", ".", "a/b", "a\\b", "../escape"] {
+            assert!(
+                validate_repo_name(name).is_err(),
+                "{name} should be refused"
+            );
+        }
+    }
+
+    #[test]
+    fn test_dotfile_names_are_refused() {
+        assert!(validate_repo_name(".git").is_err());
+        assert!(validate_repo_name(".hidden").is_err());
+    }
+}

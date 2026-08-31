@@ -27,6 +27,15 @@ Fig is a self-hosted Git backend that provides:
 
 [UI Documentation](docs/ui.md)
 
+### Tickets
+- Per-namespace issue tracker stored as TOML in a reserved `ticket` git repo
+- Markdown bodies and comments, statuses, labels, assignees, `@mentions`
+- Editable from the web UI *and* from a plain `git clone` — concurrent writes are
+  merged server-side, so a push is never rejected and a pull never conflicts
+- Image attachments stored outside git, content-addressed
+
+[Tickets Documentation](docs/tickets.md)
+
 ## Quick Start
 
 Deploy with the [once project] (https://github.com/basecamp/once)
@@ -44,7 +53,17 @@ PROJECT_ROOT=/storage/<your_choice>
 | Document | Description |
 |----------|-------------|
 | [Git Backend](docs/git-backend.md) | Git HTTP backend usage and workflows |
-| [UI Documentation](docs/ui.md) | Web interface guide and page descriptions |
+| [UI Documentation](docs/ui.md)
+
+### Tickets
+- Per-namespace issue tracker stored as TOML in a reserved `ticket` git repo
+- Markdown bodies and comments, statuses, labels, assignees, `@mentions`
+- Editable from the web UI *and* from a plain `git clone` — concurrent writes are
+  merged server-side, so a push is never rejected and a pull never conflicts
+- Image attachments stored outside git, content-addressed
+
+[Tickets Documentation](docs/tickets.md) | Web interface guide and page descriptions |
+| [Tickets](docs/tickets.md) | Issue tracker: storage format, merge rules, CLI workflow |
 | [Environment Variables](docs/environment-variables.md) | Configuration options reference |
 
 ## Authentication Overview
@@ -53,8 +72,8 @@ Fig uses multiple authentication methods depending on the action:
 
 | Action | Authentication Method |
 |--------|----------------------|
-| Generate signup ticket | API Key (admin only) |
-| Create account | Single-use ticket |
+| Generate signup invite | API Key (admin only) |
+| Create account | Single-use invite |
 | Log in (UI) | Form submission → sets session cookie |
 | Create namespace | session cookie (UI) |
 | Create repository | Basic Auth |
@@ -64,8 +83,8 @@ Fig uses multiple authentication methods depending on the action:
 
 ### Registration Flow
 
-1. **Admin** generates a signup ticket using the API Key
-2. **User** creates an account with the ticket (single-use, consumed on signup)
+1. **Admin** generates a signup invite using the API Key
+2. **User** creates an account with the invite (single-use, consumed on signup)
 3. **User** logs in
 4. **User** can now create namespaces and repositories
 

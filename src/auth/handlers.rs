@@ -3,21 +3,21 @@ use log::info;
 use serde::Deserialize;
 
 use crate::{
-    auth::{FigContext, Ticket, create_namespace, create_user, generate_token, verify_password},
+    auth::{FigContext, Invite, create_namespace, create_user, generate_token, verify_password},
     config,
-    view::auth::{render_login_success, render_signup_success, render_ticket_success},
+    view::auth::{render_invite_success, render_login_success, render_signup_success},
     view::{render_error, render_success},
 };
 
 // Form data types for HTMX UI submissions
 #[derive(Debug, Deserialize)]
-pub struct TicketForm {
+pub struct InviteForm {
     pub api_key: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct SignupForm {
-    pub ticket: String,
+    pub invite: String,
     pub username: String,
     pub email: String,
     pub password: String,
@@ -69,23 +69,23 @@ pub async fn logout_ui_handler(
 
 // ========== UI Form Handlers (HTML) ==========
 
-#[post("/auth/ticket")]
-pub async fn create_ticket_ui_handler(
+#[post("/auth/invite")]
+pub async fn create_invite_ui_handler(
     _req: HttpRequest,
     auth_state: web::Data<FigContext>,
-    form: web::Form<TicketForm>,
+    form: web::Form<InviteForm>,
 ) -> impl Responder {
     // Validate API key
     if !auth_state.validate_api_key(&form.api_key) {
         return HttpResponse::Unauthorized().body(render_error("Invalid API key").into_string());
     }
 
-    // Generate a new ticket
-    let ticket_id = generate_token();
+    // Generate a new invite
+    let invite_id = generate_token();
     let now = chrono::Utc::now().to_rfc3339();
 
-    let ticket = Ticket {
-        id: ticket_id.clone(),
+    let invite = Invite {
+        id: invite_id.clone(),
         user_id: None,
         used: false,
         created_at: now,
@@ -94,20 +94,20 @@ pub async fn create_ticket_ui_handler(
 
     let db = auth_state.db();
 
-    if let Err(e) = db.create_ticket(&ticket).await {
-        log::error!("Failed to create ticket: {e}");
+    if let Err(e) = db.create_invite(&invite).await {
+        log::error!("Failed to create invite: {e}");
         return HttpResponse::InternalServerError()
-            .body(render_error("Failed to create ticket").into_string());
+            .body(render_error("Failed to create invite").into_string());
     }
 
-    info!("Generated signup ticket via UI: {ticket_id}");
+    info!("Generated signup invite via UI: {invite_id}");
 
     // Return success with HX-Retarget to replace the whole form area
     HttpResponse::Ok()
         .content_type("text/html")
         .insert_header(("HX-Retarget", "#auth-content"))
         .insert_header(("HX-Reswap", "innerHTML"))
-        .body(render_ticket_success(&ticket_id).into_string())
+        .body(render_invite_success(&invite_id).into_string())
 }
 
 #[post("/auth/signup")]
@@ -118,11 +118,11 @@ pub async fn signup_ui_handler(
 ) -> impl Responder {
     let db = auth_state.db();
 
-    // Validate ticket first
-    let ticket = match db.get_ticket(&form.ticket).await {
-        Ok(Some(ticket)) => ticket,
+    // Validate invite first
+    let invite = match db.get_invite(&form.invite).await {
+        Ok(Some(invite)) => invite,
         Ok(None) => {
-            return HttpResponse::Unauthorized().body(render_error("Invalid ticket").into_string());
+            return HttpResponse::Unauthorized().body(render_error("Invalid invite").into_string());
         }
         Err(e) => {
             log::error!("Database error: {e}");
@@ -131,9 +131,9 @@ pub async fn signup_ui_handler(
         }
     };
 
-    if ticket.used {
+    if invite.used {
         return HttpResponse::Unauthorized()
-            .body(render_error("Ticket has already been used").into_string());
+            .body(render_error("Invite has already been used").into_string());
     }
 
     // Validate input
@@ -181,15 +181,15 @@ pub async fn signup_ui_handler(
             .body(render_error("Failed to save user").into_string());
     }
 
-    // Mark ticket as used
-    if let Err(e) = db.mark_ticket_used(&ticket.id).await {
-        log::error!("Failed to mark ticket used: {e}");
+    // Mark invite as used
+    if let Err(e) = db.mark_invite_used(&invite.id).await {
+        log::error!("Failed to mark invite used: {e}");
         // Don't fail here, user is already created
     }
 
     info!(
-        "Created user via UI: {} with ticket: {}",
-        user.username, ticket.id
+        "Created user via UI: {} with invite: {}",
+        user.username, invite.id
     );
 
     // Return HTML response for HTMX
@@ -327,7 +327,7 @@ pub async fn create_namespace_ui_handler(
     };
 
     // Create namespace
-    let namespace = create_namespace(form.name.clone(), user_id);
+    let namespace = create_namespace(form.name.clone(), user_id.clone());
 
     if let Err(e) = db.create_namespace(&namespace).await {
         log::error!("Failed to create namespace: {e}");
@@ -354,6 +354,25 @@ pub async fn create_namespace_ui_handler(
         // Don't fail here, directory can be created later
     }
 
+    // Create the reserved ticket repository so the tracker is usable right away.
+    let (author_name, author_email) = match db.get_user_by_id(&user_id).await {
+        Ok(Some(user)) => {
+            let email = crate::git::git_email(&user);
+            (user.username, email)
+        }
+        _ => ("Fig".to_string(), "fig@localhost".to_string()),
+    };
+
+    if let Err(e) = crate::ticket::repo::ensure_ticket_repo(
+        &project_root,
+        &namespace.name,
+        &author_name,
+        &author_email,
+    ) {
+        log::error!("Failed to create ticket repo for '{}': {e}", namespace.name);
+        // Don't fail here; the repository is created lazily on first access.
+    }
+
     // Return HTML response for HTMX
     let success_msg = format!(
         "Namespace '{}' created successfully! You can now create repositories in this namespace.",
@@ -366,7 +385,7 @@ pub async fn create_namespace_ui_handler(
 
 #[cfg(test)]
 mod tests {
-    use crate::auth::{Ticket, generate_token};
+    use crate::auth::{Invite, generate_token};
     use crate::db::Database;
 
     #[test]
@@ -379,8 +398,8 @@ mod tests {
     }
 
     #[test]
-    fn test_ticket_struct_with_none_user_id() {
-        let ticket = Ticket {
+    fn test_invite_struct_with_none_user_id() {
+        let invite = Invite {
             id: generate_token(),
             user_id: None,
             used: false,
@@ -388,13 +407,13 @@ mod tests {
             used_at: None,
         };
 
-        assert!(ticket.user_id.is_none());
-        assert!(!ticket.used);
+        assert!(invite.user_id.is_none());
+        assert!(!invite.used);
     }
 
     #[test]
-    fn test_ticket_struct_with_some_user_id() {
-        let ticket = Ticket {
+    fn test_invite_struct_with_some_user_id() {
+        let invite = Invite {
             id: generate_token(),
             user_id: Some("user-123".to_string()),
             used: true,
@@ -402,12 +421,12 @@ mod tests {
             used_at: Some(chrono::Utc::now().to_rfc3339()),
         };
 
-        assert_eq!(ticket.user_id, Some("user-123".to_string()));
-        assert!(ticket.used);
+        assert_eq!(invite.user_id, Some("user-123".to_string()));
+        assert!(invite.used);
     }
 
     #[tokio::test]
-    async fn test_create_ticket_with_null_user_id() {
+    async fn test_create_invite_with_null_user_id() {
         // Create a temporary database for testing
         let db_path = format!("/tmp/test_fig_db_{}.db", generate_token());
         let db = Database::new(&db_path);
@@ -417,8 +436,8 @@ mod tests {
             .await
             .expect("Failed to initialize database tables");
 
-        // Create a ticket with NULL user_id (for signup)
-        let ticket = Ticket {
+        // Create a invite with NULL user_id (for signup)
+        let invite = Invite {
             id: generate_token(),
             user_id: None,
             used: false,
@@ -427,21 +446,21 @@ mod tests {
         };
 
         // This should succeed now with the migration
-        let result = db.create_ticket(&ticket).await;
+        let result = db.create_invite(&invite).await;
         assert!(
             result.is_ok(),
-            "Failed to create ticket with NULL user_id: {:?}",
+            "Failed to create invite with NULL user_id: {:?}",
             result.err()
         );
 
-        // Verify we can retrieve the ticket
+        // Verify we can retrieve the invite
         let retrieved = db
-            .get_ticket(&ticket.id)
+            .get_invite(&invite.id)
             .await
-            .expect("Failed to get ticket");
+            .expect("Failed to get invite");
         assert!(retrieved.is_some());
         let retrieved = retrieved.unwrap();
-        assert_eq!(retrieved.id, ticket.id);
+        assert_eq!(retrieved.id, invite.id);
         assert!(retrieved.user_id.is_none());
         assert!(!retrieved.used);
 

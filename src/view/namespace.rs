@@ -301,9 +301,8 @@ pub async fn create_repo_handler(
     }
 
     // Validate repository name
-    if form.repo_name.is_empty() {
-        return HttpResponse::BadRequest()
-            .body(render_error("Repository name must be at least 1 character").into_string());
+    if let Err(message) = crate::git::reserved::validate_repo_name(&form.repo_name) {
+        return HttpResponse::BadRequest().body(render_error(&message).into_string());
     }
 
     // Create repository path

@@ -28,7 +28,7 @@ pub struct Namespace {
 }
 
 #[derive(Debug, Clone)]
-pub struct Ticket {
+pub struct Invite {
     pub id: String,
     pub user_id: Option<String>,
     pub used: bool,
@@ -79,7 +79,7 @@ pub fn create_user(username: String, email: String, password: &str) -> Result<Us
 }
 
 #[cfg(test)]
-pub fn generate_ticket() -> String {
+pub fn generate_invite() -> String {
     Uuid::new_v4().to_string()
 }
 
@@ -201,9 +201,9 @@ mod tests {
     }
 
     #[test]
-    fn test_generate_ticket_is_uuid() {
-        let ticket = generate_ticket();
-        assert!(uuid::Uuid::parse_str(&ticket).is_ok());
+    fn test_generate_invite_is_uuid() {
+        let invite = generate_invite();
+        assert!(uuid::Uuid::parse_str(&invite).is_ok());
     }
 
     #[test]

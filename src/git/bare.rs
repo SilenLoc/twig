@@ -33,7 +33,7 @@ pub struct TreeEntry {
 
 /// A path component is safe when it is non-empty and does not reference a
 /// parent directory or contain separators or NUL bytes.
-fn is_safe_component(name: &str) -> bool {
+pub fn is_safe_component(name: &str) -> bool {
     !name.is_empty()
         && name != "."
         && name != ".."

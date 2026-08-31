@@ -15,28 +15,28 @@ fn wrap_auth_content(content: &maud::Markup) -> maud::Markup {
     }
 }
 
-#[get("/auth/ticket")]
-pub async fn ticket_page(
+#[get("/auth/invite")]
+pub async fn invite_page(
     req: HttpRequest,
     auth_state: web::Data<FigContext>,
 ) -> AwResult<maud::Markup> {
     let username = get_username_from_request(&req, &auth_state).await;
     let content = maud::html! {
-        h1 class="tf-title mb4 white tc" { "Get Signup Ticket" }
+        h1 class="tf-title mb4 white tc" { "Get Signup Invite" }
 
         div class="ba b--white-20 pa4 bg-black-20 mb4" {
             p class="f6 white-70 mb2" {
-                "To create an account, you first need a signup ticket."
+                "To create an account, you first need a signup invite."
             }
             p class="f6 white-70" {
-                "Enter your API key below to generate a one-time ticket."
+                "Enter your API key below to generate a one-time invite."
             }
         }
 
         form
-            hx-post="/auth/ticket"
-            hx-target="#ticket-result"
-            hx-target-error="#ticket-result"
+            hx-post="/auth/invite"
+            hx-target="#invite-result"
+            hx-target-error="#invite-result"
             hx-swap="innerHTML"
             class="ba b--white-20 pa4 bg-black-20"
         {
@@ -55,14 +55,14 @@ pub async fn ticket_page(
                 type="submit"
                 class="tf-btn tf-btn-block"
             {
-                "Generate Ticket"
+                "Generate Invite"
             }
         }
 
-        div id="ticket-result" class="mt3" {}
+        div id="invite-result" class="mt3" {}
 
         div class="mt3 tc" {
-            span class="white-60 f6" { "Already have a ticket? " }
+            span class="white-60 f6" { "Already have a invite? " }
             a href="/auth/signup" class="link white hover-white-90 underline f6" {
                 "Sign up now"
             }
@@ -90,7 +90,7 @@ pub async fn signup_page(
 
         div class="ba b--white-20 pa4 bg-black-20 mb4" {
             p class="f6 white-70" {
-                "Enter your signup ticket along with your desired username and password."
+                "Enter your signup invite along with your desired username and password."
             }
         }
 
@@ -102,14 +102,14 @@ pub async fn signup_page(
             class="ba b--white-20 pa4 bg-black-20"
         {
             div class="mb3" {
-                label class="db tf-kicker white-50 mb2" for="ticket" { "Signup Ticket" }
+                label class="db tf-kicker white-50 mb2" for="invite" { "Signup Invite" }
                 input
                     type="text"
-                    name="ticket"
-                    id="ticket"
+                    name="invite"
+                    id="invite"
                     required
                     class="tf-input db w-100"
-                    placeholder="Enter your signup ticket";
+                    placeholder="Enter your signup invite";
             }
 
             div class="mb3" {
@@ -158,8 +158,8 @@ pub async fn signup_page(
         div id="signup-result" class="mt3" {}
 
         div class="mt3 tc" {
-            span class="white-60 f6" { "Need a ticket? " }
-            a href="/auth/ticket" class="link white hover-white-90 underline f6" {
+            span class="white-60 f6" { "Need a invite? " }
+            a href="/auth/invite" class="link white hover-white-90 underline f6" {
                 "Get one here"
             }
             br;
@@ -230,8 +230,8 @@ pub async fn login_page(
 
         div class="mt3 tc" {
             span class="white-60 f6" { "Don't have an account? " }
-            a href="/auth/ticket" class="link white hover-white-90 underline f6" {
-                "Get a ticket"
+            a href="/auth/invite" class="link white hover-white-90 underline f6" {
+                "Get a invite"
             }
         }
     };
@@ -310,19 +310,19 @@ pub async fn namespace_page(
     }
 }
 
-// Handler for successful ticket generation
-pub fn render_ticket_success(ticket: &str) -> maud::Markup {
+// Handler for successful invite generation
+pub fn render_invite_success(invite: &str) -> maud::Markup {
     maud::html! {
         div class="bt b--white pa3 bg-black-20" style="border-top-width: 3px;" {
-            h2 class="tf-section mb3 white" { "Ticket Generated!" }
+            h2 class="tf-section mb3 white" { "Invite Generated!" }
             p class="f6 white mb2" {
-                "Your one-time signup ticket has been generated."
+                "Your one-time signup invite has been generated."
             }
             p class="f6 white-70 mb3" {
-                "Use this ticket to create your account (it can only be used once):"
+                "Use this invite to create your account (it can only be used once):"
             }
             code class="db pa2 bg-black-50 white mb3 f6" style="word-break: break-all;" {
-                (ticket)
+                (invite)
             }
             a
                 href="/auth/signup"
@@ -386,13 +386,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_render_ticket_success_contains_ticket() {
-        let ticket = "abc-123-test";
-        let markup = render_ticket_success(ticket);
+    fn test_render_invite_success_contains_invite() {
+        let invite = "abc-123-test";
+        let markup = render_invite_success(invite);
         let html = markup.into_string();
-        assert!(html.contains(ticket), "ticket should be displayed");
+        assert!(html.contains(invite), "invite should be displayed");
         assert!(
-            html.contains("Ticket Generated"),
+            html.contains("Invite Generated"),
             "success heading should be present"
         );
         assert!(
