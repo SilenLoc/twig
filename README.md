@@ -38,32 +38,31 @@ Fig is a self-hosted Git backend that provides:
 
 ## Quick Start
 
-Deploy with the [once project] (https://github.com/basecamp/once)
-Be sure to set follwoing environment variables:
+Deploy with the [once project](https://github.com/basecamp/once).
 
+Be sure to set the following environment variables:
+
+```
 DB_PATH=/storage/<your_choice>
 PROJECT_ROOT=/storage/<your_choice>
 
 # Optional: Sentry instrumentation (errors, traces, logs)
 # SENTRY_DSN=https://<key>@o<orgId>.ingest.sentry.io/<projectId>
 # SENTRY_TRACES_SAMPLE_RATE=1.0
+```
+
+See [Environment Variables](docs/environment-variables.md) for the full reference,
+also available from the running instance itself under the Docs tab of `/_info`
+(grouped under its "Self-hosting" subheading).
 
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
 | [Git Backend](docs/git-backend.md) | Git HTTP backend usage and workflows |
-| [UI Documentation](docs/ui.md)
-
-### Tickets
-- Per-namespace issue tracker stored as TOML in a reserved `ticket` git repo
-- Markdown bodies and comments, statuses, labels, assignees, `@mentions`
-- Editable from the web UI *and* from a plain `git clone` — concurrent writes are
-  merged server-side, so a push is never rejected and a pull never conflicts
-- Image attachments stored outside git, content-addressed
-
-[Tickets Documentation](docs/tickets.md) | Web interface guide and page descriptions |
+| [UI Documentation](docs/ui.md) | Web interface guide and page descriptions |
 | [Tickets](docs/tickets.md) | Issue tracker: storage format, merge rules, CLI workflow |
+| [Ticket CLI](docs/ticket-cli.md) | `fig-ticket` command-line helper scripts |
 | [Environment Variables](docs/environment-variables.md) | Configuration options reference |
 
 ## Authentication Overview

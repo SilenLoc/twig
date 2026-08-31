@@ -297,6 +297,10 @@ pub async fn create_namespace_ui_handler(
         return HttpResponse::BadRequest()
             .body(render_error("Namespace name must be at least 2 characters").into_string());
     }
+    if form.name.starts_with('_') {
+        return HttpResponse::BadRequest()
+            .body(render_error("Namespace names starting with '_' are reserved").into_string());
+    }
 
     // Check if namespace already exists
     match db.get_namespace_by_name(&form.name).await {
@@ -352,25 +356,6 @@ pub async fn create_namespace_ui_handler(
     if let Err(e) = std::fs::create_dir_all(&namespace_path) {
         log::error!("Failed to create namespace directory: {e}");
         // Don't fail here, directory can be created later
-    }
-
-    // Create the reserved ticket repository so the tracker is usable right away.
-    let (author_name, author_email) = match db.get_user_by_id(&user_id).await {
-        Ok(Some(user)) => {
-            let email = crate::git::git_email(&user);
-            (user.username, email)
-        }
-        _ => ("Fig".to_string(), "fig@localhost".to_string()),
-    };
-
-    if let Err(e) = crate::ticket::repo::ensure_ticket_repo(
-        &project_root,
-        &namespace.name,
-        &author_name,
-        &author_email,
-    ) {
-        log::error!("Failed to create ticket repo for '{}': {e}", namespace.name);
-        // Don't fail here; the repository is created lazily on first access.
     }
 
     // Return HTML response for HTMX

@@ -1,13 +1,12 @@
 use maud::DOCTYPE;
 
 pub mod auth;
+pub mod info;
 pub mod namespace;
 pub mod overview;
 pub mod repo;
 pub mod session_auth;
 pub mod settings;
-pub mod ticket_attachment;
-pub mod tickets;
 
 pub fn render_layout(main_content: &maud::Markup, username: Option<&str>) -> maud::Markup {
     maud::html! {
@@ -48,6 +47,9 @@ pub fn render_layout(main_content: &maud::Markup, username: Option<&str>) -> mau
                         @match username {
                             Some(name) => {
                                 span class="white-40 mr2 mr4-ns dn dib-ns" { (name) }
+                                a href="/_info" class="link white-70 hover-white no-underline mr2 mr4-ns" {
+                                    "Information"
+                                }
                                 a href="/settings" class="link white-70 hover-white no-underline mr2 mr4-ns" {
                                     "Settings"
                                 }
@@ -61,6 +63,9 @@ pub fn render_layout(main_content: &maud::Markup, username: Option<&str>) -> mau
                                 }
                             }
                             None => {
+                                a href="/_info" class="link white-70 hover-white no-underline mr2 mr4-ns" {
+                                    "Information"
+                                }
                                 a href="/auth/login" class="link white-70 hover-white no-underline mr2 mr4-ns" {
                                     "Login"
                                 }

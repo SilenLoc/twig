@@ -21,7 +21,6 @@ pub const TICKET_REPO: &str = "ticket";
 /// shadowed by the UI route and become unreachable.
 const RESERVED_REPO_NAMES: &[&str] = &[
     TICKET_REPO,
-    "tickets",
     "create-repo",
     "create-repo-form",
     "settings",
@@ -74,15 +73,9 @@ mod tests {
     }
 
     #[test]
-    fn test_tickets_ui_path_is_reserved() {
-        // A repo named `tickets` would be shadowed by the /{namespace}/tickets UI route.
-        assert!(validate_repo_name("tickets").is_err());
-    }
-
-    #[test]
     fn test_reserved_check_is_case_insensitive() {
-        assert!(is_reserved_repo_name("Ticket"));
-        assert!(is_reserved_repo_name("TICKETS"));
+        assert!(is_reserved_repo_name("auth"));
+        assert!(is_reserved_repo_name("AUTH"));
         assert!(validate_repo_name("SeTtInGs").is_err());
     }
 

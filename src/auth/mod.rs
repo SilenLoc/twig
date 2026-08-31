@@ -170,6 +170,35 @@ impl FigContext {
     }
 }
 
+/// Dev convenience seeded when `RESET_DB` is true: creates a fixed
+/// `admin`/`admin` user (and an `admin` namespace) if they do not already
+/// exist, then returns a fresh session token for that user so local
+/// inspection never has to go through signup/login manually.
+pub async fn seed_dev_admin(ctx: &FigContext, project_root: &str) -> Result<String, String> {
+    let db = ctx.db();
+
+    let user = if let Some(user) = db.get_user_by_username("admin").await? {
+        user
+    } else {
+        let user = create_user("admin".to_string(), "admin@localhost".to_string(), "admin")?;
+        db.create_user(&user).await?;
+        log::warn!("RESET_DB: seeded dev user 'admin' with password 'admin'");
+        user
+    };
+
+    if db.get_namespace_by_name("admin").await?.is_none() {
+        let namespace = create_namespace("admin".to_string(), user.id.clone());
+        db.create_namespace(&namespace).await?;
+
+        let namespace_path = std::path::Path::new(project_root).join(&namespace.name);
+        if let Err(e) = std::fs::create_dir_all(&namespace_path) {
+            log::warn!("RESET_DB: failed to create dev admin namespace dir: {e}");
+        }
+    }
+
+    ctx.create_session(user.id).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -280,5 +309,68 @@ mod tests {
         assert!(!ctx.is_initialized());
         ctx.set_initialized();
         assert!(ctx.is_initialized());
+    }
+
+    #[tokio::test]
+    async fn test_seed_dev_admin_creates_user_namespace_and_session() {
+        let db_path = format!("/tmp/test_fig_seed_dev_admin_{}.db", Uuid::new_v4());
+        let project_root = format!("/tmp/test_fig_seed_dev_admin_root_{}", Uuid::new_v4());
+        let db = Database::new(&db_path);
+        db.init_tables().await.expect("init tables");
+        let ctx = FigContext::new(db.clone(), "key".to_string());
+
+        let token = seed_dev_admin(&ctx, &project_root)
+            .await
+            .expect("seed dev admin");
+
+        let user_id = ctx
+            .validate_token(&token)
+            .await
+            .expect("session token should be valid");
+        let user = db
+            .get_user_by_id(&user_id)
+            .await
+            .expect("get user")
+            .expect("user should exist");
+        assert_eq!(user.username, "admin");
+        assert!(verify_password("admin", &user.password_hash).unwrap());
+
+        let namespace = db
+            .get_namespace_by_name("admin")
+            .await
+            .expect("get namespace")
+            .expect("namespace should exist");
+        assert_eq!(namespace.owner_id, user_id);
+
+        // Cleanup
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&project_root);
+    }
+
+    #[tokio::test]
+    async fn test_seed_dev_admin_is_idempotent() {
+        let db_path = format!("/tmp/test_fig_seed_dev_admin_idem_{}.db", Uuid::new_v4());
+        let project_root = format!("/tmp/test_fig_seed_dev_admin_idem_root_{}", Uuid::new_v4());
+        let db = Database::new(&db_path);
+        db.init_tables().await.expect("init tables");
+        let ctx = FigContext::new(db.clone(), "key".to_string());
+
+        let token1 = seed_dev_admin(&ctx, &project_root).await.expect("seed 1");
+        let token2 = seed_dev_admin(&ctx, &project_root).await.expect("seed 2");
+
+        // Both tokens should be valid sessions for the same, single admin user.
+        let user_id1 = ctx.validate_token(&token1).await.expect("token1 valid");
+        let user_id2 = ctx.validate_token(&token2).await.expect("token2 valid");
+        assert_eq!(user_id1, user_id2);
+
+        let all_namespaces = db
+            .get_all_namespaces_with_owners()
+            .await
+            .expect("list namespaces");
+        assert_eq!(all_namespaces.len(), 1);
+
+        // Cleanup
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir_all(&project_root);
     }
 }

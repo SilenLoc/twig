@@ -12,6 +12,7 @@ rust = { version = "1.97" }
 # compiling nextest from source.
 "cargo-binstall" = "latest"
 "cargo:cargo-nextest" = "latest"
+"cargo:cargo-watch" = "latest"
 
 [tasks.run]
 run = 'cargo run'
@@ -31,41 +32,10 @@ run = 'cargo nextest run'
 run = ['cargo fmt', 'cargo clippy --fix --all-targets --allow-dirty']
 
 
-[tasks.oci]
-run = [
-    'cargo build --release',
-    'MISE_EXPERIMENTAL=1 mise oci build -o ./mise-oci',
-]
+
+
+[tasks.watch]
+run = 'cargo watch -w src -x run'
 
 [tasks.docker]
 run = ['docker run -p 8080:80 silenloc/fig']
-
-
-[oci]
-from        = "debian:bookworm-slim"   # base image ref
-# tag       = "silenloc/fig:latest"    # passed via `mise oci build -t <tag>` instead
-workdir     = "/app"                    # WORKDIR
-entrypoint  = ["./fig"]                 # ENTRYPOINT
-cmd         = []                        # CMD
-# Run as non-root (matches the dev-image convention).
-user        = "nonroot"
-user_id     = 1000                      # tar layer entry UID (file ownership)
-group_id    = 1000                      # tar layer entry GID (defaults to user_id)
-mount_point = "/mise"                   # where tools install in the image
-
-[[oci.copy]]
-host  = "target/release/fig"
-image = "/app/fig"
-
-# Extra env baked into the image config (image-only — won't shadow MISE_*).
-# PORT=80 mirrors the Dockerfile's `EXPOSE 80` / app default.
-# `fig` itself reads these env vars: PORT, LOG_LEVEL, PROJECT_ROOT, DB_PATH,
-# API_KEY, RESET_DB, SENTRY_DSN, SENTRY_TRACES_SAMPLE_RATE.
-[oci.env]
-PORT = "80"
-
-# Labels baked into the image config.
-[oci.labels]
-"org.opencontainers.image.source" = "https://fig.silenlocatelli.ch/silen/fig"
-"org.opencontainers.image.title"   = "fig"
-"org.opencontainers.image.description" = "Fig — Git server and web UI"

@@ -108,17 +108,6 @@ mod tests {
                 .service(view::namespace::handler)
                 .service(view::namespace::create_repo_form_handler)
                 .service(view::namespace::create_repo_handler)
-                // Ticket tracker. MUST come before view::repo::handler, which
-                // matches /{namespace}/{repo} and would otherwise swallow these.
-                // Within the group, /tickets/new must precede /tickets/{number}.
-                .service(view::tickets::list_handler)
-                .service(view::tickets::new_form_handler)
-                .service(view::tickets::create_handler)
-                .service(view::tickets::detail_handler)
-                .service(view::tickets::comment_handler)
-                .service(view::tickets::status_handler)
-                .service(view::ticket_attachment::upload_handler)
-                .service(view::ticket_attachment::serve_handler)
                 .service(view::repo::handler)
                 .service(view::repo::tab_handler)
                 .service(view::repo::slide_handler)
@@ -346,70 +335,21 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn test_namespace_creation_creates_ticket_repo() {
-        let root = format!("/tmp/test_fig_ns_{}", uuid::Uuid::new_v4());
+    async fn test_cannot_create_namespace_with_reserved_prefix() {
+        let root = format!("/tmp/test_fig_ns_reserved_{}", uuid::Uuid::new_v4());
         let app = create_test_service_in(&root).await;
-        let session = signup_and_login(&app, "ticketuser").await;
+        let session = signup_and_login(&app, "underscoreuser").await;
 
         let req = test::TestRequest::post()
             .uri("/auth/namespace")
             .cookie(session)
-            .set_form([("name", "acme")])
+            .set_form([("name", "_admin")])
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert!(
-            resp.status().is_success(),
-            "namespace creation should succeed"
+            resp.status().is_client_error(),
+            "namespace names starting with '_' must be refused"
         );
-
-        let repo_path = std::path::Path::new(&root).join("acme").join("ticket");
-        let repo = git2::Repository::open(&repo_path)
-            .expect("ticket repo should be created with the namespace");
-        assert!(repo.is_bare(), "ticket repo must be bare");
-        assert!(
-            repo.refname_to_id("refs/heads/main").is_ok(),
-            "ticket repo should have a seeded main branch"
-        );
-        assert!(
-            repo_path.join("hooks").join("proc-receive").exists(),
-            "ingest hook must be installed"
-        );
-
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[actix_web::test]
-    async fn test_cannot_create_repo_with_reserved_ticket_name() {
-        let root = format!("/tmp/test_fig_reserved_{}", uuid::Uuid::new_v4());
-        let app = create_test_service_in(&root).await;
-        let session = signup_and_login(&app, "reserveduser").await;
-
-        let req = test::TestRequest::post()
-            .uri("/auth/namespace")
-            .cookie(session.clone())
-            .set_form([("name", "acme")])
-            .to_request();
-        assert!(test::call_service(&app, req).await.status().is_success());
-
-        for name in ["ticket", "tickets", "settings"] {
-            let req = test::TestRequest::post()
-                .uri("/acme/create-repo")
-                .cookie(session.clone())
-                .set_form([("repo_name", name)])
-                .to_request();
-            let resp = test::call_service(&app, req).await;
-            assert_eq!(
-                resp.status(),
-                StatusCode::BAD_REQUEST,
-                "'{name}' must be refused as a repository name"
-            );
-            let body = test::read_body(resp).await;
-            let body_str = String::from_utf8(body.to_vec()).unwrap();
-            assert!(
-                body_str.contains("reserved"),
-                "refusal should explain the name is reserved, got: {body_str}"
-            );
-        }
 
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -489,17 +429,6 @@ mod tests {
             App::new()
                 .app_data(web::Data::new(config))
                 .app_data(auth_state)
-                // Ticket tracker. MUST come before view::repo::handler, which
-                // matches /{namespace}/{repo} and would otherwise swallow these.
-                // Within the group, /tickets/new must precede /tickets/{number}.
-                .service(view::tickets::list_handler)
-                .service(view::tickets::new_form_handler)
-                .service(view::tickets::create_handler)
-                .service(view::tickets::detail_handler)
-                .service(view::tickets::comment_handler)
-                .service(view::tickets::status_handler)
-                .service(view::ticket_attachment::upload_handler)
-                .service(view::ticket_attachment::serve_handler)
                 .service(view::repo::handler)
                 .service(view::repo::tab_handler)
                 .service(view::repo::content_handler)
