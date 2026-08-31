@@ -98,7 +98,7 @@ pub async fn git_handler(
     match result {
         Ok(Ok(cgi_output)) => {
             let (headers, body) = cgi_output;
-            build_response(headers, body)
+            build_response(&headers, body)
         }
         Ok(Err(e)) => {
             log::error!("{e:?}");
@@ -112,7 +112,7 @@ pub async fn git_handler(
 }
 
 // Parse CGI headers into an actix HttpResponse
-fn build_response(headers: String, body: Vec<u8>) -> actix_web::HttpResponse {
+fn build_response(headers: &str, body: Vec<u8>) -> actix_web::HttpResponse {
     let mut response = actix_web::HttpResponse::Ok();
     for line in headers.lines() {
         if let Some((key, value)) = line.split_once(':') {
@@ -148,16 +148,11 @@ async fn is_authenticated(
     namespace_name: &str,
 ) -> Result<Option<AuthResult>, HttpResponse> {
     // Extract basic auth credentials
-    let (username, password) = match extract_basic_auth(req) {
-        Some(creds) => creds,
-        None => {
-            log::warn!(
-                "Git auth failed: No basic auth credentials for namespace '{namespace_name}'"
-            );
-            return Err(actix_web::HttpResponse::Unauthorized()
-                .insert_header(("WWW-Authenticate", "Basic realm=\"git\""))
-                .body("Missing credentials"));
-        }
+    let Some((username, password)) = extract_basic_auth(req) else {
+        log::warn!("Git auth failed: No basic auth credentials for namespace '{namespace_name}'");
+        return Err(actix_web::HttpResponse::Unauthorized()
+            .insert_header(("WWW-Authenticate", "Basic realm=\"git\""))
+            .body("Missing credentials"));
     };
 
     log::debug!("Git auth attempt: user='{username}' namespace='{namespace_name}'");
@@ -304,7 +299,7 @@ mod tests {
     fn test_build_response_status_header() {
         let headers = "Content-Type: text/html\r\nStatus: 401 Unauthorized".to_string();
         let body = b"Unauthorized".to_vec();
-        let response = build_response(headers, body);
+        let response = build_response(&headers, body);
         assert_eq!(response.status(), actix_web::http::StatusCode::UNAUTHORIZED);
     }
 
@@ -312,7 +307,7 @@ mod tests {
     fn test_build_response_default_status() {
         let headers = "Content-Type: text/html".to_string();
         let body = b"OK".to_vec();
-        let response = build_response(headers, body);
+        let response = build_response(&headers, body);
         assert_eq!(response.status(), actix_web::http::StatusCode::OK);
     }
 
@@ -320,7 +315,7 @@ mod tests {
     fn test_build_response_content_type() {
         let headers = "Content-Type: application/git-upload-pack-advertisement".to_string();
         let body = b"data".to_vec();
-        let response = build_response(headers, body);
+        let response = build_response(&headers, body);
         assert_eq!(response.status(), actix_web::http::StatusCode::OK);
     }
 
@@ -328,7 +323,7 @@ mod tests {
     fn test_build_response_multiple_headers() {
         let headers = "Content-Type: text/plain\r\nCache-Control: no-cache".to_string();
         let body = b"test".to_vec();
-        let response = build_response(headers, body);
+        let response = build_response(&headers, body);
         assert_eq!(response.status(), actix_web::http::StatusCode::OK);
     }
 }

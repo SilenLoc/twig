@@ -47,7 +47,7 @@ impl Server {
         &self.db_path
     }
 
-    /// Deletes the database file if RESET_DB is set to true.
+    /// Deletes the database file if `RESET_DB` is set to true.
     /// Logs warnings and results appropriately.
     pub fn maybe_reset_database(&self) {
         if !self.reset_db {

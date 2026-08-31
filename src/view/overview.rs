@@ -13,38 +13,13 @@ struct SearchQuery {
     q: Option<String>,
 }
 
-#[get("/")]
-pub async fn index(
-    req: HttpRequest,
-    _server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
-    query: web::Query<SearchQuery>,
-) -> AwResult<maud::Markup> {
-    let search_query = query.q.as_deref().unwrap_or("");
-    let username = get_username_from_request(&req, &auth_state).await;
-
-    let db = auth_state.db();
-
-    // Get namespaces with owners from database
-    let namespaces = if search_query.is_empty() {
-        match db.get_all_namespaces_with_owners().await {
-            Ok(n) => n,
-            Err(e) => {
-                log::error!("Failed to get namespaces: {e}");
-                Vec::new()
-            }
-        }
-    } else {
-        match db.search_namespaces_with_owners(search_query).await {
-            Ok(n) => n,
-            Err(e) => {
-                log::error!("Failed to search namespaces: {e}");
-                Vec::new()
-            }
-        }
-    };
-
-    let content = maud::html! {
+/// Renders the namespace listing shared by the full-page and HTMX responses.
+fn render_index(
+    search_query: &str,
+    username: Option<&str>,
+    namespaces: &[(crate::auth::Namespace, String)],
+) -> maud::Markup {
+    maud::html! {
         div class="pt3 pt4-ns" {
             h1 class="tf-hero white ma0" { "Namespaces" }
         }
@@ -122,7 +97,41 @@ pub async fn index(
                 }
             }
         }
+    }
+}
+
+#[get("/")]
+pub async fn index(
+    req: HttpRequest,
+    _server: web::Data<config::Server>,
+    auth_state: web::Data<FigContext>,
+    query: web::Query<SearchQuery>,
+) -> AwResult<maud::Markup> {
+    let search_query = query.q.as_deref().unwrap_or("");
+    let username = get_username_from_request(&req, &auth_state).await;
+
+    let db = auth_state.db();
+
+    // Get namespaces with owners from database
+    let namespaces = if search_query.is_empty() {
+        match db.get_all_namespaces_with_owners().await {
+            Ok(n) => n,
+            Err(e) => {
+                log::error!("Failed to get namespaces: {e}");
+                Vec::new()
+            }
+        }
+    } else {
+        match db.search_namespaces_with_owners(search_query).await {
+            Ok(n) => n,
+            Err(e) => {
+                log::error!("Failed to search namespaces: {e}");
+                Vec::new()
+            }
+        }
     };
+
+    let content = render_index(search_query, username.as_deref(), &namespaces);
 
     if req.headers().get("HX-Request").is_some() {
         Ok(content)

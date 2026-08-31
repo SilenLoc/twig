@@ -73,24 +73,22 @@ impl RepoHandle {
     }
 
     fn head_commit(&self) -> Result<Option<git2::Commit<'_>>, git2::Error> {
-        let head = match self.repo.head() {
-            Ok(head) => head,
-            Err(_) => return Ok(None),
+        let Ok(head) = self.repo.head() else {
+            return Ok(None);
         };
-        let obj = match head.resolve() {
-            Ok(resolved) => resolved.peel(git2::ObjectType::Commit)?,
-            Err(_) => return Ok(None),
+        let Ok(resolved) = head.resolve() else {
+            return Ok(None);
         };
+        let obj = resolved.peel(git2::ObjectType::Commit)?;
         match obj.into_commit() {
             Ok(commit) => Ok(Some(commit)),
             Err(_) => Err(git2::Error::from_str("Couldn't find commit")),
         }
     }
 
-    pub fn get_commits(&self, depth: Depth) -> Result<Vec<Commit>, git2::Error> {
-        let commit = match self.head_commit()? {
-            Some(c) => c,
-            None => return Ok(Vec::new()),
+    pub fn get_commits(&self, depth: &Depth) -> Result<Vec<Commit>, git2::Error> {
+        let Some(commit) = self.head_commit()? else {
+            return Ok(Vec::new());
         };
 
         let mut revwalk = self.repo.revwalk()?;
@@ -117,15 +115,13 @@ impl RepoHandle {
 
     /// Read the raw bytes of a blob at the given path in HEAD
     pub fn read_blob_bytes(&self, file_path: &str) -> Result<Option<Vec<u8>>, git2::Error> {
-        let commit = match self.head_commit()? {
-            Some(c) => c,
-            None => return Ok(None),
+        let Some(commit) = self.head_commit()? else {
+            return Ok(None);
         };
 
         let tree = commit.tree()?;
-        let entry = match tree.get_path(Path::new(file_path)) {
-            Ok(entry) => entry,
-            Err(_) => return Ok(None),
+        let Ok(entry) = tree.get_path(Path::new(file_path)) else {
+            return Ok(None);
         };
 
         let object = entry.to_object(&self.repo)?;
@@ -200,58 +196,16 @@ impl RepoHandle {
     }
 
     pub fn list_files(&self, config: Option<&FigConfig>) -> Result<RepoFiles, git2::Error> {
-        let commit = match self.head_commit()? {
-            Some(c) => c,
-            None => {
-                return Ok(RepoFiles {
-                    markdown_files: Vec::new(),
-                });
-            }
+        let Some(commit) = self.head_commit()? else {
+            return Ok(RepoFiles {
+                markdown_files: Vec::new(),
+            });
         };
 
         let tree = commit.tree()?;
         let mut markdown_files = Vec::new();
 
-        fn walk_tree(
-            repo: &git2::Repository,
-            tree: &git2::Tree,
-            prefix: &str,
-            markdown_files: &mut Vec<String>,
-            config: Option<&FigConfig>,
-        ) -> Result<(), git2::Error> {
-            for entry in tree {
-                let name = entry.name().unwrap_or("");
-                let path = if prefix.is_empty() {
-                    name.to_string()
-                } else {
-                    format!("{prefix}/{name}")
-                };
-
-                if let Some(config) = config
-                    && config.should_ignore(&path)
-                {
-                    continue;
-                }
-
-                match entry.kind() {
-                    Some(git2::ObjectType::Tree) => {
-                        let obj = entry.to_object(repo)?;
-                        if let Ok(subtree) = obj.into_tree() {
-                            walk_tree(repo, &subtree, &path, markdown_files, config)?;
-                        }
-                    }
-                    Some(git2::ObjectType::Blob)
-                        if name.ends_with(".md") || name.ends_with(".markdown") =>
-                    {
-                        markdown_files.push(path);
-                    }
-                    _ => {}
-                }
-            }
-            Ok(())
-        }
-
-        walk_tree(&self.repo, &tree, "", &mut markdown_files, config)?;
+        collect_markdown_files(&self.repo, &tree, "", &mut markdown_files, config)?;
         markdown_files.sort();
 
         Ok(RepoFiles { markdown_files })
@@ -265,22 +219,20 @@ impl RepoHandle {
         dir_path: &str,
         config: Option<&FigConfig>,
     ) -> Result<Vec<TreeEntry>, git2::Error> {
-        let commit = match self.head_commit()? {
-            Some(c) => c,
-            None => return Ok(Vec::new()),
+        let Some(commit) = self.head_commit()? else {
+            return Ok(Vec::new());
         };
 
         let mut tree = commit.tree()?;
         if !dir_path.is_empty() {
-            let entry = match tree.get_path(Path::new(dir_path)) {
-                Ok(entry) => entry,
-                Err(_) => return Ok(Vec::new()),
+            let Ok(entry) = tree.get_path(Path::new(dir_path)) else {
+                return Ok(Vec::new());
             };
             let obj = entry.to_object(&self.repo)?;
-            tree = match obj.into_tree() {
-                Ok(tree) => tree,
-                Err(_) => return Ok(Vec::new()),
+            let Ok(subtree) = obj.into_tree() else {
+                return Ok(Vec::new());
             };
+            tree = subtree;
         }
 
         let mut entries = Vec::new();
@@ -340,7 +292,7 @@ pub struct FigConfigWithRaw {
 impl FigConfig {
     /// Load config from `.fig.toml` file in the repository
     /// Falls back to `.fig` for backwards compatibility
-    /// Opens and closes the repo each time — prefer RepoHandle::load_config_with_raw when possible
+    /// Opens and closes the repo each time — prefer `RepoHandle::load_config_with_raw` when possible
     pub fn load(root: &str, namespace: &str, repo: &str) -> Self {
         let Ok(handle) = RepoHandle::open(root, namespace, repo) else {
             return Self::default();
@@ -389,25 +341,59 @@ impl FigConfig {
     }
 }
 
+/// Recursively collects the markdown files of `tree` into `markdown_files`,
+/// skipping anything `config` ignores.
+fn collect_markdown_files(
+    repo: &git2::Repository,
+    tree: &git2::Tree,
+    prefix: &str,
+    markdown_files: &mut Vec<String>,
+    config: Option<&FigConfig>,
+) -> Result<(), git2::Error> {
+    for entry in tree {
+        let name = entry.name().unwrap_or("");
+        let path = if prefix.is_empty() {
+            name.to_string()
+        } else {
+            format!("{prefix}/{name}")
+        };
+
+        if let Some(config) = config
+            && config.should_ignore(&path)
+        {
+            continue;
+        }
+
+        match entry.kind() {
+            Some(git2::ObjectType::Tree) => {
+                let obj = entry.to_object(repo)?;
+                if let Ok(subtree) = obj.into_tree() {
+                    collect_markdown_files(repo, &subtree, &path, markdown_files, config)?;
+                }
+            }
+            Some(git2::ObjectType::Blob) if crate::md::is_markdown(name) => {
+                markdown_files.push(path);
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 pub struct Commit {
     hash: String,
     author: String,
     date: chrono::DateTime<Utc>,
-    commit_message: String,
+    message: String,
 }
 
 impl Commit {
-    pub fn new(
-        hash: String,
-        author: String,
-        date: chrono::DateTime<Utc>,
-        commit_message: String,
-    ) -> Self {
+    pub fn new(hash: String, author: String, date: chrono::DateTime<Utc>, message: String) -> Self {
         Self {
             hash,
             author,
             date,
-            commit_message,
+            message,
         }
     }
 
@@ -423,8 +409,8 @@ impl Commit {
         &self.date
     }
 
-    pub fn commit_message(&self) -> &str {
-        &self.commit_message
+    pub fn message(&self) -> &str {
+        &self.message
     }
 }
 
@@ -492,7 +478,7 @@ fn extract_license_from_cargo_toml(cargo_content: &str) -> Result<String, ()> {
     }
 
     if found_license && !license_value.is_empty() {
-        Ok(format!("License: {}", license_value))
+        Ok(format!("License: {license_value}"))
     } else {
         Err(())
     }
@@ -517,11 +503,20 @@ This software is provided under a non-commercial license with the following rest
 Violation of any of these terms will result in immediate termination of your rights to use this software."#.to_string()
 }
 
-pub fn get_repos_with_info(root: &str, namespace: &str) -> Result<Vec<RepoInfo>, git2::Error> {
+/// Date of the commit `HEAD` points at, or `None` when the repository has no
+/// resolvable HEAD commit (a freshly initialised repository, for instance).
+fn last_commit_date(repo: &git2::Repository) -> Option<chrono::DateTime<Utc>> {
+    let head = repo.head().ok()?;
+    let resolved = head.resolve().ok()?;
+    let obj = resolved.peel(git2::ObjectType::Commit).ok()?;
+    let commit = obj.into_commit().ok()?;
+    Some(chrono(commit.author().when()))
+}
+
+pub fn get_repos_with_info(root: &str, namespace: &str) -> Vec<RepoInfo> {
     let path = Path::new(root).join(namespace);
-    let entries = match std::fs::read_dir(path) {
-        Ok(entries) => entries,
-        Err(_) => return Ok(Vec::new()),
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return Vec::new();
     };
 
     let mut repos = Vec::new();
@@ -536,45 +531,24 @@ pub fn get_repos_with_info(root: &str, namespace: &str) -> Result<Vec<RepoInfo>,
         };
 
         let repo_path = Path::new(root).join(namespace).join(&repo_name);
-        let repo = match git2::Repository::open(&repo_path) {
-            Ok(r) => r,
-            Err(_) => continue,
-        };
-
-        // Get last commit date
-        let last_commit_date = match repo.head() {
-            Ok(head) => match head.resolve() {
-                Ok(resolved) => match resolved.peel(git2::ObjectType::Commit) {
-                    Ok(obj) => match obj.into_commit() {
-                        Ok(commit) => Some(chrono(commit.author().when())),
-                        Err(_) => None,
-                    },
-                    Err(_) => None,
-                },
-                Err(_) => None,
-            },
-            Err(_) => None,
+        let Ok(repo) = git2::Repository::open(&repo_path) else {
+            continue;
         };
 
         repos.push(RepoInfo {
             name: repo_name,
-            last_commit_date,
+            last_commit_date: last_commit_date(&repo),
         });
     }
 
-    Ok(repos)
+    repos
 }
 
-pub fn search_repos_with_info(
-    root: &str,
-    namespace: &str,
-    query: &str,
-) -> Result<Vec<RepoInfo>, git2::Error> {
+pub fn search_repos_with_info(root: &str, namespace: &str, query: &str) -> Vec<RepoInfo> {
     let query_lower = query.to_lowercase();
     let path = Path::new(root).join(namespace);
-    let entries = match std::fs::read_dir(path) {
-        Ok(entries) => entries,
-        Err(_) => return Ok(Vec::new()),
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return Vec::new();
     };
 
     let mut repos = Vec::new();
@@ -592,32 +566,17 @@ pub fn search_repos_with_info(
         }
 
         let repo_path = Path::new(root).join(namespace).join(&repo_name);
-        let repo = match git2::Repository::open(&repo_path) {
-            Ok(r) => r,
-            Err(_) => continue,
-        };
-
-        let last_commit_date = match repo.head() {
-            Ok(head) => match head.resolve() {
-                Ok(resolved) => match resolved.peel(git2::ObjectType::Commit) {
-                    Ok(obj) => match obj.into_commit() {
-                        Ok(commit) => Some(chrono(commit.author().when())),
-                        Err(_) => None,
-                    },
-                    Err(_) => None,
-                },
-                Err(_) => None,
-            },
-            Err(_) => None,
+        let Ok(repo) = git2::Repository::open(&repo_path) else {
+            continue;
         };
 
         repos.push(RepoInfo {
             name: repo_name,
-            last_commit_date,
+            last_commit_date: last_commit_date(&repo),
         });
     }
 
-    Ok(repos)
+    repos
 }
 
 #[cfg(test)]
@@ -630,7 +589,7 @@ mod tests {
         path: &'a Path,
     }
 
-    impl<'a> Drop for TempDir<'a> {
+    impl Drop for TempDir<'_> {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(self.path);
         }
@@ -656,7 +615,7 @@ mod tests {
             .current_dir(path)
             .output()
             .expect("Failed to init bare repo");
-        assert!(output.status.success(), "{:?}", output);
+        assert!(output.status.success(), "{output:?}");
     }
 
     #[test]
@@ -677,8 +636,7 @@ mod tests {
         let branch = String::from_utf8_lossy(&output.stdout);
         assert!(
             branch.contains("develop"),
-            "Branch should be 'develop' but was: {}",
-            branch
+            "Branch should be 'develop' but was: {branch}"
         );
     }
 
@@ -859,7 +817,7 @@ ignore_for_view = ["skills/", "AGENTS.md"]
 
     #[test]
     fn test_chrono_handles_current_time() {
-        let now_secs = chrono::Utc::now().timestamp() as i64;
+        let now_secs = chrono::Utc::now().timestamp();
         let time = git2::Time::new(now_secs, 0);
         let result = chrono(time);
         assert_eq!(result.timestamp(), now_secs);
@@ -909,7 +867,7 @@ ignore_for_view = ["skills/", "AGENTS.md"]
                 .write_all(input.as_bytes())
                 .unwrap();
             let out = child.wait_with_output().unwrap();
-            assert!(out.status.success(), "{:?}: {:?}", args, out);
+            assert!(out.status.success(), "{args:?}: {out:?}");
             String::from_utf8_lossy(&out.stdout).trim().to_string()
         };
 
@@ -931,7 +889,7 @@ ignore_for_view = ["skills/", "AGENTS.md"]
             .current_dir(&repo_path)
             .output()
             .unwrap();
-        assert!(commit.status.success(), "{:?}", commit);
+        assert!(commit.status.success(), "{commit:?}");
         let commit_hash = String::from_utf8_lossy(&commit.stdout).trim().to_string();
 
         Command::new("git")

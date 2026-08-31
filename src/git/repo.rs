@@ -44,13 +44,10 @@ pub async fn init(
     let db = auth_state.db();
 
     // Authenticate the request
-    let (username, password) = match extract_basic_auth(&req) {
-        Some(creds) => creds,
-        None => {
-            return HttpResponse::Unauthorized()
-                .insert_header(("WWW-Authenticate", "Basic realm=\"fig\""))
-                .body("Missing credentials");
-        }
+    let Some((username, password)) = extract_basic_auth(&req) else {
+        return HttpResponse::Unauthorized()
+            .insert_header(("WWW-Authenticate", "Basic realm=\"fig\""))
+            .body("Missing credentials");
     };
 
     // Get user from database
@@ -118,7 +115,7 @@ fn create_repo(
     let root: &Path = Path::new(&root);
     let branch: String = branch.into();
 
-    info!("root path:{root:?}");
+    info!("root path:{}", root.display());
 
     if !root.exists() {
         std::fs::create_dir_all(root)

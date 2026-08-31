@@ -11,6 +11,14 @@ pub fn replace_mustache(input: &str, vars: &HashMap<String, String>) -> String {
     result
 }
 
+/// Whether `name` points at a markdown file, matching the extension
+/// case-insensitively so `README.MD` counts just like `README.md`.
+pub fn is_markdown(name: &str) -> bool {
+    std::path::Path::new(name)
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("md") || ext.eq_ignore_ascii_case("markdown"))
+}
+
 pub fn markdown_to_ast(markdown: &str) -> Vec<Event<'_>> {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_TABLES);

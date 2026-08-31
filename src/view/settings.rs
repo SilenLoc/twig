@@ -21,6 +21,169 @@ struct DeleteRepoForm {
     repo_name: String,
 }
 
+/// Renders the settings page body shared by the full-page and HTMX responses.
+fn render_settings(
+    user: &crate::auth::User,
+    repos_by_namespace: &[(String, Vec<git::bare::RepoInfo>)],
+    deletable_namespaces: &[String],
+) -> maud::Markup {
+    maud::html! {
+        div class="mb3 mb4-ns tf-kicker white-50" {
+            a href="/" class="link white-50 hover-white no-underline" { "Home" }
+            span class="mh2" { "/" }
+            span class="white" { "Settings" }
+        }
+
+        h1 class="tf-hero white mb3 mb4-ns" { "Settings" }
+
+        (render_profile_section(user))
+        (render_repo_deletion_section(repos_by_namespace))
+        (render_namespace_deletion_section(deletable_namespaces))
+    }
+}
+
+/// Username and email form.
+fn render_profile_section(user: &crate::auth::User) -> maud::Markup {
+    maud::html! {
+    div class="ba b--white-20 pa3 pa4-ns bg-black-20 mb3 mb4-ns" {
+        h2 class="tf-section white mb3" { "Profile Information" }
+
+        div class="mb3 mb4-ns" {
+            label class="db tf-kicker white-50 mb2" { "Username" }
+            p class="f5 white ma0" { (user.username) }
+        }
+
+        div class="mb3 mb4-ns" {
+            label class="db tf-kicker white-50 mb2" { "Email" }
+            @match &user.email {
+                Some(email) => {
+                    p class="f5 white ma0" style="word-break: break-all;" { (email) }
+                }
+                None => {
+                    p class="f5 white-40 ma0" { "Not set" }
+                }
+            }
+        }
+
+        hr class="bt b--white-20 mv3 mv4-ns";
+
+        h3 class="f5 fw6 white mb3" { "Update Email" }
+
+        form
+            hx-post="/settings/email"
+            hx-target="#settings-result"
+            hx-swap="innerHTML"
+        {
+            div class="mb3" {
+                label class="db tf-kicker white-50 mb2" for="email" { "Email Address" }
+                input
+                    type="email"
+                    name="email"
+                    id="email"
+                    required
+                    value=(user.email.as_deref().unwrap_or(""))
+                    class="tf-input db w-100"
+                    placeholder="Enter your email address";
+            }
+            button
+                type="submit"
+                class="tf-btn"
+            {
+                "Save Email"
+            }
+        }
+
+        div id="settings-result" {}
+    }
+    }
+}
+
+/// Per-namespace list of repositories the user may delete.
+fn render_repo_deletion_section(
+    repos_by_namespace: &[(String, Vec<git::bare::RepoInfo>)],
+) -> maud::Markup {
+    maud::html! {
+    div class="ba b--white-20 pa3 pa4-ns bg-black-20" {
+        h2 class="tf-section white mb3" { "Delete Repository" }
+
+        @if repos_by_namespace.is_empty() {
+            p class="f6 white-40 ma0" { "You don't have any repositories to delete." }
+        } @else {
+            p class="f6 white-70 mb3" { "Select a repository to permanently delete it. This action cannot be undone." }
+
+            div id="delete-repo-result" {}
+
+            @for (ns, repos) in repos_by_namespace {
+                div class="mb3" {
+                    h4 class="tf-kicker white-50 mb2" { (ns) }
+                    div class="flex flex-column" {
+                        @for repo in repos {
+                            form
+                                class="flex flex-wrap justify-between items-center pa2 bb b--white-10"
+                                hx-post="/settings/delete-repo"
+                                hx-target="#delete-repo-result"
+                                hx-swap="innerHTML"
+                                hx-confirm=(format!("Are you sure you want to permanently delete '{}/{}'?", ns, repo.name))
+                            {
+                                input type="hidden" name="namespace" value=(ns);
+                                input type="hidden" name="repo_name" value=(repo.name);
+                                span class="f6 white mb1 mb0-ns" { (repo.name) }
+                                button
+                                    type="submit"
+                                    class="tf-btn tf-btn-danger f7"
+                                    style="padding: 0.4rem 0.9rem;"
+                                {
+                                    "Delete"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    }
+}
+
+/// Namespaces the user owns that hold no repositories, and so can be deleted.
+fn render_namespace_deletion_section(deletable_namespaces: &[String]) -> maud::Markup {
+    maud::html! {
+    div class="ba b--white-20 pa3 pa4-ns bg-black-20 mt3 mt4-ns" {
+        h2 class="tf-section white mb3" { "Delete Namespace" }
+
+        @if deletable_namespaces.is_empty() {
+            p class="f6 white-40 ma0" { "No namespaces available for deletion. You can only delete namespaces you own that have no repositories." }
+        } @else {
+            p class="f6 white-70 mb3" { "Select a namespace to permanently delete it. This action cannot be undone." }
+
+            div id="delete-namespace-result" {}
+
+            div class="flex flex-column" {
+                @for ns_name in deletable_namespaces {
+                    form
+                        class="flex flex-wrap justify-between items-center pa2 bb b--white-10"
+                        hx-post="/settings/delete-namespace/"
+                        hx-target="#delete-namespace-result"
+                        hx-swap="innerHTML"
+                        hx-confirm=(format!("Are you sure you want to permanently delete the namespace '{}'? This cannot be undone.", ns_name))
+                    {
+                        input type="hidden" name="namespace" value=(ns_name);
+                        span class="f6 white mb1 mb0-ns" { (ns_name) }
+                        button
+                            type="submit"
+                            class="tf-btn tf-btn-danger f7"
+                            style="padding: 0.4rem 0.9rem;"
+                        {
+                            "Delete"
+                        }
+                    }
+                }
+            }
+        }
+    }
+    }
+}
+
 #[get("/settings")]
 pub async fn settings_page(
     req: HttpRequest,
@@ -71,11 +234,7 @@ pub async fn settings_page(
         if ns.owner_id == user_id && !has_repos {
             deletable_namespaces.push(ns.name.clone());
         }
-        let repos =
-            git::bare::get_repos_with_info(server.project_root(), &ns.name).unwrap_or_else(|e| {
-                log::error!("Failed to get repos for namespace '{}': {e}", ns.name);
-                Vec::new()
-            });
+        let repos = git::bare::get_repos_with_info(server.project_root(), &ns.name);
         let deletable_repos: Vec<_> = repos
             .into_iter()
             .filter(|repo| {
@@ -89,140 +248,7 @@ pub async fn settings_page(
         }
     }
 
-    let content = maud::html! {
-        div class="mb3 mb4-ns tf-kicker white-50" {
-            a href="/" class="link white-50 hover-white no-underline" { "Home" }
-            span class="mh2" { "/" }
-            span class="white" { "Settings" }
-        }
-
-        h1 class="tf-hero white mb3 mb4-ns" { "Settings" }
-
-        div class="ba b--white-20 pa3 pa4-ns bg-black-20 mb3 mb4-ns" {
-            h2 class="tf-section white mb3" { "Profile Information" }
-
-            div class="mb3 mb4-ns" {
-                label class="db tf-kicker white-50 mb2" { "Username" }
-                p class="f5 white ma0" { (user.username) }
-            }
-
-            div class="mb3 mb4-ns" {
-                label class="db tf-kicker white-50 mb2" { "Email" }
-                @match &user.email {
-                    Some(email) => {
-                        p class="f5 white ma0" style="word-break: break-all;" { (email) }
-                    }
-                    None => {
-                        p class="f5 white-40 ma0" { "Not set" }
-                    }
-                }
-            }
-
-            hr class="bt b--white-20 mv3 mv4-ns";
-
-            h3 class="f5 fw6 white mb3" { "Update Email" }
-
-            form
-                hx-post="/settings/email"
-                hx-target="#settings-result"
-                hx-swap="innerHTML"
-            {
-                div class="mb3" {
-                    label class="db tf-kicker white-50 mb2" for="email" { "Email Address" }
-                    input
-                        type="email"
-                        name="email"
-                        id="email"
-                        required
-                        value=(user.email.as_deref().unwrap_or(""))
-                        class="tf-input db w-100"
-                        placeholder="Enter your email address";
-                }
-                button
-                    type="submit"
-                    class="tf-btn"
-                {
-                    "Save Email"
-                }
-            }
-
-            div id="settings-result" {}
-        }
-
-        div class="ba b--white-20 pa3 pa4-ns bg-black-20" {
-            h2 class="tf-section white mb3" { "Delete Repository" }
-
-            @if repos_by_namespace.is_empty() {
-                p class="f6 white-40 ma0" { "You don't have any repositories to delete." }
-            } @else {
-                p class="f6 white-70 mb3" { "Select a repository to permanently delete it. This action cannot be undone." }
-
-                div id="delete-repo-result" {}
-
-                @for (ns, repos) in repos_by_namespace {
-                    div class="mb3" {
-                        h4 class="tf-kicker white-50 mb2" { (ns) }
-                        div class="flex flex-column" {
-                            @for repo in repos {
-                                form
-                                    class="flex flex-wrap justify-between items-center pa2 bb b--white-10"
-                                    hx-post="/settings/delete-repo"
-                                    hx-target="#delete-repo-result"
-                                    hx-swap="innerHTML"
-                                    hx-confirm=(format!("Are you sure you want to permanently delete '{}/{}'?", ns, repo.name))
-                                {
-                                    input type="hidden" name="namespace" value=(ns);
-                                    input type="hidden" name="repo_name" value=(repo.name);
-                                    span class="f6 white mb1 mb0-ns" { (repo.name) }
-                                    button
-                                        type="submit"
-                                        class="tf-btn tf-btn-danger f7"
-                                        style="padding: 0.4rem 0.9rem;"
-                                    {
-                                        "Delete"
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        div class="ba b--white-20 pa3 pa4-ns bg-black-20 mt3 mt4-ns" {
-            h2 class="tf-section white mb3" { "Delete Namespace" }
-
-            @if deletable_namespaces.is_empty() {
-                p class="f6 white-40 ma0" { "No namespaces available for deletion. You can only delete namespaces you own that have no repositories." }
-            } @else {
-                p class="f6 white-70 mb3" { "Select a namespace to permanently delete it. This action cannot be undone." }
-
-                div id="delete-namespace-result" {}
-
-                div class="flex flex-column" {
-                    @for ns_name in &deletable_namespaces {
-                        form
-                            class="flex flex-wrap justify-between items-center pa2 bb b--white-10"
-                            hx-post="/settings/delete-namespace/"
-                            hx-target="#delete-namespace-result"
-                            hx-swap="innerHTML"
-                            hx-confirm=(format!("Are you sure you want to permanently delete the namespace '{}'? This cannot be undone.", ns_name))
-                        {
-                            input type="hidden" name="namespace" value=(ns_name);
-                            span class="f6 white mb1 mb0-ns" { (ns_name) }
-                            button
-                                type="submit"
-                                class="tf-btn tf-btn-danger f7"
-                                style="padding: 0.4rem 0.9rem;"
-                            {
-                                "Delete"
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    };
+    let content = render_settings(&user, &repos_by_namespace, &deletable_namespaces);
 
     if req.headers().get("HX-Request").is_some() {
         Ok(content)

@@ -251,7 +251,7 @@ mod tests {
         let req = GitRequest::new("GET", "/repo.git/info/refs", "service=git-upload-pack", "");
         match req.kind() {
             GitRequestKind::AdvertiseRefs(GitService::ReadRef) => {}
-            other => panic!("Expected AdvertiseRefs(ReadRef), got {:?}", other),
+            other => panic!("Expected AdvertiseRefs(ReadRef), got {other:?}"),
         }
     }
 
@@ -260,7 +260,7 @@ mod tests {
         let req = GitRequest::new("GET", "/repo.git/info/refs", "service=git-receive-pack", "");
         match req.kind() {
             GitRequestKind::AdvertiseRefs(GitService::WriteRef) => {}
-            other => panic!("Expected AdvertiseRefs(WriteRef), got {:?}", other),
+            other => panic!("Expected AdvertiseRefs(WriteRef), got {other:?}"),
         }
     }
 
@@ -274,7 +274,7 @@ mod tests {
         );
         match req.kind() {
             GitRequestKind::FetchClone => {}
-            other => panic!("Expected FetchClone, got {:?}", other),
+            other => panic!("Expected FetchClone, got {other:?}"),
         }
     }
 
@@ -288,7 +288,7 @@ mod tests {
         );
         match req.kind() {
             GitRequestKind::Push => {}
-            other => panic!("Expected Push, got {:?}", other),
+            other => panic!("Expected Push, got {other:?}"),
         }
     }
 
@@ -297,7 +297,7 @@ mod tests {
         let req = GitRequest::new("GET", "/repo.git/objects/abc123", "", "");
         match req.kind() {
             GitRequestKind::DumbGet => {}
-            other => panic!("Expected DumbGet, got {:?}", other),
+            other => panic!("Expected DumbGet, got {other:?}"),
         }
     }
 

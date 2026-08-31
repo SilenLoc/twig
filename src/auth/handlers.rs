@@ -165,11 +165,7 @@ pub async fn signup_ui_handler(
     }
 
     // Create user
-    let user = match create_user(
-        form.username.clone(),
-        form.email.clone(),
-        form.password.clone(),
-    ) {
+    let user = match create_user(form.username.clone(), form.email.clone(), &form.password) {
         Ok(user) => user,
         Err(e) => {
             log::error!("Failed to create user: {e}");
@@ -325,12 +321,9 @@ pub async fn create_namespace_ui_handler(
         }
     };
 
-    let user_id = match auth_state.validate_token(&token).await {
-        Some(user_id) => user_id,
-        None => {
-            return HttpResponse::Unauthorized()
-                .body(render_error("Session expired. Please log in again.").into_string());
-        }
+    let Some(user_id) = auth_state.validate_token(&token).await else {
+        return HttpResponse::Unauthorized()
+            .body(render_error("Session expired. Please log in again.").into_string());
     };
 
     // Create namespace
@@ -348,10 +341,10 @@ pub async fn create_namespace_ui_handler(
     );
 
     // Get project root from config
-    let project_root = req
-        .app_data::<web::Data<config::Server>>()
-        .map(|cfg| cfg.project_root().to_string())
-        .unwrap_or_else(|| "/srv/git".to_string());
+    let project_root = req.app_data::<web::Data<config::Server>>().map_or_else(
+        || "/srv/git".to_string(),
+        |cfg| cfg.project_root().to_string(),
+    );
 
     // Create the namespace directory
     let namespace_path = std::path::Path::new(&project_root).join(&namespace.name);

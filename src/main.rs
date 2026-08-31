@@ -18,18 +18,11 @@ mod integration_tests;
 mod md;
 mod view;
 
-fn main() -> std::io::Result<()> {
-    let config = config::from_env();
-
-    let log_filter = format!(
-        "{},libsql=warn,turso=warn,tracing::span=warn",
-        config.log_level()
-    );
-
-    // Initialize Sentry before starting the async runtime (required by the SDK).
-    // The SDK reads the DSN from the SENTRY_DSN environment variable automatically.
-    // If SENTRY_DSN is unset, sentry::init becomes a no-op so the app still runs.
-    let _sentry_guard = sentry::init(
+/// Initialises Sentry before the async runtime starts, as the SDK requires.
+/// The DSN is read from `SENTRY_DSN`; when it is unset `sentry::init` is a
+/// no-op and the application runs uninstrumented.
+fn init_sentry(config: &config::Server) -> sentry::ClientInitGuard {
+    sentry::init(
         sentry::ClientOptions::new()
             .maybe_release(sentry::release_name!())
             .send_default_pii(true)
@@ -44,10 +37,17 @@ fn main() -> std::io::Result<()> {
                 }
                 Some(log)
             }),
+    )
+}
+
+/// Wraps `env_logger` with `SentryLogger` so every `log::*` call reaches both
+/// the console and Sentry (as logs, plus breadcrumbs/events for errors).
+fn init_logging(config: &config::Server) {
+    let log_filter = format!(
+        "{},libsql=warn,turso=warn,tracing::span=warn",
+        config.log_level()
     );
 
-    // Wrap env_logger with SentryLogger so all log::* calls go to both console
-    // and Sentry (as logs + breadcrumbs/events for errors).
     let env_logger =
         env_logger::Builder::from_env(Env::default().default_filter_or(log_filter)).build();
     let logger = sentry::integrations::log::SentryLogger::with_dest(env_logger).filter(|log| {
@@ -68,6 +68,32 @@ fn main() -> std::io::Result<()> {
         .parse::<log::LevelFilter>()
         .unwrap_or(log::LevelFilter::Info);
     log::set_max_level(max_level);
+}
+
+/// Retries `init_tables` in the background until it succeeds, so a database
+/// that is not ready yet does not stop the server from accepting connections.
+fn spawn_database_init(auth_state: web::Data<auth::FigContext>) {
+    actix_web::rt::spawn(async move {
+        loop {
+            match auth_state.db().init_tables().await {
+                Ok(()) => {
+                    info!("Database initialized successfully");
+                    auth_state.set_initialized();
+                    return;
+                }
+                Err(e) => {
+                    warn!("Database init failed (will retry): {e}");
+                    actix_web::rt::time::sleep(std::time::Duration::from_secs(1)).await;
+                }
+            }
+        }
+    });
+}
+
+fn main() -> std::io::Result<()> {
+    let config = config::from_env();
+    let _sentry_guard = init_sentry(&config);
+    init_logging(&config);
 
     actix_web::rt::System::new().block_on(async move {
         info!("{config}");
@@ -85,24 +111,7 @@ fn main() -> std::io::Result<()> {
 
         let auth_state = web::Data::new(auth::FigContext::new(db, api_key));
 
-        {
-            let auth_state = auth_state.clone();
-            actix_web::rt::spawn(async move {
-                loop {
-                    match auth_state.db().init_tables().await {
-                        Ok(()) => {
-                            info!("Database initialized successfully");
-                            auth_state.set_initialized();
-                            return;
-                        }
-                        Err(e) => {
-                            warn!("Database init failed (will retry): {e}");
-                            actix_web::rt::time::sleep(std::time::Duration::from_secs(1)).await;
-                        }
-                    }
-                }
-            });
-        }
+        spawn_database_init(auth_state.clone());
 
         let bind_address = config.address();
 

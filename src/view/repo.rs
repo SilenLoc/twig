@@ -101,7 +101,7 @@ pub async fn handler(
     let fig_content = fig_result.raw.as_deref();
     let fig_filename = fig_result.filename.as_deref();
 
-    let commits_result = handle.get_commits(Depth::default());
+    let commits_result = handle.get_commits(&Depth::default());
     let files_result = handle.list_files(Some(fig_config));
 
     let content = match commits_result {
@@ -176,7 +176,7 @@ pub async fn tab_handler(
     let fig_content = fig_result.raw.as_deref();
     let fig_filename = fig_result.filename.as_deref();
 
-    let commits_result = handle.get_commits(Depth::default());
+    let commits_result = handle.get_commits(&Depth::default());
     let files_result = handle.list_files(Some(fig_config));
 
     match commits_result {
@@ -223,7 +223,7 @@ pub async fn tab_handler(
             if req.headers().get("HX-Request").is_some() {
                 let has_config = fig_content.is_some();
                 let has_present = !fig_config.present.files.is_empty();
-                let inner = render_tab_content_inner(ctx);
+                let inner = render_tab_content_inner(&ctx);
                 let tabs = render_tabs(
                     namespace,
                     repo,
@@ -237,7 +237,7 @@ pub async fn tab_handler(
                     (inner)
                 })
             } else {
-                let content = render_tab_content(ctx);
+                let content = render_tab_content(&ctx);
                 Ok(super::render_layout(&content, username.as_deref()))
             }
         }
@@ -265,7 +265,7 @@ pub async fn markdown_handler(
     let username = get_username_from_request(&req, &auth_state).await;
 
     if !is_safe_repo_path(file_path) {
-        return render_not_found_for_request(&req, username.as_deref());
+        return Ok(render_not_found_for_request(&req, username.as_deref()));
     }
 
     let handle = match RepoHandle::open(server.project_root(), namespace, repo) {
@@ -285,9 +285,9 @@ pub async fn markdown_handler(
     let fig_content = fig_result.raw.as_deref();
     let fig_filename = fig_result.filename.as_deref();
 
-    let commits_result = handle.get_commits(Depth::default());
+    let commits_result = handle.get_commits(&Depth::default());
     let files_result = handle.list_files(Some(fig_config));
-    let file_result = handle.read_file(file_path);
+    let blob_result = handle.read_file(file_path);
 
     match commits_result {
         Ok(commits) => {
@@ -301,11 +301,11 @@ pub async fn markdown_handler(
                     namespace,
                     repo,
                     file_path,
-                    file_result.ok().flatten().as_deref(),
+                    blob_result.ok().flatten().as_deref(),
                 );
                 Ok(content)
             } else {
-                let selected_content = file_result.ok().flatten();
+                let selected_content = blob_result.ok().flatten();
                 let present_slides = load_present_slides(&handle, &fig_config.present);
                 let empty_entries: Vec<TreeEntry> = Vec::new();
                 let ctx = TabContentContext {
@@ -327,7 +327,7 @@ pub async fn markdown_handler(
                     content_entries: &empty_entries,
                     content_file_bytes: None,
                 };
-                let content = render_tab_content(ctx);
+                let content = render_tab_content(&ctx);
                 Ok(super::render_layout(&content, username.as_deref()))
             }
         }
@@ -355,7 +355,7 @@ pub async fn content_handler(
     let username = get_username_from_request(&req, &auth_state).await;
 
     if !is_safe_repo_path(&path) {
-        return render_not_found_for_request(&req, username.as_deref());
+        return Ok(render_not_found_for_request(&req, username.as_deref()));
     }
 
     let handle = match RepoHandle::open(server.project_root(), namespace, repo) {
@@ -375,7 +375,7 @@ pub async fn content_handler(
     let fig_content = fig_result.raw.as_deref();
     let fig_filename = fig_result.filename.as_deref();
 
-    let commits_result = handle.get_commits(Depth::default());
+    let commits_result = handle.get_commits(&Depth::default());
 
     match commits_result {
         Ok(commits) => {
@@ -430,7 +430,7 @@ pub async fn content_handler(
                     content_entries: &entries,
                     content_file_bytes: file_bytes.as_deref(),
                 };
-                let content = render_tab_content(ctx);
+                let content = render_tab_content(&ctx);
                 Ok(super::render_layout(&content, username.as_deref()))
             }
         }
@@ -558,8 +558,7 @@ fn rewrite_markdown_link(
         return None;
     }
 
-    let lower = resolved.to_ascii_lowercase();
-    if lower.ends_with(".md") || lower.ends_with(".markdown") {
+    if crate::md::is_markdown(&resolved) {
         Some(format!("/{namespace}/{repo}/md/{resolved}{suffix}"))
     } else {
         Some(format!("/{namespace}/{repo}/content/{resolved}{suffix}"))
@@ -624,14 +623,14 @@ fn render_git_error(e: &git2::Error) -> Markup {
 
 /// Renders a "Path not found" response, wrapping it in the full layout for
 /// non-HTMX requests.
-fn render_not_found_for_request(req: &HttpRequest, username: Option<&str>) -> AwResult<Markup> {
+fn render_not_found_for_request(req: &HttpRequest, username: Option<&str>) -> Markup {
     let content = maud::html! {
         div class="pa3 white-50 bg-black-20" { "Path not found." }
     };
     if req.headers().get("HX-Request").is_some() {
-        Ok(content)
+        content
     } else {
-        Ok(super::render_layout(&content, username))
+        super::render_layout(&content, username)
     }
 }
 
@@ -645,7 +644,7 @@ fn scrollable_container(content: &Markup) -> Markup {
 }
 
 /// Renders a tab navigation bar
-/// If tabs_config is not empty, only those tabs are shown
+/// If `tabs_config` is not empty, only those tabs are shown
 fn render_tabs(
     namespace: &str,
     repo: &str,
@@ -658,20 +657,7 @@ fn render_tabs(
     let mut all_tabs: Vec<(&str, &str)> = vec![];
 
     // Only add markdown tab if there are markdown files
-    if !tabs_config.is_empty() {
-        // Use configured tabs
-        for tab in tabs_config {
-            match tab.as_str() {
-                "markdown" => all_tabs.push(("markdown", "Markdown")),
-                "content" => all_tabs.push(("content", "Content")),
-                "commits" => all_tabs.push(("commits", "Commits")),
-                "config" if has_config => all_tabs.push(("config", "Config")),
-                "present" if has_present => all_tabs.push(("present", "Present")),
-                "license" => all_tabs.push(("license", "License")),
-                _ => {}
-            }
-        }
-    } else {
+    if tabs_config.is_empty() {
         // Show all available tabs
         all_tabs.push(("markdown", "Markdown"));
         all_tabs.push(("content", "Content"));
@@ -684,6 +670,19 @@ fn render_tabs(
             all_tabs.push(("present", "Present"));
         }
         all_tabs.push(("license", "License"));
+    } else {
+        // Use configured tabs
+        for tab in tabs_config {
+            match tab.as_str() {
+                "markdown" => all_tabs.push(("markdown", "Markdown")),
+                "content" => all_tabs.push(("content", "Content")),
+                "commits" => all_tabs.push(("commits", "Commits")),
+                "config" if has_config => all_tabs.push(("config", "Config")),
+                "present" if has_present => all_tabs.push(("present", "Present")),
+                "license" => all_tabs.push(("license", "License")),
+                _ => {}
+            }
+        }
     }
 
     maud::html! {
@@ -777,12 +776,12 @@ fn render_repo(
 
         // Tab content container (scrollable)
         div id="tab-content" {
-            (scrollable_container(&render_tab_content_inner(ctx)))
+            (scrollable_container(&render_tab_content_inner(&ctx)))
         }
     }
 }
 
-fn render_tab_content(ctx: TabContentContext<'_>) -> Markup {
+fn render_tab_content(ctx: &TabContentContext<'_>) -> Markup {
     let has_config = ctx.fig_content.is_some();
     let has_present = !ctx.present_config.files.is_empty();
     maud::html! {
@@ -816,7 +815,7 @@ fn get_default_markdown_file(markdown_files: &[String]) -> Option<&str> {
     markdown_files.first().map(String::as_str)
 }
 
-fn render_tab_content_inner(ctx: TabContentContext<'_>) -> Markup {
+fn render_tab_content_inner(ctx: &TabContentContext<'_>) -> Markup {
     match ctx.tab {
         "markdown" => {
             // Use selected file or find default (README.md preferred)
@@ -864,10 +863,10 @@ fn render_tab_content_inner(ctx: TabContentContext<'_>) -> Markup {
         "license" => render_license_view(ctx.license_content),
         _ => {
             // Unknown tab - show Markdown by default if available, then Commits
-            let new_tab = if !ctx.markdown_files.is_empty() {
-                "markdown"
-            } else {
+            let new_tab = if ctx.markdown_files.is_empty() {
                 "commits"
+            } else {
+                "markdown"
             };
             let new_ctx = TabContentContext {
                 namespace: ctx.namespace,
@@ -888,7 +887,7 @@ fn render_tab_content_inner(ctx: TabContentContext<'_>) -> Markup {
                 content_entries: ctx.content_entries,
                 content_file_bytes: ctx.content_file_bytes,
             };
-            render_tab_content_inner(new_ctx)
+            render_tab_content_inner(&new_ctx)
         }
     }
 }
@@ -950,7 +949,7 @@ fn parent_path(path: &str) -> &str {
     }
 }
 
-/// Precomputed breadcrumb segments: (label, accumulated path, is_last)
+/// Precomputed breadcrumb segments: (label, accumulated path, `is_last`)
 fn breadcrumb_segments(path: &str) -> Vec<(String, String, bool)> {
     if path.is_empty() {
         return Vec::new();
@@ -1012,11 +1011,12 @@ fn render_content_view(
     if !entries.is_empty() || path.is_empty() {
         return render_content_dir(namespace, repo, path, entries);
     }
-    match file_bytes {
-        Some(bytes) => render_content_file(namespace, repo, path, bytes),
-        None => maud::html! {
+    if let Some(bytes) = file_bytes {
+        render_content_file(namespace, repo, path, bytes)
+    } else {
+        maud::html! {
             div class="pa3 white-50 bg-black-20" { "Path not found." }
-        },
+        }
     }
 }
 
@@ -1071,7 +1071,6 @@ fn render_content_dir(namespace: &str, repo: &str, path: &str, entries: &[TreeEn
 }
 
 fn render_content_file(namespace: &str, repo: &str, path: &str, bytes: &[u8]) -> Markup {
-    let lower = path.to_ascii_lowercase();
     let is_binary = bytes.contains(&0);
 
     maud::html! {
@@ -1085,7 +1084,7 @@ fn render_content_file(namespace: &str, repo: &str, path: &str, bytes: &[u8]) ->
                 }
             } @else {
                 @let text = String::from_utf8_lossy(bytes).into_owned();
-                @if lower.ends_with(".md") || lower.ends_with(".markdown") {
+                @if crate::md::is_markdown(path) {
                     div class="markdown-body white lh-copy pa3 bg-black-20 overflow-x-auto" {
                         (maud::PreEscaped(markdown_to_html(&text, namespace, repo, parent_path(path))))
                     }
@@ -1301,7 +1300,7 @@ fn render_commit(commit: &Commit) -> Markup {
     let hash = commit.hash();
     let author = commit.author();
     let date = commit.date();
-    let commit_message = commit.commit_message();
+    let commit_message = commit.message();
     maud::html! {
         div class="commit bt bb b--white-20 pa3" style="border-top-width: 3px;" {
             div class="flex flex-wrap items-baseline mb2 tf-kicker" {
@@ -1447,18 +1446,9 @@ mod tests {
         // Tables should be rendered as HTML table elements
         assert!(
             html.contains("<table>"),
-            "Expected <table> tag in output: {}",
-            html
+            "Expected <table> tag in output: {html}"
         );
-        assert!(
-            html.contains("<th>"),
-            "Expected <th> tag in output: {}",
-            html
-        );
-        assert!(
-            html.contains("<td>"),
-            "Expected <td> tag in output: {}",
-            html
-        );
+        assert!(html.contains("<th>"), "Expected <th> tag in output: {html}");
+        assert!(html.contains("<td>"), "Expected <td> tag in output: {html}");
     }
 }

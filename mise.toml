@@ -7,15 +7,28 @@ PORT = "8080"
 
 [tools]
 rust = { version = "1.97" }
+# nextest is not in the mise registry, so it comes from the cargo backend.
+# cargo-binstall makes that backend pull the prebuilt release binary instead of
+# compiling nextest from source.
+"cargo-binstall" = "latest"
+"cargo:cargo-nextest" = "latest"
 
 [tasks.run]
 run = 'cargo run'
 
 [tasks.verify]
-run = ['cargo fmt --check', 'cargo check', 'cargo clippy', 'cargo test']
+# `cargo clippy` runs the same analysis `cargo check` does and reuses the same
+# dependency artifacts, so running both only re-analyses the workspace crate
+# twice for nothing. `--all-targets` extends the lints to the test code.
+# nextest runs each test in its own process, in parallel, and loses nothing
+# here: fig is a binary-only crate, so there are no doctests to skip.
+run = ['cargo fmt --check', 'cargo clippy --all-targets', 'cargo nextest run']
+
+[tasks.test]
+run = 'cargo nextest run'
 
 [tasks.fmt]
-run = ['cargo fmt', 'cargo clippy --fix --allow-dirty']
+run = ['cargo fmt', 'cargo clippy --fix --all-targets --allow-dirty']
 
 
 [tasks.oci]

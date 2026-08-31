@@ -13,7 +13,7 @@ mod tests {
             ("127.0.0.1".to_string(), 8080),
             "debug".to_string(),
             "/tmp/test_git".to_string(),
-            "/tmp/test_fig.db".to_string(),
+            format!("/tmp/test_fig_health_{}.db", uuid::Uuid::new_v4()),
             "secure".to_string(),
             true,
             1.0,
@@ -50,11 +50,14 @@ mod tests {
         Response = actix_web::dev::ServiceResponse,
         Error = actix_web::Error,
     > {
+        // A distinct database per call: nextest runs each test in its own
+        // process, and turso takes an exclusive file lock, so a shared path
+        // would make concurrent tests fail to open the database.
         let config = config::Server::new(
             ("127.0.0.1".to_string(), 8080),
             "debug".to_string(),
             "/tmp/test_git".to_string(),
-            "/tmp/test_fig.db".to_string(),
+            format!("/tmp/test_fig_service_{}.db", uuid::Uuid::new_v4()),
             "secure".to_string(),
             true,
             1.0,
@@ -165,7 +168,7 @@ mod tests {
         let app = create_test_service().await;
         let req = test::TestRequest::post()
             .uri("/auth/ticket")
-            .set_form(&[("api_key", "invalid_key")])
+            .set_form([("api_key", "invalid_key")])
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
@@ -179,7 +182,7 @@ mod tests {
         let app = create_test_service().await;
         let req = test::TestRequest::post()
             .uri("/auth/ticket")
-            .set_form(&[("api_key", "secure")])
+            .set_form([("api_key", "secure")])
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert!(resp.status().is_success());
@@ -193,7 +196,7 @@ mod tests {
         let app = create_test_service().await;
         let req = test::TestRequest::post()
             .uri("/auth/signup")
-            .set_form(&[
+            .set_form([
                 ("ticket", "invalid-ticket-code"),
                 ("username", "uiuser"),
                 ("email", "uiuser@example.com"),
@@ -212,7 +215,7 @@ mod tests {
         let app = create_test_service().await;
         let req = test::TestRequest::post()
             .uri("/auth/login")
-            .set_form(&[("username", "nonexistent"), ("password", "wrongpassword")])
+            .set_form([("username", "nonexistent"), ("password", "wrongpassword")])
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
@@ -226,7 +229,7 @@ mod tests {
         let app = create_test_service().await;
         let req = test::TestRequest::post()
             .uri("/auth/namespace")
-            .set_form(&[("name", "shouldfail_ns")])
+            .set_form([("name", "shouldfail_ns")])
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
@@ -252,7 +255,7 @@ mod tests {
         let app = create_test_service().await;
         let req = test::TestRequest::post()
             .uri("/settings/email")
-            .set_form(&[("email", "invalid-email")])
+            .set_form([("email", "invalid-email")])
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);

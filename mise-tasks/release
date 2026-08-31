@@ -8,11 +8,16 @@ set -euo pipefail
 
 # Cut a release:
 #   1. Bump the patch component of [package].version in-place.
-#   2. `docker build` builds the image from the Dockerfile using the newly
-#      bumped version.
-#   3. `docker push` pushes `silenloc/fig:<v>` (expects `docker login` to be
-#      configured already).
-#   4. Commit the bumped Cargo.toml and push to the default branch.
+#   2. `docker buildx build --push` builds the image from the Dockerfile using
+#      the newly bumped version and streams it straight to the registry
+#      (expects `docker login` to be configured already). Building and pushing
+#      in one pass skips the local image-store round trip a separate
+#      `docker build` + `docker push` pays for.
+#   3. Commit the bumped Cargo.toml and push to the default branch.
+#
+# `--provenance=false` keeps the result a plain single-arch manifest: SLSA
+# attestations turn it into a manifest list and add extra blobs to export and
+# upload for no benefit here.
 #
 # Note: releases use `docker build` rather than `mise oci build` because the
 # experimental OCI builder cannot RUN commands — it can neither apt-install
@@ -38,13 +43,10 @@ awk -v new="$nv" '
   { print }
 ' Cargo.toml > Cargo.toml.tmp && mv Cargo.toml.tmp Cargo.toml
 
-# 4. Build the release image from the Dockerfile using the bumped version.
-docker build -t "silenloc/fig:$nv" .
+# 4. Build the release image and push it as silenloc/fig:<nv> in one pass.
+docker buildx build --provenance=false --push -t "silenloc/fig:$nv" .
 
-# 5. Push the image as silenloc/fig:<nv>.
-docker push "silenloc/fig:$nv"
-
-# 6. Commit the bumped Cargo.toml and push to the default branch.
+# 5. Commit the bumped Cargo.toml and push to the default branch.
 git add .
 git commit -m "chore: release $nv"
 git push

@@ -72,34 +72,14 @@ fn format_date(date: &chrono::DateTime<chrono::Utc>) -> String {
     }
 }
 
-#[get("/{namespace}")]
-pub async fn handler(
-    req: HttpRequest,
-    server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
-    params: web::Path<Params>,
-    query: web::Query<SearchQuery>,
-) -> AwResult<maud::Markup> {
-    let namespace = &params.namespace;
-    let search_query = query.q.as_deref().unwrap_or("");
-    let username = get_username_from_request(&req, &auth_state).await;
-    let has_access = user_has_namespace_access(&req, &auth_state, namespace).await;
-
-    // Get repos with info (last commit date)
-    let repos = if search_query.is_empty() {
-        git::bare::get_repos_with_info(server.project_root(), namespace).unwrap_or_else(|e| {
-            log::error!("Failed to get repos: {e}");
-            Vec::new()
-        })
-    } else {
-        git::bare::search_repos_with_info(server.project_root(), namespace, search_query)
-            .unwrap_or_else(|e| {
-                log::error!("Failed to search repos: {e}");
-                Vec::new()
-            })
-    };
-
-    let content = maud::html! {
+/// Renders the repository listing shared by the full-page and HTMX responses.
+fn render_namespace(
+    namespace: &str,
+    search_query: &str,
+    has_access: bool,
+    repos: &[git::bare::RepoInfo],
+) -> maud::Markup {
+    maud::html! {
         div class="mb3 mb4-ns tf-kicker white-50" {
             a href="/" class="link white-50 hover-white no-underline" { "Namespaces" }
             span class="mh2" { "/" }
@@ -190,7 +170,30 @@ pub async fn handler(
                 }
             }
         }
+    }
+}
+
+#[get("/{namespace}")]
+pub async fn handler(
+    req: HttpRequest,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<FigContext>,
+    params: web::Path<Params>,
+    query: web::Query<SearchQuery>,
+) -> AwResult<maud::Markup> {
+    let namespace = &params.namespace;
+    let search_query = query.q.as_deref().unwrap_or("");
+    let username = get_username_from_request(&req, &auth_state).await;
+    let has_access = user_has_namespace_access(&req, &auth_state, namespace).await;
+
+    // Get repos with info (last commit date)
+    let repos = if search_query.is_empty() {
+        git::bare::get_repos_with_info(server.project_root(), namespace)
+    } else {
+        git::bare::search_repos_with_info(server.project_root(), namespace, search_query)
     };
+
+    let content = render_namespace(namespace, search_query, has_access, &repos);
 
     if req.headers().get("HX-Request").is_some() {
         Ok(content)

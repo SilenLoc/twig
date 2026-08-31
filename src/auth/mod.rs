@@ -62,8 +62,8 @@ pub fn generate_token() -> String {
     hex::encode(bytes)
 }
 
-pub fn create_user(username: String, email: String, password: String) -> Result<User, String> {
-    let password_hash = hash_password(&password)?;
+pub fn create_user(username: String, email: String, password: &str) -> Result<User, String> {
+    let password_hash = hash_password(password)?;
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
 
@@ -218,7 +218,7 @@ mod tests {
         let user = create_user(
             "testuser".to_string(),
             "test@example.com".to_string(),
-            "password123".to_string(),
+            "password123",
         )
         .unwrap();
         assert_eq!(user.username, "testuser");
@@ -232,7 +232,7 @@ mod tests {
         let user = create_user(
             "testuser".to_string(),
             "test@example.com".to_string(),
-            "password123".to_string(),
+            "password123",
         )
         .unwrap();
         assert_ne!(user.password_hash, "password123");
@@ -262,7 +262,7 @@ mod tests {
     #[test]
     fn test_base64_decode_empty() {
         let result = base64_decode("");
-        assert_eq!(result, Some("".to_string()));
+        assert_eq!(result, Some(String::new()));
     }
 
     #[tokio::test]

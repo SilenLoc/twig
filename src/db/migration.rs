@@ -8,27 +8,27 @@ struct Migration {
 const MIGRATIONS: &[Migration] = &[
     Migration {
         name: "create_users_table",
-        sql: r#"CREATE TABLE IF NOT EXISTS users (
+        sql: r"CREATE TABLE IF NOT EXISTS users (
             id TEXT PRIMARY KEY,
             username TEXT UNIQUE NOT NULL,
             email TEXT,
             password_hash TEXT NOT NULL,
             created_at TEXT NOT NULL
-        );"#,
+        );",
     },
     Migration {
         name: "create_namespaces_table",
-        sql: r#"CREATE TABLE IF NOT EXISTS namespaces (
+        sql: r"CREATE TABLE IF NOT EXISTS namespaces (
             id TEXT PRIMARY KEY,
             name TEXT UNIQUE NOT NULL,
             owner_id TEXT NOT NULL,
             created_at TEXT NOT NULL,
             FOREIGN KEY (owner_id) REFERENCES users(id)
-        );"#,
+        );",
     },
     Migration {
         name: "create_namespace_members_table",
-        sql: r#"CREATE TABLE IF NOT EXISTS namespace_members (
+        sql: r"CREATE TABLE IF NOT EXISTS namespace_members (
             namespace_id TEXT NOT NULL,
             user_id TEXT NOT NULL,
             role TEXT NOT NULL DEFAULT 'member',
@@ -36,42 +36,42 @@ const MIGRATIONS: &[Migration] = &[
             PRIMARY KEY (namespace_id, user_id),
             FOREIGN KEY (namespace_id) REFERENCES namespaces(id),
             FOREIGN KEY (user_id) REFERENCES users(id)
-        );"#,
+        );",
     },
     Migration {
         name: "create_tickets_table",
-        sql: r#"CREATE TABLE IF NOT EXISTS tickets (
+        sql: r"CREATE TABLE IF NOT EXISTS tickets (
             id TEXT PRIMARY KEY,
             user_id TEXT,
             used BOOLEAN NOT NULL DEFAULT FALSE,
             created_at TEXT NOT NULL,
             used_at TEXT
-        );"#,
+        );",
     },
     Migration {
         name: "create_tokens_table",
-        sql: r#"CREATE TABLE IF NOT EXISTS tokens (
+        sql: r"CREATE TABLE IF NOT EXISTS tokens (
             token TEXT PRIMARY KEY,
             user_id TEXT NOT NULL,
             created_at TEXT NOT NULL,
             FOREIGN KEY (user_id) REFERENCES users(id)
-        );"#,
+        );",
     },
     Migration {
         name: "create_namespaces_owner_index",
-        sql: r#"CREATE INDEX IF NOT EXISTS idx_namespaces_owner ON namespaces(owner_id);"#,
+        sql: r"CREATE INDEX IF NOT EXISTS idx_namespaces_owner ON namespaces(owner_id);",
     },
     Migration {
         name: "create_namespace_members_user_index",
-        sql: r#"CREATE INDEX IF NOT EXISTS idx_namespace_members_user ON namespace_members(user_id);"#,
+        sql: r"CREATE INDEX IF NOT EXISTS idx_namespace_members_user ON namespace_members(user_id);",
     },
     Migration {
         name: "create_tickets_user_index",
-        sql: r#"CREATE INDEX IF NOT EXISTS idx_tickets_user ON tickets(user_id);"#,
+        sql: r"CREATE INDEX IF NOT EXISTS idx_tickets_user ON tickets(user_id);",
     },
     Migration {
         name: "create_tokens_created_at_index",
-        sql: r#"CREATE INDEX IF NOT EXISTS idx_tokens_created_at ON tokens(created_at);"#,
+        sql: r"CREATE INDEX IF NOT EXISTS idx_tokens_created_at ON tokens(created_at);",
     },
 ];
 
@@ -84,10 +84,10 @@ impl Database {
             .map_err(|e| format!("Failed to set WAL mode: {e}"))?;
 
         conn.execute(
-            r#"CREATE TABLE IF NOT EXISTS _migrations (
+            r"CREATE TABLE IF NOT EXISTS _migrations (
                 name TEXT PRIMARY KEY,
                 applied_at TEXT NOT NULL DEFAULT (datetime('now'))
-            );"#,
+            );",
             (),
         )
         .await
