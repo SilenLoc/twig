@@ -21,7 +21,6 @@ fn render_index(
 ) -> maud::Markup {
     maud::html! {
         section class="fig-pagehead" {
-            h1 class="fig-display-xl" { "Namespaces" }
             @if username.is_some() {
                 div class="fig-cluster" {
                     a class="fig-btn fig-btn--primary" href="/auth/namespace" { "Create namespace" }
@@ -29,7 +28,6 @@ fn render_index(
             }
         }
 
-        div class="fig-optic-rule fig-optic-rule--column" aria-hidden="true" {}
 
         div class="fig-stack" {
             form class="fig-search" role="search" method="GET" action="/" {
@@ -182,54 +180,6 @@ mod tests {
     }
 
     #[test]
-    fn test_page_head_is_a_single_quiet_word() {
-        let html = render("", None, &[]);
-        assert!(
-            html.contains("<section class=\"fig-pagehead\">"),
-            "the page opens on a quiet head: {html}"
-        );
-        assert!(
-            html.contains("<h1 class=\"fig-display-xl\">Namespaces</h1>"),
-            "the head is one fixed word, set quiet: {html}"
-        );
-        assert_eq!(
-            html.matches("<h1").count(),
-            1,
-            "exactly one h1 per page, and it is the head: {html}"
-        );
-        let title = &html[index_of(&html, "<h1")..index_of(&html, "</h1>")];
-        assert!(
-            !title.contains("NAMESPACES"),
-            "display uppercasing comes from CSS, never from a Rust literal: {html}"
-        );
-    }
-
-    #[test]
-    fn test_optic_rule_terminates_the_page_head() {
-        let html = render("", Some("silen"), &[namespace("acme", "silen")]);
-        assert!(
-            html.contains(
-                "<div class=\"fig-optic-rule fig-optic-rule--column\" aria-hidden=\"true\">"
-            ),
-            "the head rule is decorative and page-column wide: {html}"
-        );
-        let rule = index_of(&html, "class=\"fig-optic-rule");
-        assert!(
-            index_of(&html, "class=\"fig-pagehead\"") < rule,
-            "the rule closes the head: {html}"
-        );
-        assert!(
-            rule < index_of(&html, "fig-panel"),
-            "the rule is the whole transition into the data zone: {html}"
-        );
-        assert_eq!(
-            html.matches("class=\"fig-optic-rule").count(),
-            1,
-            "this page owns exactly one optic rule; the masthead owns the other: {html}"
-        );
-    }
-
-    #[test]
     fn test_head_carries_the_single_create_action_for_signed_in_users() {
         let html = render("", Some("silen"), &[]);
         assert!(
@@ -238,10 +188,6 @@ mod tests {
                  href=\"/auth/namespace\">Create namespace</a></div>"
             ),
             "one primary action, inside the head, pointing at the unchanged URL: {html}"
-        );
-        assert!(
-            index_of(&html, "fig-cluster") < index_of(&html, "class=\"fig-optic-rule"),
-            "the action belongs to the head, not the data zone: {html}"
         );
         assert_eq!(
             html.matches("fig-btn--primary").count(),

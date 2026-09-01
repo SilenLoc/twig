@@ -44,7 +44,7 @@ impl Tab {
 }
 
 fn render_tabs(active: Tab) -> maud::Markup {
-    let tabs = [(Tab::Docs, "Docs"), (Tab::About, "About")];
+    let tabs = [(Tab::Docs, "Documentation"), (Tab::About, "About")];
     maud::html! {
         nav class="fig-tabs" aria-label="Information views" {
             @for (tab, label) in tabs {
@@ -137,10 +137,6 @@ fn render_about_tab() -> maud::Markup {
 
 fn render_page(active: Tab, body: &maud::Markup) -> maud::Markup {
     maud::html! {
-        section class="fig-pagehead" {
-            h1 class="fig-display-xl" { "Information" }
-        }
-        div class="fig-optic-rule fig-optic-rule--column" aria-hidden="true" {}
         (render_tabs(active))
         (body)
     }
@@ -189,11 +185,6 @@ mod tests {
         html.split("<a ")
             .find(|anchor| anchor.contains(needle))
             .unwrap_or_else(|| panic!("expected an anchor for {needle}\n{html}"))
-    }
-
-    fn index_of(html: &str, needle: &str) -> usize {
-        html.find(needle)
-            .unwrap_or_else(|| panic!("expected markup to contain {needle}\n{html}"))
     }
 
     #[test]
@@ -304,25 +295,6 @@ mod tests {
             "{html}"
         );
         assert!(html.contains("class=\"fig-md fig-md--prose\""), "{html}");
-    }
-
-    #[test]
-    fn test_render_page_opens_with_the_head_and_optic_baseline() {
-        let html = render_page(Tab::About, &render_about_tab()).into_string();
-        assert!(
-            html.starts_with(
-                "<section class=\"fig-pagehead\"><h1 class=\"fig-display-xl\">Information</h1></section>"
-            ),
-            "the head is the first block and owns the only page h1: {html}"
-        );
-        assert_eq!(html.matches("<h1").count(), 1, "{html}");
-        assert!(
-            index_of(
-                &html,
-                "class=\"fig-optic-rule fig-optic-rule--column\" aria-hidden=\"true\""
-            ) < index_of(&html, "<nav class=\"fig-tabs\""),
-            "the optic rule closes the head, above the tabs: {html}"
-        );
     }
 
     #[test]

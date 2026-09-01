@@ -35,9 +35,7 @@ fn render_settings(
         }
 
         section class="fig-pagehead" {
-            h1 class="fig-display-xl" { "Settings" }
         }
-        div class="fig-optic-rule fig-optic-rule--column" aria-hidden="true" {}
 
         div class="fig-bento" {
             (render_profile_panel(user))
@@ -525,7 +523,7 @@ mod tests {
     }
 
     #[test]
-    fn test_settings_leads_with_crumbs_head_and_optic_baseline() {
+    fn test_settings_leads_with_crumbs_and_page_head() {
         let html = populated_html();
         assert!(
             html.contains("<nav class=\"fig-crumbs fig-crumbs--page\" aria-label=\"Breadcrumb\">"),
@@ -539,29 +537,11 @@ mod tests {
             html.contains("<span aria-current=\"page\">Settings</span>"),
             "final crumb is a non-link current segment: {html}"
         );
-        assert_eq!(
-            html.matches("<h1").count(),
-            1,
-            "exactly one h1 per page: {html}"
-        );
-        assert!(
-            html.contains("<h1 class=\"fig-display-xl\">Settings</h1>"),
-            "fixed page word renders at Display/xl, uppercased by CSS: {html}"
-        );
         let crumbs = index_of(&html, "fig-crumbs");
         let head = index_of(&html, "<section class=\"fig-pagehead\">");
-        let optic = index_of(&html, "fig-optic-rule fig-optic-rule--column");
         assert!(
-            crumbs < head && head < optic,
-            "crumbs sit above the head, the optic rule closes it: {html}"
-        );
-        assert!(
-            html.contains("class=\"fig-optic-rule fig-optic-rule--column\" aria-hidden=\"true\""),
-            "the head rule is decorative: {html}"
-        );
-        assert!(
-            index_of(&html, "fig-bento") > optic,
-            "the bento starts below the optic baseline: {html}"
+            crumbs < head && head < index_of(&html, "fig-bento"),
+            "crumbs sit above the page head and bento: {html}"
         );
     }
 

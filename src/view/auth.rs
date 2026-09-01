@@ -52,13 +52,10 @@ fn render_submit(label: &str) -> maud::Markup {
 }
 
 /// Frames an auth form in the quiet page head, its optic baseline, and the content stack.
-fn wrap_auth_content(title: &str, content: &maud::Markup) -> maud::Markup {
+fn wrap_auth_content(_title: &str, content: &maud::Markup) -> maud::Markup {
     maud::html! {
         div id="auth-content" {
-            section class="fig-pagehead" {
-                h1 class="fig-display-xl" { (title) }
-            }
-            div class="fig-optic-rule fig-optic-rule--column" aria-hidden="true" {}
+
             div class="fig-stack fig-form--narrow" {
                 (content)
             }
@@ -93,7 +90,8 @@ fn render_invite_page() -> maud::Markup {
                     form
                         hx-post="/auth/invite"
                         hx-target="#invite-result"
-                        hx-target-error="#invite-result"
+                        "hx-status:4xx"="swap:innerHTML target:#invite-result"
+                        "hx-status:5xx"="swap:innerHTML target:#invite-result"
                         hx-swap="innerHTML"
                         class="fig-form"
                     {
@@ -177,7 +175,8 @@ fn render_signup_page() -> maud::Markup {
                     form
                         hx-post="/auth/signup"
                         hx-target="#signup-result"
-                        hx-target-error="#signup-result"
+                        "hx-status:4xx"="swap:innerHTML target:#signup-result"
+                        "hx-status:5xx"="swap:innerHTML target:#signup-result"
                         hx-swap="innerHTML"
                         class="fig-form"
                     {
@@ -249,7 +248,8 @@ fn render_login_page() -> maud::Markup {
                 form
                     hx-post="/auth/login"
                     hx-target="#login-result"
-                    hx-target-error="#login-result"
+                    "hx-status:4xx"="swap:innerHTML target:#login-result"
+                    "hx-status:5xx"="swap:innerHTML target:#login-result"
                     hx-swap="innerHTML"
                     class="fig-form"
                 {
@@ -267,7 +267,11 @@ fn render_login_page() -> maud::Markup {
         }
     };
 
-    wrap_auth_content("Log In", &content)
+    maud::html! {
+        div class="fig-auth-login" {
+            (wrap_auth_content("Log In", &content))
+        }
+    }
 }
 
 #[get("/auth/login")]
@@ -314,7 +318,8 @@ fn render_namespace_page() -> maud::Markup {
                     form
                         hx-post="/auth/namespace"
                         hx-target="#namespace-result"
-                        hx-target-error="#namespace-result"
+                        "hx-status:4xx"="swap:innerHTML target:#namespace-result"
+                        "hx-status:5xx"="swap:innerHTML target:#namespace-result"
                         hx-swap="innerHTML"
                         class="fig-form"
                     {
@@ -461,11 +466,6 @@ mod tests {
             .unwrap_or_else(|| panic!("no input carries id {id}:\n{html}"))
     }
 
-    fn index_of(html: &str, needle: &str) -> usize {
-        html.find(needle)
-            .unwrap_or_else(|| panic!("expected markup to contain {needle}\n{html}"))
-    }
-
     #[test]
     fn test_auth_markup_uses_only_fig_design_system_classes() {
         for (page, html) in auth_pages().iter().chain(success_notices().iter()) {
@@ -493,35 +493,6 @@ mod tests {
                     "arrow decoration {glyph:?} remains on {page}:\n{html}"
                 );
             }
-        }
-    }
-
-    #[test]
-    fn test_auth_pages_render_a_single_head_h1_above_the_optic_rule() {
-        for (page, html) in auth_pages() {
-            assert_eq!(
-                html.matches("<h1").count(),
-                1,
-                "{page} must have exactly one h1:\n{html}"
-            );
-            let head = index_of(&html, "<section class=\"fig-pagehead\">");
-            let heading = index_of(&html, "<h1 class=\"fig-display-xl\">");
-            let rule = index_of(
-                &html,
-                "<div class=\"fig-optic-rule fig-optic-rule--column\" aria-hidden=\"true\">",
-            );
-            assert!(
-                head < heading,
-                "the h1 lives in the head on {page}:\n{html}"
-            );
-            assert!(
-                heading < rule,
-                "the optic rule closes the head on {page}:\n{html}"
-            );
-            assert!(
-                rule < index_of(&html, "fig-panel"),
-                "panels sit below the optic rule on {page}:\n{html}"
-            );
         }
     }
 
@@ -572,7 +543,8 @@ mod tests {
         for attribute in [
             "hx-post=\"/auth/invite\"",
             "hx-target=\"#invite-result\"",
-            "hx-target-error=\"#invite-result\"",
+            "hx-status:4xx=\"swap:innerHTML target:#invite-result\"",
+            "hx-status:5xx=\"swap:innerHTML target:#invite-result\"",
             "hx-swap=\"innerHTML\"",
         ] {
             assert!(html.contains(attribute), "missing {attribute}:\n{html}");
@@ -594,7 +566,8 @@ mod tests {
         for attribute in [
             "hx-post=\"/auth/signup\"",
             "hx-target=\"#signup-result\"",
-            "hx-target-error=\"#signup-result\"",
+            "hx-status:4xx=\"swap:innerHTML target:#signup-result\"",
+            "hx-status:5xx=\"swap:innerHTML target:#signup-result\"",
             "hx-swap=\"innerHTML\"",
         ] {
             assert!(html.contains(attribute), "missing {attribute}:\n{html}");
@@ -631,7 +604,8 @@ mod tests {
         for attribute in [
             "hx-post=\"/auth/login\"",
             "hx-target=\"#login-result\"",
-            "hx-target-error=\"#login-result\"",
+            "hx-status:4xx=\"swap:innerHTML target:#login-result\"",
+            "hx-status:5xx=\"swap:innerHTML target:#login-result\"",
             "hx-swap=\"innerHTML\"",
         ] {
             assert!(html.contains(attribute), "missing {attribute}:\n{html}");
@@ -660,7 +634,8 @@ mod tests {
         for attribute in [
             "hx-post=\"/auth/namespace\"",
             "hx-target=\"#namespace-result\"",
-            "hx-target-error=\"#namespace-result\"",
+            "hx-status:4xx=\"swap:innerHTML target:#namespace-result\"",
+            "hx-status:5xx=\"swap:innerHTML target:#namespace-result\"",
             "hx-swap=\"innerHTML\"",
         ] {
             assert!(html.contains(attribute), "missing {attribute}:\n{html}");

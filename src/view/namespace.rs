@@ -111,7 +111,6 @@ fn render_namespace(
             }
         }
 
-        div class="fig-optic-rule fig-optic-rule--column" aria-hidden="true" {}
 
         div class="fig-stack" {
             form class="fig-search" role="search" method="GET" action=(namespace_href) {
@@ -133,10 +132,7 @@ fn render_namespace(
                 div id="create-repo-container" {}
             }
 
-            section class="fig-panel fig-panel--flush" aria-labelledby="repositories-heading" {
-                header class="fig-panel-head" {
-                    h2 id="repositories-heading" class="fig-eyebrow" { "REPOSITORIES" }
-                }
+            section class="fig-panel fig-panel--flush" {
                 div class="fig-panel-body" {
                     @if repos.is_empty() {
                         @if search_query.is_empty() {
@@ -233,9 +229,10 @@ fn render_create_repo_form(namespace: &str) -> maud::Markup {
                     class="fig-form fig-form--narrow"
                     hx-post=(format!("/{namespace}/create-repo"))
                     hx-target="#create-repo-result"
-                    hx-target-error="#create-repo-result"
+                    "hx-status:4xx"="swap:innerHTML target:#create-repo-result"
+                    "hx-status:5xx"="swap:innerHTML target:#create-repo-result"
                     hx-swap="innerHTML"
-                    hx-on::after-request="if(event.detail.successful) { setTimeout(() => { document.getElementById('create-repo-container').innerHTML = ''; window.location.reload(); }, 1500); }"
+                    "hx-on:htmx:after:request"="if(ctx.response.status >= 200 && ctx.response.status < 300) { setTimeout(() => { document.getElementById('create-repo-container').innerHTML = ''; window.location.reload(); }, 1500); }"
                 {
                     div class="fig-field" {
                         label class="fig-label" for="repo_name" { "Repository Name" }
@@ -456,19 +453,17 @@ mod tests {
             "the identifier is not restated as a title block: {html}"
         );
         assert!(
-            html.contains(
-                "<div class=\"fig-optic-rule fig-optic-rule--column\" aria-hidden=\"true\"></div>"
-            ),
-            "{html}"
-        );
-        assert!(
             index_of(&html, "class=\"fig-pagehead\"") < index_of(&html, "fig-crumbs"),
             "the trail is the page head: {html}"
         );
-        assert!(
-            index_of(&html, "<h1") < index_of(&html, "fig-optic-rule--column"),
-            "the rule closes the head: {html}"
-        );
+    }
+
+    #[test]
+    fn test_namespace_does_not_repeat_the_repository_section_heading() {
+        let html = render_namespace("acme", "", false, &[]).into_string();
+
+        assert!(!html.contains("repositories-heading"), "{html}");
+        assert!(!html.contains(">REPOSITORIES<"), "{html}");
     }
 
     #[test]
@@ -621,9 +616,10 @@ mod tests {
         for attribute in [
             "hx-post=\"/acme/create-repo\"",
             "hx-target=\"#create-repo-result\"",
-            "hx-target-error=\"#create-repo-result\"",
+            "hx-status:4xx=\"swap:innerHTML target:#create-repo-result\"",
+            "hx-status:5xx=\"swap:innerHTML target:#create-repo-result\"",
             "hx-swap=\"innerHTML\"",
-            "hx-on::after-request=\"if(event.detail.successful) { setTimeout(() =&gt; { document.getElementById('create-repo-container').innerHTML = ''; window.location.reload(); }, 1500); }\"",
+            "hx-on:htmx:after:request=\"if(ctx.response.status &gt;= 200 &amp;&amp; ctx.response.status &lt; 300) { setTimeout(() =&gt; { document.getElementById('create-repo-container').innerHTML = ''; window.location.reload(); }, 1500); }\"",
         ] {
             assert!(html.contains(attribute), "missing {attribute}: {html}");
         }

@@ -39,7 +39,7 @@ if(!e.target.closest('#fullscreen-toggle'))return;
 if(isFull()){document.exitFullscreen();}else{c.requestFullscreen();}
 });
 c.addEventListener('fullscreenchange',sync);
-c.addEventListener('htmx:afterSwap',function(){c.focus({preventScroll:true});sync();});
+c.addEventListener('htmx:after:swap',function(){c.focus({preventScroll:true});sync();});
 sync();
 })();";
 
@@ -77,6 +77,19 @@ struct ContentParams {
     path: String,
 }
 
+fn render_for_request(
+    req: &HttpRequest,
+    content: Markup,
+    username: Option<&str>,
+    page_title: &str,
+) -> Markup {
+    if req.headers().get("HX-Request").is_some() {
+        content
+    } else {
+        super::render_layout(&content, username, Some(page_title))
+    }
+}
+
 /// A rendered slide for the presentation view
 struct PresentSlide {
     html: String,
@@ -103,6 +116,17 @@ struct TabContentContext<'a> {
     content_file_bytes: Option<&'a [u8]>,
 }
 
+struct ContentHtmxContext<'a> {
+    namespace: &'a str,
+    repo: &'a str,
+    path: &'a str,
+    entries: &'a [TreeEntry],
+    file_bytes: Option<&'a [u8]>,
+    has_config: bool,
+    tabs_config: &'a [String],
+    has_present: bool,
+}
+
 #[get("/{namespace}/{repo}")]
 pub async fn handler(
     req: HttpRequest,
@@ -119,15 +143,12 @@ pub async fn handler(
         Ok(h) => h,
         Err(e) => {
             let content = render_git_error(&e);
-            return if req.headers().get("HX-Request").is_some() {
-                Ok(content)
-            } else {
-                Ok(super::render_layout(
-                    &content,
-                    username.as_deref(),
-                    Some(&page_title),
-                ))
-            };
+            return Ok(render_for_request(
+                &req,
+                content,
+                username.as_deref(),
+                &page_title,
+            ));
         }
     };
 
@@ -207,15 +228,12 @@ pub async fn tab_handler(
         Ok(h) => h,
         Err(e) => {
             let content = render_git_error(&e);
-            return if req.headers().get("HX-Request").is_some() {
-                Ok(content)
-            } else {
-                Ok(super::render_layout(
-                    &content,
-                    username.as_deref(),
-                    Some(&page_title),
-                ))
-            };
+            return Ok(render_for_request(
+                &req,
+                content,
+                username.as_deref(),
+                &page_title,
+            ));
         }
     };
 
@@ -268,7 +286,7 @@ pub async fn tab_handler(
                 content_entries: &content_entries,
                 content_file_bytes: None,
             };
-            if req.headers().get("HX-Request").is_some() {
+            let content = if req.headers().get("HX-Request").is_some() {
                 let has_config = fig_content.is_some();
                 let has_present = !fig_config.present.files.is_empty();
                 let inner = render_tab_content_inner(&ctx);
@@ -280,30 +298,28 @@ pub async fn tab_handler(
                     &fig_config.tabs,
                     has_present,
                 );
-                Ok(maud::html! {
+                maud::html! {
                     (tabs)
                     (inner)
-                })
+                }
             } else {
-                let content = render_tab_content(&ctx);
-                Ok(super::render_layout(
-                    &content,
-                    username.as_deref(),
-                    Some(&page_title),
-                ))
-            }
+                render_tab_content(&ctx)
+            };
+            Ok(render_for_request(
+                &req,
+                content,
+                username.as_deref(),
+                &page_title,
+            ))
         }
         Err(e) => {
             let content = render_git_error(&e);
-            if req.headers().get("HX-Request").is_some() {
-                Ok(content)
-            } else {
-                Ok(super::render_layout(
-                    &content,
-                    username.as_deref(),
-                    Some(&page_title),
-                ))
-            }
+            Ok(render_for_request(
+                &req,
+                content,
+                username.as_deref(),
+                &page_title,
+            ))
         }
     }
 }
@@ -361,14 +377,13 @@ pub async fn markdown_handler(
             let license_content = handle.get_license_content();
             let has_license = handle.has_license();
 
-            if req.headers().get("HX-Request").is_some() {
-                let content = render_markdown_content_only(
+            let content = if req.headers().get("HX-Request").is_some() {
+                render_markdown_content_only(
                     namespace,
                     repo,
                     file_path,
                     blob_result.ok().flatten().as_deref(),
-                );
-                Ok(content)
+                )
             } else {
                 let selected_content = blob_result.ok().flatten();
                 let present_slides = load_present_slides(&handle, &fig_config.present);
@@ -392,25 +407,23 @@ pub async fn markdown_handler(
                     content_entries: &empty_entries,
                     content_file_bytes: None,
                 };
-                let content = render_tab_content(&ctx);
-                Ok(super::render_layout(
-                    &content,
-                    username.as_deref(),
-                    Some(&page_title),
-                ))
-            }
+                render_tab_content(&ctx)
+            };
+            Ok(render_for_request(
+                &req,
+                content,
+                username.as_deref(),
+                &page_title,
+            ))
         }
         Err(e) => {
             let content = render_git_error(&e);
-            if req.headers().get("HX-Request").is_some() {
-                Ok(content)
-            } else {
-                Ok(super::render_layout(
-                    &content,
-                    username.as_deref(),
-                    Some(&page_title),
-                ))
-            }
+            Ok(render_for_request(
+                &req,
+                content,
+                username.as_deref(),
+                &page_title,
+            ))
         }
     }
 }
@@ -468,22 +481,16 @@ pub async fn content_handler(
                 handle.read_blob_bytes(&path).ok().flatten()
             };
 
-            if req.headers().get("HX-Request").is_some() {
-                let has_config = fig_content.is_some();
-                let has_present = !fig_config.present.files.is_empty();
-                let inner =
-                    render_content_view(namespace, repo, &path, &entries, file_bytes.as_deref());
-                let tabs = render_tabs(
+            let content = if req.headers().get("HX-Request").is_some() {
+                render_content_htmx(&ContentHtmxContext {
                     namespace,
                     repo,
-                    "content",
-                    has_config,
-                    &fig_config.tabs,
-                    has_present,
-                );
-                Ok(maud::html! {
-                    (tabs)
-                    (inner)
+                    path: &path,
+                    entries: &entries,
+                    file_bytes: file_bytes.as_deref(),
+                    has_config: fig_content.is_some(),
+                    tabs_config: &fig_config.tabs,
+                    has_present: !fig_config.present.files.is_empty(),
                 })
             } else {
                 let files_result = handle.list_files(Some(fig_config));
@@ -512,25 +519,23 @@ pub async fn content_handler(
                     content_entries: &entries,
                     content_file_bytes: file_bytes.as_deref(),
                 };
-                let content = render_repo(&ctx);
-                Ok(super::render_layout(
-                    &content,
-                    username.as_deref(),
-                    Some(&page_title),
-                ))
-            }
+                render_repo(&ctx)
+            };
+            Ok(render_for_request(
+                &req,
+                content,
+                username.as_deref(),
+                &page_title,
+            ))
         }
         Err(e) => {
             let content = render_git_error(&e);
-            if req.headers().get("HX-Request").is_some() {
-                Ok(content)
-            } else {
-                Ok(super::render_layout(
-                    &content,
-                    username.as_deref(),
-                    Some(&page_title),
-                ))
-            }
+            Ok(render_for_request(
+                &req,
+                content,
+                username.as_deref(),
+                &page_title,
+            ))
         }
     }
 }
@@ -750,6 +755,28 @@ fn render_not_found_for_request(
     }
 }
 
+fn render_content_htmx(ctx: &ContentHtmxContext<'_>) -> Markup {
+    let inner = render_content_view(
+        ctx.namespace,
+        ctx.repo,
+        ctx.path,
+        ctx.entries,
+        ctx.file_bytes,
+    );
+    let tabs = render_tabs(
+        ctx.namespace,
+        ctx.repo,
+        "content",
+        ctx.has_config,
+        ctx.tabs_config,
+        ctx.has_present,
+    );
+    maud::html! {
+        (tabs)
+        (inner)
+    }
+}
+
 /// The page head: the trail is the whole heading zone, with the repository
 /// name as its highlighted final segment, so the tabs follow it directly.
 fn render_repo_crumbs(namespace: &str, repo: &str) -> Markup {
@@ -782,7 +809,7 @@ fn render_tabs(
     // Only add markdown tab if there are markdown files
     if tabs_config.is_empty() {
         // Show all available tabs
-        all_tabs.push(("markdown", "Markdown"));
+        all_tabs.push(("markdown", "Documentation"));
         all_tabs.push(("content", "Content"));
 
         all_tabs.push(("commits", "Commits"));
@@ -797,7 +824,7 @@ fn render_tabs(
         // Use configured tabs
         for tab in tabs_config {
             match tab.as_str() {
-                "markdown" => all_tabs.push(("markdown", "Markdown")),
+                "markdown" => all_tabs.push(("markdown", "Documentation")),
                 "content" => all_tabs.push(("content", "Content")),
                 "commits" => all_tabs.push(("commits", "Commits")),
                 "config" if has_config => all_tabs.push(("config", "Config")),
@@ -942,7 +969,6 @@ fn render_tab_content_inner(ctx: &TabContentContext<'_>) -> Markup {
 fn render_commits_view(commits: &[Commit]) -> Markup {
     maud::html! {
         div class="fig-stack" {
-            h2 class="fig-section" { "Commits" }
             @if commits.is_empty() {
                 (render_empty("NO COMMITS", "This repository has no commits yet."))
             } @else {
@@ -982,7 +1008,6 @@ fn render_config_view(fig_content: Option<&str>, fig_filename: Option<&str>) -> 
 fn render_license_view(license_content: Option<&str>) -> Markup {
     maud::html! {
         div class="fig-stack" {
-            h2 class="fig-section" { "License" }
             @if let Some(content) = license_content {
                 div class="fig-md fig-md--boxed" {
                     (maud::PreEscaped(content))
@@ -1106,7 +1131,6 @@ fn render_content_row(href: &str, push: &str, entry: &TreeEntry) -> Markup {
 fn render_content_dir(namespace: &str, repo: &str, path: &str, entries: &[TreeEntry]) -> Markup {
     maud::html! {
         div class="fig-stack" {
-            h2 class="fig-section" { "Files" }
             (render_content_breadcrumbs(namespace, repo, path))
 
             @if entries.is_empty() && path.is_empty() {
@@ -1654,7 +1678,7 @@ mod tests {
         let html = render_tabs("acme", "my-project", "markdown", false, &[], false).into_string();
         assert_eq!(
             tab_labels(&html),
-            vec!["Markdown", "Content", "Commits", "License"],
+            vec!["Documentation", "Content", "Commits", "License"],
             "unconfigured repositories hide Config and Present: {html}"
         );
 

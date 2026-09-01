@@ -284,6 +284,19 @@ body.fig-shell {
     padding-block-end: var(--fig-space-24);
 }
 
+.fig-auth-login {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-block-size: calc(100dvh - var(--fig-masthead-h) - 1px);
+    margin-block-end: calc(-1 * var(--fig-space-24));
+    padding-block: var(--fig-space-10);
+}
+
+.fig-auth-login > #auth-content {
+    inline-size: 100%;
+}
+
 @media (min-width: 48rem) {
     .fig-optic-rule--column {
         margin-block-end: var(--fig-space-12);
@@ -651,7 +664,12 @@ body.fig-shell {
     border-block-end: 1px solid var(--fig-rule);
     overflow-x: auto;
     overscroll-behavior-x: contain;
+    scrollbar-width: none;
     min-inline-size: 0;
+}
+
+.fig-tabs::-webkit-scrollbar {
+    display: none;
 }
 
 .fig-tab {
@@ -806,6 +824,7 @@ body.fig-shell {
 
 .fig-form--narrow {
     max-inline-size: var(--fig-measure-form);
+    margin-inline: auto;
 }
 
 .fig-form-actions {

@@ -32,10 +32,14 @@ pub fn render_layout(
                 link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&display=swap";
                 link rel="stylesheet" href="/assets/t.css";
                 link rel="stylesheet" href="/assets/fig.css";
+                meta name="htmx-config" content=(r#"{"implicitInheritance":true,"noSwap":[204,304]}"#);
                 script src="/assets/h.js" {}
-                script src="/assets/hx-response-targets.js" {}
             }
-            body hx-ext="response-targets" class="fig-shell" {
+            body
+                class="fig-shell"
+                "hx-status:4xx"="swap:none"
+                "hx-status:5xx"="swap:none"
+            {
                 a class="fig-skip" href="#main" { "Skip to content" }
                 header class="fig-masthead" {
                     div class="fig-page" {
@@ -206,9 +210,10 @@ mod tests {
     #[test]
     fn test_layout_preserves_htmx_wiring() {
         let html = layout_html(None);
-        assert!(html.contains("hx-ext=\"response-targets\""), "{html}");
+        assert!(html.contains("implicitInheritance"), "{html}");
+        assert!(html.contains("&quot;noSwap&quot;:[204,304]"), "{html}");
+        assert!(html.contains("hx-status:4xx=\"swap:none\""), "{html}");
         assert!(html.contains("/assets/h.js"), "{html}");
-        assert!(html.contains("/assets/hx-response-targets.js"), "{html}");
     }
 
     #[test]
