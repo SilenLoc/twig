@@ -13,6 +13,36 @@ use crate::{
 
 use super::session_auth::get_username_from_request;
 
+/// Presentation keyboard and fullscreen wiring, scoped to `#present-container`.
+/// DESIGN.md 5.17 forbids a global key handler: ArrowLeft/ArrowRight are only
+/// claimed while focus is inside the container or the container is fullscreen,
+/// and `preventDefault` runs only when a slide actually changes.
+const PRESENT_SCRIPT: &str = r"(function(){
+var c=document.getElementById('present-container');
+if(!c||c.dataset.figPresent)return;
+c.dataset.figPresent='1';
+var isFull=function(){return document.fullscreenElement===c;};
+var sync=function(){
+var f=c.querySelector('#fullscreen-toggle');
+if(f)f.textContent=isFull()?'Exit fullscreen':'Fullscreen';
+};
+c.addEventListener('keydown',function(e){
+if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;
+if(!isFull()&&!c.contains(document.activeElement))return;
+var b=c.querySelector(e.key==='ArrowLeft'?'#prev-slide':'#next-slide');
+if(!b||b.disabled)return;
+e.preventDefault();
+b.click();
+});
+c.addEventListener('click',function(e){
+if(!e.target.closest('#fullscreen-toggle'))return;
+if(isFull()){document.exitFullscreen();}else{c.requestFullscreen();}
+});
+c.addEventListener('fullscreenchange',sync);
+c.addEventListener('htmx:afterSwap',function(){c.focus({preventScroll:true});sync();});
+sync();
+})();";
+
 #[derive(Deserialize)]
 struct Params {
     namespace: String,
@@ -82,6 +112,7 @@ pub async fn handler(
 ) -> AwResult<Markup> {
     let namespace = &params.namespace;
     let repo = &params.repo;
+    let page_title = format!("{namespace}/{repo}");
     let username = get_username_from_request(&req, &auth_state).await;
 
     let handle = match RepoHandle::open(server.project_root(), namespace, repo) {
@@ -91,7 +122,11 @@ pub async fn handler(
             return if req.headers().get("HX-Request").is_some() {
                 Ok(content)
             } else {
-                Ok(super::render_layout(&content, username.as_deref()))
+                Ok(super::render_layout(
+                    &content,
+                    username.as_deref(),
+                    Some(&page_title),
+                ))
             };
         }
     };
@@ -120,22 +155,26 @@ pub async fn handler(
             let has_license = handle.has_license();
             let content_entries = handle.list_dir("", Some(fig_config)).unwrap_or_default();
 
-            render_repo(
+            let ctx = TabContentContext {
                 namespace,
                 repo,
-                &commits,
-                &markdown_files,
-                default_file,
-                default_content.as_deref(),
+                tab: default_tab(&fig_config.tabs, &markdown_files),
+                commits: &commits,
+                markdown_files: &markdown_files,
+                selected_md_file: default_file,
+                selected_content: default_content.as_deref(),
                 fig_content,
                 fig_filename,
-                &fig_config.tabs,
-                &fig_config.present,
-                &present_slides,
-                Some(&license_content),
+                tabs_config: &fig_config.tabs,
+                present_config: &fig_config.present,
+                present_slides: &present_slides,
+                license_content: Some(&license_content),
                 has_license,
-                &content_entries,
-            )
+                content_path: "",
+                content_entries: &content_entries,
+                content_file_bytes: None,
+            };
+            render_repo(&ctx)
         }
         Err(e) => render_git_error(&e),
     };
@@ -143,7 +182,11 @@ pub async fn handler(
     if req.headers().get("HX-Request").is_some() {
         Ok(content)
     } else {
-        Ok(super::render_layout(&content, username.as_deref()))
+        Ok(super::render_layout(
+            &content,
+            username.as_deref(),
+            Some(&page_title),
+        ))
     }
 }
 
@@ -157,6 +200,7 @@ pub async fn tab_handler(
     let namespace = &params.namespace;
     let repo = &params.repo;
     let tab = &params.tab;
+    let page_title = format!("{namespace}/{repo}");
     let username = get_username_from_request(&req, &auth_state).await;
 
     let handle = match RepoHandle::open(server.project_root(), namespace, repo) {
@@ -166,7 +210,11 @@ pub async fn tab_handler(
             return if req.headers().get("HX-Request").is_some() {
                 Ok(content)
             } else {
-                Ok(super::render_layout(&content, username.as_deref()))
+                Ok(super::render_layout(
+                    &content,
+                    username.as_deref(),
+                    Some(&page_title),
+                ))
             };
         }
     };
@@ -238,7 +286,11 @@ pub async fn tab_handler(
                 })
             } else {
                 let content = render_tab_content(&ctx);
-                Ok(super::render_layout(&content, username.as_deref()))
+                Ok(super::render_layout(
+                    &content,
+                    username.as_deref(),
+                    Some(&page_title),
+                ))
             }
         }
         Err(e) => {
@@ -246,7 +298,11 @@ pub async fn tab_handler(
             if req.headers().get("HX-Request").is_some() {
                 Ok(content)
             } else {
-                Ok(super::render_layout(&content, username.as_deref()))
+                Ok(super::render_layout(
+                    &content,
+                    username.as_deref(),
+                    Some(&page_title),
+                ))
             }
         }
     }
@@ -262,10 +318,15 @@ pub async fn markdown_handler(
     let namespace = &params.namespace;
     let repo = &params.repo;
     let file_path = &params.file_path;
+    let page_title = format!("{namespace}/{repo}");
     let username = get_username_from_request(&req, &auth_state).await;
 
     if !is_safe_repo_path(file_path) {
-        return Ok(render_not_found_for_request(&req, username.as_deref()));
+        return Ok(render_not_found_for_request(
+            &req,
+            username.as_deref(),
+            &page_title,
+        ));
     }
 
     let handle = match RepoHandle::open(server.project_root(), namespace, repo) {
@@ -275,7 +336,11 @@ pub async fn markdown_handler(
             return if req.headers().get("HX-Request").is_some() {
                 Ok(content)
             } else {
-                Ok(super::render_layout(&content, username.as_deref()))
+                Ok(super::render_layout(
+                    &content,
+                    username.as_deref(),
+                    Some(&page_title),
+                ))
             };
         }
     };
@@ -328,7 +393,11 @@ pub async fn markdown_handler(
                     content_file_bytes: None,
                 };
                 let content = render_tab_content(&ctx);
-                Ok(super::render_layout(&content, username.as_deref()))
+                Ok(super::render_layout(
+                    &content,
+                    username.as_deref(),
+                    Some(&page_title),
+                ))
             }
         }
         Err(e) => {
@@ -336,7 +405,11 @@ pub async fn markdown_handler(
             if req.headers().get("HX-Request").is_some() {
                 Ok(content)
             } else {
-                Ok(super::render_layout(&content, username.as_deref()))
+                Ok(super::render_layout(
+                    &content,
+                    username.as_deref(),
+                    Some(&page_title),
+                ))
             }
         }
     }
@@ -352,10 +425,15 @@ pub async fn content_handler(
     let namespace = &params.namespace;
     let repo = &params.repo;
     let path = params.path.trim_matches('/').to_string();
+    let page_title = format!("{namespace}/{repo}");
     let username = get_username_from_request(&req, &auth_state).await;
 
     if !is_safe_repo_path(&path) {
-        return Ok(render_not_found_for_request(&req, username.as_deref()));
+        return Ok(render_not_found_for_request(
+            &req,
+            username.as_deref(),
+            &page_title,
+        ));
     }
 
     let handle = match RepoHandle::open(server.project_root(), namespace, repo) {
@@ -365,7 +443,11 @@ pub async fn content_handler(
             return if req.headers().get("HX-Request").is_some() {
                 Ok(content)
             } else {
-                Ok(super::render_layout(&content, username.as_deref()))
+                Ok(super::render_layout(
+                    &content,
+                    username.as_deref(),
+                    Some(&page_title),
+                ))
             };
         }
     };
@@ -430,8 +512,12 @@ pub async fn content_handler(
                     content_entries: &entries,
                     content_file_bytes: file_bytes.as_deref(),
                 };
-                let content = render_tab_content(&ctx);
-                Ok(super::render_layout(&content, username.as_deref()))
+                let content = render_repo(&ctx);
+                Ok(super::render_layout(
+                    &content,
+                    username.as_deref(),
+                    Some(&page_title),
+                ))
             }
         }
         Err(e) => {
@@ -439,7 +525,11 @@ pub async fn content_handler(
             if req.headers().get("HX-Request").is_some() {
                 Ok(content)
             } else {
-                Ok(super::render_layout(&content, username.as_deref()))
+                Ok(super::render_layout(
+                    &content,
+                    username.as_deref(),
+                    Some(&page_title),
+                ))
             }
         }
     }
@@ -455,6 +545,7 @@ pub async fn slide_handler(
     let namespace = &params.namespace;
     let repo = &params.repo;
     let index = params.index;
+    let page_title = format!("{namespace}/{repo}");
     let username = get_username_from_request(&req, &auth_state).await;
 
     let handle = match RepoHandle::open(server.project_root(), namespace, repo) {
@@ -464,7 +555,11 @@ pub async fn slide_handler(
             return if req.headers().get("HX-Request").is_some() {
                 Ok(content)
             } else {
-                Ok(super::render_layout(&content, username.as_deref()))
+                Ok(super::render_layout(
+                    &content,
+                    username.as_deref(),
+                    Some(&page_title),
+                ))
             };
         }
     };
@@ -473,20 +568,26 @@ pub async fn slide_handler(
     let present_slides = load_present_slides(&handle, &fig_result.config.present);
 
     if index >= present_slides.len() {
-        let content = maud::html! {
-            div class="pa3 white-50" { "Slide not found" }
-        };
+        let content = render_empty("NOT FOUND", "Slide not found");
         if req.headers().get("HX-Request").is_some() {
             Ok(content)
         } else {
-            Ok(super::render_layout(&content, username.as_deref()))
+            Ok(super::render_layout(
+                &content,
+                username.as_deref(),
+                Some(&page_title),
+            ))
         }
     } else {
         let content = render_slide_content(namespace, repo, index, &present_slides);
         if req.headers().get("HX-Request").is_some() {
             Ok(content)
         } else {
-            Ok(super::render_layout(&content, username.as_deref()))
+            Ok(super::render_layout(
+                &content,
+                username.as_deref(),
+                Some(&page_title),
+            ))
         }
     }
 }
@@ -608,6 +709,17 @@ fn markdown_to_html(markdown: &str, namespace: &str, repo: &str, base_dir: &str)
     html_output
 }
 
+/// An Empty State (DESIGN.md 5.13). The eyebrow names the condition in words so
+/// the meaning never rests on colour alone.
+fn render_empty(eyebrow: &str, body: &str) -> Markup {
+    maud::html! {
+        div class="fig-empty" {
+            p class="fig-eyebrow" { (eyebrow) }
+            p class="fig-empty-body" { (body) }
+        }
+    }
+}
+
 fn render_git_error(e: &git2::Error) -> Markup {
     let code = e.code();
     let code = format!("{code:?}");
@@ -615,30 +727,41 @@ fn render_git_error(e: &git2::Error) -> Markup {
     let klass = format!("{klass:?}");
     let message = e.message();
     maud::html! {
-        p { (message) }
-        p { (code) }
-        p { (klass) }
+        div class="fig-notice fig-notice--danger" role="alert" {
+            p class="fig-eyebrow" { "ERROR" }
+            p class="fig-notice-body" { (message) }
+            p class="fig-notice-body fig-mono fig-ink-tertiary" { (code) " / " (klass) }
+        }
     }
 }
 
 /// Renders a "Path not found" response, wrapping it in the full layout for
 /// non-HTMX requests.
-fn render_not_found_for_request(req: &HttpRequest, username: Option<&str>) -> Markup {
-    let content = maud::html! {
-        div class="pa3 white-50 bg-black-20" { "Path not found." }
-    };
+fn render_not_found_for_request(
+    req: &HttpRequest,
+    username: Option<&str>,
+    page_title: &str,
+) -> Markup {
+    let content = render_empty("NOT FOUND", "Path not found.");
     if req.headers().get("HX-Request").is_some() {
         content
     } else {
-        super::render_layout(&content, username)
+        super::render_layout(&content, username, Some(page_title))
     }
 }
 
-/// A scrollable container for tab content
-fn scrollable_container(content: &Markup) -> Markup {
+/// The page head: the trail is the whole heading zone, with the repository
+/// name as its highlighted final segment, so the tabs follow it directly.
+fn render_repo_crumbs(namespace: &str, repo: &str) -> Markup {
     maud::html! {
-        div class="overflow-y-auto flex-auto" {
-            (content)
+        div class="fig-pagehead" {
+            nav class="fig-crumbs fig-crumbs--page" aria-label="Breadcrumb" {
+                a href="/" { "Namespaces" }
+                span class="fig-crumb-sep" aria-hidden="true" { "/" }
+                a href=(format!("/{namespace}")) { (namespace) }
+                span class="fig-crumb-sep" aria-hidden="true" { "/" }
+                h1 class="fig-crumb-current" aria-current="page" { (repo) }
+            }
         }
     }
 }
@@ -686,21 +809,16 @@ fn render_tabs(
     }
 
     maud::html! {
-        div id="tab-nav" hx-swap-oob="true" class="flex flex-wrap mb3 bb b--white-20" {
+        nav id="tab-nav" class="fig-tabs" aria-label="Repository views" hx-swap-oob="true" {
             @for (tab_id, tab_label) in all_tabs {
-                @let is_active = tab_id == active_tab;
-                @let active_classes = if is_active {
-                    "white bg-transparent"
-                } else {
-                    "white-50 hover-white bg-transparent"
-                };
+                @let href = format!("/{namespace}/{repo}/tab/{tab_id}");
                 a
-                    href=(format!("/{}/{}/tab/{}", namespace, repo, tab_id))
-                    class=(format!("tf-tab pa2 ph3 {} no-underline pointer", active_classes))
-                    style=(if is_active { "box-shadow: inset 0 -2px 0 #fff;" } else { "" })
-                    hx-get=(format!("/{}/{}/tab/{}", namespace, repo, tab_id))
+                    class="fig-tab"
+                    href=(href)
+                    aria-current=[(tab_id == active_tab).then_some("page")]
+                    hx-get=(href)
                     hx-target="#tab-content"
-                    hx-push-url=(format!("/{}/{}", namespace, repo))
+                    hx-push-url=(format!("/{namespace}/{repo}"))
                 {
                     (tab_label)
                 }
@@ -709,75 +827,22 @@ fn render_tabs(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn render_repo(
-    namespace: &str,
-    repo: &str,
-    commits: &[Commit],
-    markdown_files: &[String],
-    default_file: Option<&str>,
-    default_content: Option<&str>,
-    fig_content: Option<&str>,
-    fig_filename: Option<&str>,
-    tabs_config: &[String],
-    present_config: &PresentConfig,
-    present_slides: &[PresentSlide],
-    license_content: Option<&str>,
-    has_license: bool,
-    content_entries: &[TreeEntry],
-) -> Markup {
-    // Determine default tab based on configuration and available files
-    let default_tab = if !tabs_config.is_empty() {
-        // Use first configured tab
-        tabs_config[0].as_str()
-    } else if !markdown_files.is_empty() {
-        "markdown"
-    } else {
+/// The tab shown when no tab is named: the first configured one, else Markdown
+/// when the repository has markdown, else Commits.
+fn default_tab<'a>(tabs_config: &'a [String], markdown_files: &[String]) -> &'a str {
+    if let Some(first) = tabs_config.first() {
+        first.as_str()
+    } else if markdown_files.is_empty() {
         "commits"
-    };
-    let has_config = fig_content.is_some();
-    let has_present = !present_config.files.is_empty();
+    } else {
+        "markdown"
+    }
+}
 
-    let ctx = TabContentContext {
-        namespace,
-        repo,
-        tab: default_tab,
-        commits,
-        markdown_files,
-        selected_md_file: default_file,
-        selected_content: default_content,
-        fig_content,
-        fig_filename,
-        tabs_config,
-        present_config,
-        present_slides,
-        license_content,
-        has_license,
-        content_path: "",
-        content_entries,
-        content_file_bytes: None,
-    };
-
+fn render_repo(ctx: &TabContentContext<'_>) -> Markup {
     maud::html! {
-        div class="mb3 mb4-ns tf-kicker white-50" {
-            a href="/" class="link white-50 hover-white no-underline" { "Namespaces" }
-            span class="mh2" { "/" }
-            a href=(format!("/{}", namespace)) class="link white-50 hover-white no-underline" { (namespace) }
-            span class="mh2" { "/" }
-            span class="white" { (repo) }
-        }
-
-        h1 class="tf-hero white ma0 mb3 mb4-ns" style="overflow-wrap: anywhere;" {
-            (repo)
-        }
-
-        // Tab navigation
-        (render_tabs(namespace, repo, default_tab, has_config, tabs_config, has_present))
-
-        // Tab content container (scrollable)
-        div id="tab-content" {
-            (scrollable_container(&render_tab_content_inner(&ctx)))
-        }
+        (render_repo_crumbs(ctx.namespace, ctx.repo))
+        (render_tab_content(ctx))
     }
 }
 
@@ -788,9 +853,9 @@ fn render_tab_content(ctx: &TabContentContext<'_>) -> Markup {
         // Tab navigation (update active state)
         (render_tabs(ctx.namespace, ctx.repo, ctx.tab, has_config, ctx.tabs_config, has_present))
 
-        // Tab content container (scrollable)
-        div id="tab-content" {
-            (scrollable_container(&render_tab_content_inner(ctx)))
+        // Tab content container, announced on swap
+        div id="tab-content" aria-live="polite" {
+            (render_tab_content_inner(ctx))
         }
     }
 }
@@ -832,20 +897,7 @@ fn render_tab_content_inner(ctx: &TabContentContext<'_>) -> Markup {
                 ctx.markdown_files,
             )
         }
-        "commits" => {
-            maud::html! {
-                div {
-                    h2 class="tf-section mb3 white" { "Commits" }
-                    ol class="list pl0" {
-                        @for commit in ctx.commits {
-                            li class="mb3" {
-                                (render_commit(commit))
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        "commits" => render_commits_view(ctx.commits),
         "config" => render_config_view(ctx.fig_content, ctx.fig_filename),
         "content" => render_content_view(
             ctx.namespace,
@@ -854,12 +906,7 @@ fn render_tab_content_inner(ctx: &TabContentContext<'_>) -> Markup {
             ctx.content_entries,
             ctx.content_file_bytes,
         ),
-        "present" => render_present_view(
-            ctx.namespace,
-            ctx.repo,
-            ctx.present_config,
-            ctx.present_slides,
-        ),
+        "present" => render_present_view(ctx.namespace, ctx.repo, ctx.present_slides),
         "license" => render_license_view(ctx.license_content),
         _ => {
             // Unknown tab - show Markdown by default if available, then Commits
@@ -892,23 +939,41 @@ fn render_tab_content_inner(ctx: &TabContentContext<'_>) -> Markup {
     }
 }
 
+fn render_commits_view(commits: &[Commit]) -> Markup {
+    maud::html! {
+        div class="fig-stack" {
+            h2 class="fig-section" { "Commits" }
+            @if commits.is_empty() {
+                (render_empty("NO COMMITS", "This repository has no commits yet."))
+            } @else {
+                ol class="fig-commits" {
+                    @for commit in commits {
+                        (render_commit(commit))
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn render_config_view(fig_content: Option<&str>, fig_filename: Option<&str>) -> Markup {
     let config_filename = fig_filename.unwrap_or(".fig.toml");
 
     maud::html! {
-        div {
-            h2 class="tf-section mb3 white" { "Configuration" }
-            p class="f6 white-50 mb3" {
-                "Repository configuration from " (config_filename)
+        div class="fig-stack" {
+            h2 class="fig-section" { "Configuration" }
+            p class="fig-hint" {
+                "Repository configuration from " code class="fig-mono" { (config_filename) }
             }
             @if let Some(content) = fig_content {
-                pre class="pa3 bg-black-20 overflow-x-auto" {
-                    code class="f6 white lh-copy" { (content) }
+                pre class="fig-code" tabindex="0" aria-label=(format!("{config_filename} contents")) {
+                    code { (content) }
                 }
             } @else {
-                div class="pa3 white-50 bg-black-20" {
+                (render_empty(
+                    "NO CONFIGURATION",
                     "No configuration file found. Create a .fig.toml file in the repository root to configure ignore patterns."
-                }
+                ))
             }
         }
     }
@@ -916,16 +981,14 @@ fn render_config_view(fig_content: Option<&str>, fig_filename: Option<&str>) -> 
 
 fn render_license_view(license_content: Option<&str>) -> Markup {
     maud::html! {
-        div {
-            h2 class="tf-section mb3 white" { "License" }
+        div class="fig-stack" {
+            h2 class="fig-section" { "License" }
             @if let Some(content) = license_content {
-                div class="markdown-body white lh-copy pa3 bg-black-20 overflow-x-auto" {
+                div class="fig-md fig-md--boxed" {
                     (maud::PreEscaped(content))
                 }
             } @else {
-                div class="pa3 white-50 bg-black-20" {
-                    "No license information available."
-                }
+                (render_empty("NO LICENSE", "No license information available."))
             }
         }
     }
@@ -968,27 +1031,30 @@ fn breadcrumb_segments(path: &str) -> Vec<(String, String, bool)> {
 }
 
 fn render_content_breadcrumbs(namespace: &str, repo: &str, path: &str) -> Markup {
+    let segments = breadcrumb_segments(path);
     maud::html! {
-        div class="mb3 f6 white-50" style="overflow-wrap: anywhere;" {
-            @let (root_href, root_push) = content_urls(namespace, repo, "");
-            a
-                href=(root_href)
-                class="link white-50 hover-white no-underline"
-                hx-get=(root_href)
-                hx-target="#tab-content"
-                hx-push-url=(root_push)
-            {
-                (repo)
+        nav class="fig-crumbs fig-crumbs--path" aria-label="File path" {
+            @if segments.is_empty() {
+                span aria-current="page" { (repo) }
+            } @else {
+                @let (root_href, root_push) = content_urls(namespace, repo, "");
+                a
+                    href=(root_href)
+                    hx-get=(root_href)
+                    hx-target="#tab-content"
+                    hx-push-url=(root_push)
+                {
+                    (repo)
+                }
             }
-            @for (segment, acc_path, is_last) in breadcrumb_segments(path) {
-                span class="mh2 white-30" { "/" }
-                @let (href, push) = content_urls(namespace, repo, &acc_path);
+            @for (segment, acc_path, is_last) in segments {
+                span class="fig-crumb-sep" aria-hidden="true" { "/" }
                 @if is_last {
-                    span class="white" { (segment) }
+                    span aria-current="page" { (segment) }
                 } @else {
+                    @let (href, push) = content_urls(namespace, repo, &acc_path);
                     a
                         href=(href)
-                        class="link white-50 hover-white no-underline"
                         hx-get=(href)
                         hx-target="#tab-content"
                         hx-push-url=(push)
@@ -1014,54 +1080,55 @@ fn render_content_view(
     if let Some(bytes) = file_bytes {
         render_content_file(namespace, repo, path, bytes)
     } else {
-        maud::html! {
-            div class="pa3 white-50 bg-black-20" { "Path not found." }
+        render_empty("NOT FOUND", "Path not found.")
+    }
+}
+
+/// One Technical Row per tree entry. A directory is marked by its trailing
+/// slash and the primary-ink identifier; there is no icon (DESIGN.md 5.6).
+fn render_content_row(href: &str, push: &str, entry: &TreeEntry) -> Markup {
+    maud::html! {
+        a
+            class=(if entry.is_dir { "fig-row" } else { "fig-row fig-row--file" })
+            href=(href)
+            hx-get=(href)
+            hx-target="#tab-content"
+            hx-push-url=(push)
+        {
+            span class="fig-row-id" {
+                (entry.name)
+                @if entry.is_dir { "/" }
+            }
         }
     }
 }
 
 fn render_content_dir(namespace: &str, repo: &str, path: &str, entries: &[TreeEntry]) -> Markup {
     maud::html! {
-        div {
-            h2 class="tf-section mb3 white" { "Files" }
+        div class="fig-stack" {
+            h2 class="fig-section" { "Files" }
             (render_content_breadcrumbs(namespace, repo, path))
 
             @if entries.is_empty() && path.is_empty() {
-                div class="pa3 white-50 bg-black-20" { "No files in this repository." }
+                (render_empty("NO FILES", "No files in this repository."))
             } @else {
-                ul class="list pl0 bt bb b--white-20" {
-                    @if !path.is_empty() {
-                        li class="bb b--white-10" {
-                            @let parent = parent_path(path);
-                            @let (href, push) = content_urls(namespace, repo, parent);
+                div class="fig-panel fig-panel--flush" {
+                    div class="fig-list" {
+                        @if !path.is_empty() {
+                            @let (href, push) = content_urls(namespace, repo, parent_path(path));
                             a
+                                class="fig-row"
                                 href=(href)
-                                class="db pa2 white-50 hover-white no-underline"
                                 hx-get=(href)
                                 hx-target="#tab-content"
                                 hx-push-url=(push)
                             {
-                                ".."
+                                span class="fig-row-id" { ".." }
                             }
                         }
-                    }
-                    @for entry in entries {
-                        li class="bb b--white-10" {
+                        @for entry in entries {
                             @let (href, push) = content_urls(namespace, repo, &entry.path);
-                            a
-                                href=(href)
-                                class="db pa2 no-underline"
-                                style="overflow-wrap: anywhere;"
-                                hx-get=(href)
-                                hx-target="#tab-content"
-                                hx-push-url=(push)
-                            {
-                                @if entry.is_dir {
-                                    span class="fw6 white" { (entry.name) "/" }
-                                } @else {
-                                    span class="white-70 hover-white" { (entry.name) }
-                                }
-                            }
+                            (render_content_row(&href, &push, entry))
                         }
                     }
                 }
@@ -1074,23 +1141,23 @@ fn render_content_file(namespace: &str, repo: &str, path: &str, bytes: &[u8]) ->
     let is_binary = bytes.contains(&0);
 
     maud::html! {
-        div {
-            h2 class="tf-section mb3 white" style="overflow-wrap: anywhere;" { (path) }
+        div class="fig-stack" {
             (render_content_breadcrumbs(namespace, repo, path))
 
             @if is_binary {
-                div class="pa3 white-50 bg-black-20" {
-                    "Binary file (" (bytes.len()) " bytes). Not displayed."
-                }
+                (render_empty(
+                    "BINARY FILE",
+                    &format!("Binary file ({} bytes). Not displayed.", bytes.len())
+                ))
             } @else {
                 @let text = String::from_utf8_lossy(bytes).into_owned();
                 @if crate::md::is_markdown(path) {
-                    div class="markdown-body white lh-copy pa3 bg-black-20 overflow-x-auto" {
+                    div class="fig-md fig-md--boxed" {
                         (maud::PreEscaped(markdown_to_html(&text, namespace, repo, parent_path(path))))
                     }
                 } @else {
-                    pre class="pa3 bg-black-20 overflow-x-auto" {
-                        code class="f6 white lh-copy" { (text) }
+                    pre class="fig-code" tabindex="0" aria-label=(format!("{path} contents")) {
+                        code { (text) }
                     }
                 }
             }
@@ -1110,6 +1177,38 @@ fn load_present_slides(handle: &RepoHandle, present_config: &PresentConfig) -> V
         .collect()
 }
 
+/// The slide counter, zero-padded to the width of the total so the mono column
+/// never reflows as the deck advances (DESIGN.md 5.17).
+fn slide_counter(current_index: usize, slide_count: usize) -> String {
+    let width = slide_count.to_string().len();
+    format!(
+        "{:0width$} / {slide_count}",
+        current_index + 1,
+        width = width
+    )
+}
+
+fn render_slide_nav_button(id: &str, label: &str, target: Option<&str>) -> Markup {
+    maud::html! {
+        @if let Some(href) = target {
+            button
+                id=(id)
+                class="fig-btn fig-btn--quiet"
+                type="button"
+                hx-get=(href)
+                hx-target="#present-container"
+                hx-swap="innerHTML"
+            {
+                (label)
+            }
+        } @else {
+            button id=(id) class="fig-btn fig-btn--quiet" type="button" disabled {
+                (label)
+            }
+        }
+    }
+}
+
 fn render_slide_content(
     namespace: &str,
     repo: &str,
@@ -1118,106 +1217,69 @@ fn render_slide_content(
 ) -> Markup {
     let slide_count = slides.len();
     let slide = &slides[current_index];
-    let has_prev = current_index > 0;
-    let has_next = current_index < slide_count - 1;
+    let prev =
+        (current_index > 0).then(|| format!("/{namespace}/{repo}/slide/{}", current_index - 1));
+    let next = (current_index + 1 < slide_count)
+        .then(|| format!("/{namespace}/{repo}/slide/{}", current_index + 1));
 
     maud::html! {
-        div class="flex items-center justify-between mb3" {
-            div class="tf-section white" { "Presentation" }
-            div class="flex items-center" {
-                span class="f6 white-50 mr3" { (current_index + 1) " / " (slide_count) }
-                button
-                    class="tf-kicker link white-70 hover-white bg-transparent bn pointer pa1 mr2"
-                    onclick="document.getElementById('present-container').requestFullscreen()"
-                {
+        header class="fig-present-bar" {
+            p class="fig-eyebrow" { "PRESENTATION" }
+            div class="fig-present-tools" {
+                span class="fig-present-count" aria-live="polite" {
+                    (slide_counter(current_index, slide_count))
+                }
+                button id="fullscreen-toggle" class="fig-btn fig-btn--quiet" type="button" {
                     "Fullscreen"
                 }
             }
         }
 
-        div id="slides-wrapper" style="display: flex; flex-direction: column; flex-grow: 1; min-height: 0;" {
-            div
-                class="present-slide"
-                style="display: flex; align-items: center; justify-content: center; flex-grow: 1; padding: 2rem;"
-            {
-                div class="markdown-body white lh-copy" style="max-width: 800px; width: 100%;" {
-                    (maud::PreEscaped(&slide.html))
-                }
+        div id="slides-wrapper" class="fig-present-stage" {
+            article class="fig-md fig-md--slide" aria-live="polite" {
+                (maud::PreEscaped(&slide.html))
             }
         }
 
-        div class="flex items-center justify-between mt3" {
-            @if has_prev {
-                button
-                    id="prev-slide"
-                    class="f6 link white-70 hover-white bg-transparent bn pointer pa2 ph3"
-                    hx-get=(format!("/{}/{}/slide/{}", namespace, repo, current_index - 1))
-                    hx-target="#present-container"
-                    hx-swap="innerHTML"
-                {
-                    "\u{2190} Previous"
-                }
-            } @else {
-                span id="prev-slide" class="f6 white-30 pa2 ph3" { "\u{2190} Previous" }
-            }
-            div class="flex" {
+        nav class="fig-present-controls" aria-label="Slide navigation" {
+            (render_slide_nav_button("prev-slide", "\u{2190} Previous", prev.as_deref()))
+            div class="fig-ticks" role="group" aria-label="Go to slide" {
                 @for i in 0..slide_count {
-                    @let is_active = i == current_index;
-                    @let dot_classes = if is_active { "present-dot bg-white" } else { "present-dot bg-white-30" };
                     button
-                        class=(dot_classes)
-                        hx-get=(format!("/{}/{}/slide/{}", namespace, repo, i))
+                        class="fig-tick"
+                        type="button"
+                        aria-label=(format!("Slide {} of {slide_count}", i + 1))
+                        aria-current=[(i == current_index).then_some("true")]
+                        hx-get=(format!("/{namespace}/{repo}/slide/{i}"))
                         hx-target="#present-container"
                         hx-swap="innerHTML"
-                        style="width: 28px; height: 3px; margin: 0 4px; border: none; cursor: pointer; padding: 0;"
                     {}
                 }
             }
-            @if has_next {
-                button
-                    id="next-slide"
-                    class="f6 link white-70 hover-white bg-transparent bn pointer pa2 ph3"
-                    hx-get=(format!("/{}/{}/slide/{}", namespace, repo, current_index + 1))
-                    hx-target="#present-container"
-                    hx-swap="innerHTML"
-                {
-                    "Next \u{2192}"
-                }
-            } @else {
-                span id="next-slide" class="f6 white-30 pa2 ph3" { "Next \u{2192}" }
-            }
-        }
-
-        script {
-            (maud::PreEscaped("document.onkeydown=function(e){if(e.key==='ArrowLeft'){e.preventDefault();var p=document.getElementById('prev-slide');if(p&&p.tagName==='BUTTON')p.click();}else if(e.key==='ArrowRight'){e.preventDefault();var n=document.getElementById('next-slide');if(n&&n.tagName==='BUTTON')n.click();}};"))
+            (render_slide_nav_button("next-slide", "Next \u{2192}", next.as_deref()))
         }
     }
 }
 
-fn render_present_view(
-    namespace: &str,
-    repo: &str,
-    _present_config: &PresentConfig,
-    slides: &[PresentSlide],
-) -> Markup {
+fn render_present_view(namespace: &str, repo: &str, slides: &[PresentSlide]) -> Markup {
     if slides.is_empty() {
-        return maud::html! {
-            div class="pa3 white-50" {
-                "No presentation slides configured. Add a [present] section with files to your .fig.toml."
-            }
-        };
+        return render_empty(
+            "NO SLIDES",
+            "No presentation slides configured. Add a [present] section with files to your .fig.toml.",
+        );
     }
 
     maud::html! {
-        div id="present-container" style="display: flex; flex-direction: column; min-height: 50vh;" {
+        section
+            id="present-container"
+            class="fig-present"
+            tabindex="-1"
+            aria-roledescription="carousel"
+            aria-label="Presentation"
+        {
             (render_slide_content(namespace, repo, 0, slides))
         }
-        style {
-            "#present-container:fullscreen { background: black; min-height: 100vh; }"
-            "#present-container:fullscreen #slides-wrapper { flex-grow: 1; }"
-            "#present-container:fullscreen .present-slide { flex-grow: 1; }"
-            "#present-container:fullscreen .markdown-body { font-size: 1.5rem; max-width: 1200px; }"
-        }
+        script { (maud::PreEscaped(PRESENT_SCRIPT)) }
     }
 }
 
@@ -1229,44 +1291,31 @@ fn render_markdown_view(
     markdown_files: &[String],
 ) -> Markup {
     maud::html! {
-        div class="flex flex-column flex-row-ns" style="height: 100%;" {
-            // Left sidebar with markdown files
-            div class="w-100 w4-ns w5-l br-ns b--white-20 pr3-ns mb3 mb0-ns overflow-x-auto overflow-y-auto-ns" style="max-height: 70vh; min-width: 0;" {
-                @if markdown_files.len() > 1 {
-                    h3 class="tf-kicker white-50 mb2 mt0" { "Markdown Files" }
-                }
-                ul class="list pl0 flex flex-row flex-column-ns overflow-x-auto overflow-y-auto-ns mb0" {
+        div class="fig-rail-shell" {
+            // A one-file repository gets no rail at all; its only entry would
+            // point at the document already on screen (DESIGN.md 5.10).
+            @if markdown_files.len() > 1 {
+                nav class="fig-rail fig-rail--files" aria-label="Markdown files" {
+                    p class="fig-eyebrow" { "MARKDOWN FILES" }
                     @for file in markdown_files {
-                        @let is_active = file == current_file;
-                        li class="mb1 mr2 mr0-ns flex-shrink-0 flex-shrink-0-ns" {
-                            @if is_active {
-                                a
-                                    href=(format!("/{}/{}/md/{}", namespace, repo, file))
-                                    class="white fw6 no-underline db pa1 nowrap"
-                                    hx-get=(format!("/{}/{}/md/{}", namespace, repo, file))
-                                    hx-target="#markdown-view"
-                                {
-                                    (file)
-                                }
-                            }
-                            @if !is_active {
-                                a
-                                    href=(format!("/{}/{}/md/{}", namespace, repo, file))
-                                    class="white-70 hover-white no-underline db pa1 nowrap"
-                                    hx-get=(format!("/{}/{}/md/{}", namespace, repo, file))
-                                    hx-target="#markdown-view"
-                                {
-                                    (file)
-                                }
-                            }
+                        @let href = format!("/{namespace}/{repo}/md/{file}");
+                        a
+                            class="fig-rail-item"
+                            href=(href)
+                            aria-current=[(file == current_file).then_some("page")]
+                            hx-get=(href)
+                            hx-target="#markdown-view"
+                        {
+                            (file)
                         }
                     }
                 }
             }
 
-            // Right content area
-            div id="markdown-view" class="flex-auto pl0 pl3-ns overflow-y-auto" {
-                (render_markdown_content_only(namespace, repo, current_file, content))
+            div class="fig-rail-body" {
+                div id="markdown-view" aria-live="polite" {
+                    (render_markdown_content_only(namespace, repo, current_file, content))
+                }
             }
         }
     }
@@ -1283,15 +1332,12 @@ fn render_markdown_content_only(
     let html_content = content.map(|md| markdown_to_html(md, namespace, repo, base_dir));
 
     maud::html! {
-        @if let Some(ref html) = html_content {
-            div class="markdown-body white lh-copy" {
+        @if let Some(html) = html_content {
+            div class="fig-md fig-md--prose" {
                 (maud::PreEscaped(html))
             }
-        }
-        @if html_content.is_none() {
-            div class="pa3 white-50" {
-                "File not found or empty."
-            }
+        } @else {
+            (render_empty("NOT FOUND", "File not found or empty."))
         }
     }
 }
@@ -1302,15 +1348,17 @@ fn render_commit(commit: &Commit) -> Markup {
     let date = commit.date();
     let commit_message = commit.message();
     maud::html! {
-        div class="commit bt bb b--white-20 pa3" style="border-top-width: 3px;" {
-            div class="flex flex-wrap items-baseline mb2 tf-kicker" {
-                code class="mr2 white bg-transparent f6" style="letter-spacing: 0.08em;" {
+        li class="fig-commit" {
+            div class="fig-commit-meta" {
+                code class="fig-commit-hash" {
                     (hash.chars().take(7).collect::<String>())
                 }
-                span class="white-50 mr2" { (author) }
-                span class="white-30" { (date.format("%Y-%m-%d %H:%M")) }
+                span class="fig-commit-author" { (author) }
+                time class="fig-commit-date" datetime=(date.to_rfc3339()) {
+                    (date.format("%Y-%m-%d %H:%M"))
+                }
             }
-            p class="f4 ma0" style="font-weight: 600; letter-spacing: -0.01em;" { (commit_message) }
+            p class="fig-commit-msg" { (commit_message) }
         }
     }
 }
@@ -1318,6 +1366,85 @@ fn render_commit(commit: &Commit) -> Markup {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn empty_present_config() -> &'static PresentConfig {
+        static EMPTY: std::sync::OnceLock<PresentConfig> = std::sync::OnceLock::new();
+        EMPTY.get_or_init(PresentConfig::default)
+    }
+
+    /// A context with nothing configured. Tests override only the fields they
+    /// exercise, which keeps each assertion pinned to one input.
+    fn base_ctx() -> TabContentContext<'static> {
+        TabContentContext {
+            namespace: "acme",
+            repo: "my-project",
+            tab: "commits",
+            commits: &[],
+            markdown_files: &[],
+            selected_md_file: None,
+            selected_content: None,
+            fig_content: None,
+            fig_filename: None,
+            tabs_config: &[],
+            present_config: empty_present_config(),
+            present_slides: &[],
+            license_content: None,
+            has_license: false,
+            content_path: "",
+            content_entries: &[],
+            content_file_bytes: None,
+        }
+    }
+
+    fn slides(count: usize) -> Vec<PresentSlide> {
+        (0..count)
+            .map(|i| PresentSlide {
+                html: format!("<h1>Slide {i}</h1>"),
+            })
+            .collect()
+    }
+
+    fn entry(name: &str, is_dir: bool) -> TreeEntry {
+        TreeEntry {
+            name: name.to_string(),
+            path: name.to_string(),
+            is_dir,
+        }
+    }
+
+    fn classes_in(html: &str) -> Vec<String> {
+        let marker = "class=\"";
+        html.match_indices(marker)
+            .flat_map(|(start, _)| {
+                let rest = &html[start + marker.len()..];
+                let end = rest.find('"').expect("class attribute must be closed");
+                rest[..end]
+                    .split_whitespace()
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
+    fn index_of(html: &str, needle: &str) -> usize {
+        html.find(needle)
+            .unwrap_or_else(|| panic!("expected markup to contain {needle}\n{html}"))
+    }
+
+    fn count_of(html: &str, needle: &str) -> usize {
+        html.matches(needle).count()
+    }
+
+    fn tab_labels(html: &str) -> Vec<String> {
+        html.match_indices("class=\"fig-tab\"")
+            .map(|(start, _)| {
+                let rest = &html[start..];
+                let open = rest.find('>').expect("tab tag must be closed");
+                let close = rest.find("</a>").expect("tab must be closed");
+                rest[open + 1..close].to_owned()
+            })
+            .collect()
+    }
 
     #[test]
     fn test_parent_path() {
@@ -1450,5 +1577,580 @@ mod tests {
         );
         assert!(html.contains("<th>"), "Expected <th> tag in output: {html}");
         assert!(html.contains("<td>"), "Expected <td> tag in output: {html}");
+    }
+
+    #[test]
+    fn test_default_tab_prefers_configuration_then_markdown() {
+        let configured = vec!["license".to_string(), "commits".to_string()];
+        let files = vec!["README.md".to_string()];
+        assert_eq!(default_tab(&configured, &files), "license");
+        assert_eq!(default_tab(&[], &files), "markdown");
+        assert_eq!(default_tab(&[], &[]), "commits");
+    }
+
+    #[test]
+    fn test_tabs_are_an_out_of_band_labelled_nav() {
+        let html = render_tabs("acme", "my-project", "commits", true, &[], true).into_string();
+
+        assert!(
+            html.contains(
+                r#"<nav id="tab-nav" class="fig-tabs" aria-label="Repository views" hx-swap-oob="true">"#
+            ),
+            "the tab bar keeps its OOB swap identity: {html}"
+        );
+        assert_eq!(
+            count_of(&html, "hx-swap-oob"),
+            1,
+            "exactly one OOB target: {html}"
+        );
+        assert!(!html.contains("<div id=\"tab-nav\""), "{html}");
+    }
+
+    #[test]
+    fn test_tabs_preserve_every_htmx_navigation_attribute() {
+        let html = render_tabs("acme", "my-project", "commits", true, &[], true).into_string();
+        let tabs = [
+            "markdown", "content", "commits", "config", "present", "license",
+        ];
+
+        for tab in tabs {
+            let href = format!("/acme/my-project/tab/{tab}");
+            assert!(
+                html.contains(&format!("href=\"{href}\"")),
+                "missing href for {tab}: {html}"
+            );
+            assert!(
+                html.contains(&format!("hx-get=\"{href}\"")),
+                "missing hx-get for {tab}: {html}"
+            );
+        }
+        assert_eq!(count_of(&html, "hx-target=\"#tab-content\""), tabs.len());
+        assert_eq!(
+            count_of(&html, "hx-push-url=\"/acme/my-project\""),
+            tabs.len()
+        );
+    }
+
+    #[test]
+    fn test_tabs_mark_exactly_one_current_tab() {
+        let html = render_tabs("acme", "my-project", "commits", true, &[], true).into_string();
+
+        assert_eq!(
+            count_of(&html, "aria-current=\"page\""),
+            1,
+            "one current tab only: {html}"
+        );
+        let href = index_of(&html, "href=\"/acme/my-project/tab/commits\"");
+        let current = index_of(&html, "aria-current=\"page\"");
+        let label = index_of(&html, ">Commits<");
+        assert!(
+            href < current && current < label,
+            "aria-current must sit on the active tab: {html}"
+        );
+    }
+
+    #[test]
+    fn test_tabs_render_only_available_views_in_order() {
+        let html = render_tabs("acme", "my-project", "markdown", false, &[], false).into_string();
+        assert_eq!(
+            tab_labels(&html),
+            vec!["Markdown", "Content", "Commits", "License"],
+            "unconfigured repositories hide Config and Present: {html}"
+        );
+
+        let configured = [
+            "license".to_string(),
+            "bogus".to_string(),
+            "config".to_string(),
+            "present".to_string(),
+            "commits".to_string(),
+        ];
+        let html =
+            render_tabs("acme", "my-project", "license", false, &configured, true).into_string();
+        assert_eq!(
+            tab_labels(&html),
+            vec!["License", "Present", "Commits"],
+            "configured order wins and unknown or unavailable tabs are dropped: {html}"
+        );
+    }
+
+    #[test]
+    fn test_repo_page_leads_with_a_breadcrumb_head_then_the_tabs() {
+        let html = render_repo(&base_ctx()).into_string();
+
+        let crumbs = index_of(
+            &html,
+            r#"<nav class="fig-crumbs fig-crumbs--page" aria-label="Breadcrumb">"#,
+        );
+        let tabs = index_of(&html, "id=\"tab-nav\"");
+        assert!(crumbs < tabs, "the trail, then the tabs: {html}");
+        assert!(
+            !html.contains("fig-optic-rule"),
+            "the tab bar's own rule closes the head; no second rule: {html}"
+        );
+        assert!(
+            html.contains(r#"<h1 class="fig-crumb-current" aria-current="page">my-project</h1>"#),
+            "the trail's final segment is the page heading, rendered verbatim: {html}"
+        );
+        assert_eq!(count_of(&html, "<h1"), 1, "exactly one h1 per page: {html}");
+    }
+
+    #[test]
+    fn test_repo_page_announces_its_tab_panel() {
+        let html = render_repo(&base_ctx()).into_string();
+        assert!(
+            html.contains(r#"<div id="tab-content" aria-live="polite">"#),
+            "swapped tab content must be announced: {html}"
+        );
+    }
+
+    #[test]
+    fn test_commit_row_is_a_dense_machine_record() {
+        let date = chrono::DateTime::from_timestamp(1_756_000_000, 0)
+            .expect("valid timestamp")
+            .to_utc();
+        let commit = Commit::new(
+            "a1b2c3d4e5f6".to_string(),
+            "silen".to_string(),
+            date,
+            "Rewrite the theme layer".to_string(),
+        );
+        let html = render_commit(&commit).into_string();
+
+        assert!(html.starts_with(r#"<li class="fig-commit">"#), "{html}");
+        assert!(
+            html.contains(r#"<code class="fig-commit-hash">a1b2c3d</code>"#),
+            "the hash stays abbreviated to seven characters: {html}"
+        );
+        assert!(
+            html.contains(r#"<span class="fig-commit-author">silen</span>"#),
+            "{html}"
+        );
+        assert!(
+            html.contains(&format!(
+                r#"<time class="fig-commit-date" datetime="{}">"#,
+                date.to_rfc3339()
+            )),
+            "the machine timestamp travels with the readable one: {html}"
+        );
+        assert!(
+            html.contains(&date.format("%Y-%m-%d %H:%M").to_string()),
+            "{html}"
+        );
+        assert!(
+            html.contains(r#"<p class="fig-commit-msg">Rewrite the theme layer</p>"#),
+            "{html}"
+        );
+    }
+
+    #[test]
+    fn test_commits_view_falls_back_to_an_empty_state() {
+        let html = render_commits_view(&[]).into_string();
+        assert!(html.contains("fig-empty"), "{html}");
+        assert!(html.contains(">NO COMMITS<"), "{html}");
+        assert!(!html.contains("<ol"), "no empty list is rendered: {html}");
+    }
+
+    #[test]
+    fn test_content_rows_mark_directories_with_a_trailing_slash() {
+        let entries = vec![entry("src", true), entry("README.md", false)];
+        let html = render_content_dir("acme", "my-project", "", &entries).into_string();
+
+        assert!(
+            html.contains(r#"<a class="fig-row" href="/acme/my-project/content/src""#),
+            "directories keep the primary identifier treatment: {html}"
+        );
+        assert!(
+            html.contains(r#"<span class="fig-row-id">src/</span>"#),
+            "the trailing slash is the whole directory affordance: {html}"
+        );
+        assert!(
+            html.contains(
+                r#"<a class="fig-row fig-row--file" href="/acme/my-project/content/README.md""#
+            ),
+            "files drop to the secondary identifier treatment: {html}"
+        );
+        assert_eq!(
+            count_of(&html, "hx-target=\"#tab-content\""),
+            2,
+            "one htmx row per entry; the root trail is the current page, not a link: {html}"
+        );
+        assert!(html.contains("fig-panel fig-panel--flush"), "{html}");
+        assert!(html.contains("class=\"fig-list\""), "{html}");
+    }
+
+    #[test]
+    fn test_content_dir_offers_a_parent_row_below_the_root() {
+        let entries = vec![entry("main.rs", false)];
+        let html = render_content_dir("acme", "my-project", "src", &entries).into_string();
+        assert!(
+            html.contains(r##"href="/acme/my-project/tab/content" hx-get="/acme/my-project/tab/content" hx-target="#tab-content" hx-push-url="/acme/my-project""##),
+            "the parent row climbs back to the tab route: {html}"
+        );
+        assert!(
+            html.contains(r#"<span class="fig-row-id">..</span>"#),
+            "{html}"
+        );
+    }
+
+    #[test]
+    fn test_content_breadcrumbs_mark_the_final_segment_as_current() {
+        let html = render_content_breadcrumbs("acme", "my-project", "src/git").into_string();
+        assert!(
+            html.starts_with(r#"<nav class="fig-crumbs fig-crumbs--path" aria-label="File path">"#),
+            "{html}"
+        );
+        assert!(
+            html.contains(r#"<span class="fig-crumb-sep" aria-hidden="true">/</span>"#),
+            "separators are decorative: {html}"
+        );
+        assert!(
+            html.contains(r#"<span aria-current="page">git</span>"#),
+            "{html}"
+        );
+        assert_eq!(count_of(&html, "aria-current=\"page\""), 1, "{html}");
+        assert!(
+            html.contains(r##"hx-get="/acme/my-project/content/src" hx-target="#tab-content" hx-push-url="/acme/my-project/content/src""##),
+            "intermediate segments stay htmx links: {html}"
+        );
+
+        let root = render_content_breadcrumbs("acme", "my-project", "").into_string();
+        assert!(
+            root.contains(r#"<span aria-current="page">my-project</span>"#),
+            "at the root the repository itself is the current segment: {root}"
+        );
+    }
+
+    #[test]
+    fn test_markdown_rail_appears_only_for_multiple_files() {
+        let one = vec!["README.md".to_string()];
+        let html = render_markdown_view("acme", "my-project", "README.md", Some("# Hi"), &one)
+            .into_string();
+        assert!(
+            !html.contains("fig-rail-item"),
+            "a single markdown file gets no rail: {html}"
+        );
+        assert!(
+            html.contains(r#"<div id="markdown-view" aria-live="polite">"#),
+            "{html}"
+        );
+
+        let many = vec!["README.md".to_string(), "docs/guide.md".to_string()];
+        let html = render_markdown_view("acme", "my-project", "README.md", Some("# Hi"), &many)
+            .into_string();
+        assert!(
+            html.contains(r#"<nav class="fig-rail fig-rail--files" aria-label="Markdown files">"#),
+            "{html}"
+        );
+        assert!(
+            html.contains(r##"aria-current="page" hx-get="/acme/my-project/md/README.md" hx-target="#markdown-view""##),
+            "the open file is the current rail item and keeps its htmx wiring: {html}"
+        );
+        assert_eq!(count_of(&html, "aria-current=\"page\""), 1, "{html}");
+        assert_eq!(count_of(&html, "hx-target=\"#markdown-view\""), 2, "{html}");
+    }
+
+    #[test]
+    fn test_markdown_content_reports_a_missing_file() {
+        let html =
+            render_markdown_content_only("acme", "my-project", "README.md", None).into_string();
+        assert!(html.contains("fig-empty"), "{html}");
+        assert!(html.contains("File not found or empty."), "{html}");
+
+        let html = render_markdown_content_only("acme", "my-project", "README.md", Some("# Hi"))
+            .into_string();
+        assert!(
+            html.contains(r#"<div class="fig-md fig-md--prose">"#),
+            "{html}"
+        );
+    }
+
+    #[test]
+    fn test_presentation_targets_its_container_and_scopes_the_keyboard() {
+        let deck = slides(3);
+        let html = render_present_view("acme", "my-project", &deck).into_string();
+
+        assert!(
+            html.contains(
+                r#"<section id="present-container" class="fig-present" tabindex="-1" aria-roledescription="carousel" aria-label="Presentation">"#
+            ),
+            "{html}"
+        );
+        assert_eq!(
+            count_of(&html, "hx-target=\"#present-container\""),
+            4,
+            "next plus three ticks all swap the container: {html}"
+        );
+        assert_eq!(count_of(&html, "hx-swap=\"innerHTML\""), 4, "{html}");
+
+        assert!(
+            !html.contains("document.onkeydown"),
+            "the global key hijack is gone: {html}"
+        );
+        assert!(
+            !html.contains("document.addEventListener"),
+            "nothing is bound to the document: {html}"
+        );
+        assert!(
+            html.contains("c.addEventListener('keydown'"),
+            "the key listener is bound to the container: {html}"
+        );
+        assert!(
+            html.contains("c.contains(document.activeElement)"),
+            "arrow keys act only while the container owns focus: {html}"
+        );
+        assert!(
+            html.contains("document.fullscreenElement===c"),
+            "fullscreen counts as container focus: {html}"
+        );
+    }
+
+    #[test]
+    fn test_presentation_controls_are_labelled_and_bounded() {
+        let deck = slides(3);
+        let html = render_slide_content("acme", "my-project", 0, &deck).into_string();
+
+        assert!(
+            html.contains(
+                r#"<button id="prev-slide" class="fig-btn fig-btn--quiet" type="button" disabled>"#
+            ),
+            "the first slide disables Previous rather than swapping in a span: {html}"
+        );
+        assert!(
+            html.contains(r#"<button id="next-slide" class="fig-btn fig-btn--quiet" type="button" hx-get="/acme/my-project/slide/1""#),
+            "{html}"
+        );
+        assert!(
+            html.contains(r#"<div class="fig-ticks" role="group" aria-label="Go to slide">"#),
+            "{html}"
+        );
+        for i in 1..=3 {
+            assert!(
+                html.contains(&format!(r#"aria-label="Slide {i} of 3""#)),
+                "every tick names its slide: {html}"
+            );
+        }
+        assert_eq!(
+            count_of(&html, "aria-current=\"true\""),
+            1,
+            "one tick is current: {html}"
+        );
+        assert!(
+            html.contains(r#"<button id="fullscreen-toggle" class="fig-btn fig-btn--quiet" type="button">Fullscreen</button>"#),
+            "fullscreen is a real button with a visible label: {html}"
+        );
+
+        let last = render_slide_content("acme", "my-project", 2, &deck).into_string();
+        assert!(
+            last.contains(
+                r#"<button id="next-slide" class="fig-btn fig-btn--quiet" type="button" disabled>"#
+            ),
+            "the last slide disables Next: {last}"
+        );
+    }
+
+    #[test]
+    fn test_slide_counter_pads_to_the_width_of_the_deck() {
+        assert_eq!(slide_counter(0, 3), "1 / 3");
+        assert_eq!(slide_counter(2, 12), "03 / 12");
+        assert_eq!(slide_counter(11, 12), "12 / 12");
+    }
+
+    #[test]
+    fn test_present_view_without_slides_states_the_condition() {
+        let html = render_present_view("acme", "my-project", &[]).into_string();
+        assert!(html.contains("fig-empty"), "{html}");
+        assert!(html.contains(">NO SLIDES<"), "{html}");
+        assert!(
+            html.contains(
+                "No presentation slides configured. Add a [present] section with files to your .fig.toml."
+            ),
+            "{html}"
+        );
+        assert!(!html.contains("present-container"), "{html}");
+    }
+
+    #[test]
+    fn test_config_and_license_views_render_code_and_empty_states() {
+        let html = render_config_view(Some("[present]\nfiles = []"), Some(".fig")).into_string();
+        assert!(
+            html.contains(r#"<pre class="fig-code" tabindex="0" aria-label=".fig contents">"#),
+            "code blocks are keyboard scrollable and named: {html}"
+        );
+
+        let html = render_config_view(None, None).into_string();
+        assert!(html.contains(">NO CONFIGURATION<"), "{html}");
+        assert!(
+            html.contains("Create a .fig.toml file in the repository root"),
+            "the original guidance survives: {html}"
+        );
+
+        let html = render_license_view(Some("<p>MIT</p>")).into_string();
+        assert!(
+            html.contains(r#"<div class="fig-md fig-md--boxed"><p>MIT</p></div>"#),
+            "{html}"
+        );
+
+        let html = render_license_view(None).into_string();
+        assert!(html.contains(">NO LICENSE<"), "{html}");
+        assert!(html.contains("No license information available."), "{html}");
+    }
+
+    #[test]
+    fn test_content_view_reports_missing_paths_and_binary_files() {
+        let html = render_content_view("acme", "my-project", "nope.txt", &[], None).into_string();
+        assert!(
+            html.contains("Path not found."),
+            "the rejection wording is preserved verbatim: {html}"
+        );
+        assert!(html.contains("fig-empty"), "{html}");
+
+        let html = render_content_file("acme", "my-project", "logo.png", &[0, 1, 2]).into_string();
+        assert!(html.contains(">BINARY FILE<"), "{html}");
+        assert!(
+            html.contains("Binary file (3 bytes). Not displayed."),
+            "{html}"
+        );
+
+        let html =
+            render_content_file("acme", "my-project", "main.rs", b"fn main() {}").into_string();
+        assert!(
+            html.contains(r#"<pre class="fig-code" tabindex="0" aria-label="main.rs contents">"#),
+            "{html}"
+        );
+        assert!(
+            html.contains(r#"<span aria-current="page">main.rs</span>"#),
+            "the filename remains in the inner breadcrumb: {html}"
+        );
+        assert!(
+            !html.contains(r#"<h2 class="fig-section">main.rs</h2>"#),
+            "the file is not repeated as a title: {html}"
+        );
+        assert!(html.contains("fn main() {}"), "{html}");
+
+        let html =
+            render_content_file("acme", "my-project", "docs/a.md", b"[b](c.md)").into_string();
+        assert!(
+            html.contains(r#"<div class="fig-md fig-md--boxed">"#),
+            "markdown files keep the boxed markdown surface: {html}"
+        );
+        assert!(
+            html.contains("/acme/my-project/md/docs/c.md"),
+            "link rewriting still resolves against the containing directory: {html}"
+        );
+    }
+
+    #[test]
+    fn test_git_error_is_an_announced_danger_notice() {
+        let error = git2::Error::from_str("could not find repository");
+        let html = render_git_error(&error).into_string();
+        assert!(html.contains("role=\"alert\""), "{html}");
+        assert!(html.contains("fig-notice fig-notice--danger"), "{html}");
+        assert!(html.contains(">ERROR<"), "{html}");
+        assert!(html.contains("could not find repository"), "{html}");
+        assert!(
+            html.contains(&format!("{:?}", error.code())),
+            "the git error code stays visible: {html}"
+        );
+        assert!(
+            html.contains(&format!("{:?}", error.class())),
+            "the git error class stays visible: {html}"
+        );
+    }
+
+    /// Representative markup from every surface this file renders. Each entry is
+    /// a full page or tab body, so the sweeps below cover the whole view.
+    fn representative_markup() -> Vec<(&'static str, String)> {
+        let deck = slides(2);
+        let files = vec!["README.md".to_string(), "docs/guide.md".to_string()];
+        let entries = vec![entry("src", true), entry("README.md", false)];
+        let commits = [Commit::new(
+            "a1b2c3d4".to_string(),
+            "silen".to_string(),
+            chrono::Utc::now(),
+            "Initial commit".to_string(),
+        )];
+
+        vec![
+            ("repo page", render_repo(&base_ctx()).into_string()),
+            (
+                "markdown tab",
+                render_tab_content(&TabContentContext {
+                    tab: "markdown",
+                    markdown_files: &files,
+                    selected_content: Some("# Hi\n\nHello."),
+                    ..base_ctx()
+                })
+                .into_string(),
+            ),
+            ("commits tab", render_commits_view(&commits).into_string()),
+            (
+                "config tab",
+                render_config_view(Some("[present]"), Some(".fig.toml")).into_string(),
+            ),
+            (
+                "license tab",
+                render_license_view(Some("<p>MIT</p>")).into_string(),
+            ),
+            (
+                "content directory",
+                render_content_dir("acme", "my-project", "src", &entries).into_string(),
+            ),
+            (
+                "content file",
+                render_content_file("acme", "my-project", "main.rs", b"fn main() {}").into_string(),
+            ),
+            (
+                "present tab",
+                render_present_view("acme", "my-project", &deck).into_string(),
+            ),
+            (
+                "empty present tab",
+                render_present_view("acme", "my-project", &[]).into_string(),
+            ),
+            (
+                "git error",
+                render_git_error(&git2::Error::from_str("boom")).into_string(),
+            ),
+        ]
+    }
+
+    #[test]
+    fn test_repo_markup_uses_only_fig_design_system_classes() {
+        for (surface, html) in representative_markup() {
+            let classes = classes_in(&html);
+            assert!(
+                !classes.is_empty(),
+                "{surface} should carry classes: {html}"
+            );
+            for class in classes {
+                assert!(
+                    class.starts_with("fig-"),
+                    "non design-system class {class:?} in {surface}: {html}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_repo_markup_carries_no_inline_presentation() {
+        for (surface, html) in representative_markup() {
+            assert!(
+                !html.contains("style=\""),
+                "no inline style attributes in {surface}: {html}"
+            );
+            assert!(
+                !html.contains("<style"),
+                "presentation CSS lives in fig.css, not in {surface}: {html}"
+            );
+            for class in classes_in(&html) {
+                for outgoing in ["tf-", "markdown-body", "white-", "lh-copy", "no-underline"] {
+                    assert!(
+                        !class.contains(outgoing),
+                        "outgoing class {class:?} still in {surface}: {html}"
+                    );
+                }
+            }
+        }
     }
 }

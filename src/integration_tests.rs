@@ -136,6 +136,7 @@ mod tests {
         assert!(resp.status().is_success());
         let body = test::read_body(resp).await;
         let body_str = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body_str.contains("<title>Get Signup Invite · Fig</title>"));
         assert!(body_str.contains("Get Signup Invite"));
         assert!(body_str.contains("API Key"));
     }
@@ -148,6 +149,7 @@ mod tests {
         assert!(resp.status().is_success());
         let body = test::read_body(resp).await;
         let body_str = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body_str.contains("<title>Create Account · Fig</title>"));
         assert!(body_str.contains("Create Account"));
         assert!(body_str.contains("Signup Invite"));
     }
@@ -160,6 +162,7 @@ mod tests {
         assert!(resp.status().is_success());
         let body = test::read_body(resp).await;
         let body_str = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body_str.contains("<title>Log In · Fig</title>"));
         assert!(body_str.contains("Log In"));
         assert!(body_str.contains("Username"));
     }
@@ -172,6 +175,7 @@ mod tests {
         assert!(resp.status().is_success());
         let body = test::read_body(resp).await;
         let body_str = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body_str.contains("<title>Create Namespace · Fig</title>"));
         assert!(body_str.contains("Create Namespace"));
     }
 
@@ -250,6 +254,39 @@ mod tests {
         assert!(body_str.contains("Not logged in"));
     }
 
+    #[actix_web::test]
+    async fn test_settings_page_without_login_is_an_htmx_recovery_fragment() {
+        let app = create_test_service().await;
+        let req = test::TestRequest::get()
+            .uri("/settings")
+            .insert_header(("HX-Request", "true"))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
+        let body = test::read_body(resp).await;
+        let body_str = String::from_utf8(body.to_vec()).unwrap();
+        assert!(!body_str.contains("<!DOCTYPE html>"));
+        assert!(body_str.contains("href=\"/auth/login\""));
+        assert!(body_str.contains("Not logged in"));
+    }
+
+    #[actix_web::test]
+    async fn test_settings_page_with_expired_session_is_a_full_recovery_page() {
+        let app = create_test_service().await;
+        let req = test::TestRequest::get()
+            .uri("/settings")
+            .cookie(actix_web::cookie::Cookie::new("session", "expired"))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
+        let body = test::read_body(resp).await;
+        let body_str = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body_str.contains("<!DOCTYPE html>"));
+        assert!(body_str.contains("<title>Settings · Fig</title>"));
+        assert!(body_str.contains("href=\"/auth/login\""));
+        assert!(body_str.contains("Session expired"));
+    }
+
     // Settings tests - from settings.hurl
     #[actix_web::test]
     async fn test_settings_page_without_login() {
@@ -259,6 +296,9 @@ mod tests {
         assert!(resp.status().is_success());
         let body = test::read_body(resp).await;
         let body_str = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body_str.contains("<!DOCTYPE html>"));
+        assert!(body_str.contains("<title>Settings · Fig</title>"));
+        assert!(body_str.contains("href=\"/auth/login\""));
         assert!(body_str.contains("Not logged in"));
     }
 
@@ -475,6 +515,14 @@ mod tests {
         let (status, body) = body_of(&app, "/public/repo/content/.fig.toml").await;
         assert_eq!(status, StatusCode::OK);
         assert!(body.contains("Created with Fig"), "{body}");
+        assert!(
+            body.contains(r#"<nav class="fig-crumbs fig-crumbs--page" aria-label="Breadcrumb">"#),
+            "direct file views must retain the repository breadcrumb: {body}"
+        );
+        assert!(
+            body.contains(r#"<h1 class="fig-crumb-current" aria-current="page">repo</h1>"#),
+            "direct file views must identify the repository in the breadcrumb: {body}"
+        );
         assert!(!body.contains(SECRET_MARKER));
     }
 

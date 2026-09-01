@@ -10,6 +10,7 @@
 *.swo
 *~
 
+.playwright-mcp
 # Rust build artifacts
 target/
 **/*.rs.bk

@@ -8,77 +8,60 @@ pub mod repo;
 pub mod session_auth;
 pub mod settings;
 
-pub fn render_layout(main_content: &maud::Markup, username: Option<&str>) -> maud::Markup {
+pub fn render_layout(
+    main_content: &maud::Markup,
+    username: Option<&str>,
+    page_title: Option<&str>,
+) -> maud::Markup {
     maud::html! {
         (DOCTYPE)
-        html class="h-100" {
+        html lang="en" {
             head {
                 meta charset="utf-8";
                 meta name="viewport" content="width=device-width, initial-scale=1";
-                title { "Fig" }
+                title {
+                    @if let Some(page_title) = page_title {
+                        (page_title) " · Fig"
+                    } @else {
+                        "Fig"
+                    }
+                }
                 link rel="icon" type="image/svg+xml" href="/assets/fig.svg";
                 link rel="preconnect" href="https://fonts.googleapis.com";
                 link rel="preconnect" href="https://fonts.gstatic.com" crossorigin;
-                link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Bricolage+Grotesque:opsz,wght@12..96,300..700&display=swap";
+                link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&display=swap";
                 link rel="stylesheet" href="/assets/t.css";
                 link rel="stylesheet" href="/assets/fig.css";
                 script src="/assets/h.js" {}
                 script src="/assets/hx-response-targets.js" {}
-                style {
-                    ".markdown-body table { border-collapse: collapse; margin: 1rem 0; }"
-                    ".markdown-body th, .markdown-body td { border: 1px solid rgba(255,255,255,0.3); padding: 0.5rem 1rem; }"
-                    ".markdown-body th { background-color: rgba(255,255,255,0.1); font-weight: 600; }"
-                    ".markdown-body tr:nth-child(even) { background-color: rgba(255,255,255,0.05); }"
-                }
             }
-            body hx-ext="response-targets" class="w-100 sans-serif ma0 bg-black white" style="min-height: 100vh;" {
-                nav class="flex items-center bg-black bb b--white-20 pa3" style="position: sticky; top: 0; z-index: 10;" {
-                    div class="tf-container flex items-center justify-between flex-wrap" {
-                        div {
-                        a
-                            href="/"
-                            class="display link white hover-white no-underline f3"
-                            style="letter-spacing: 0.04em;"
-                        {
-                            "Fig"
-                        }
-                    }
-                    div class="flex items-center tf-kicker" {
-                        @match username {
-                            Some(name) => {
-                                span class="white-40 mr2 mr4-ns dn dib-ns" { (name) }
-                                a href="/_info" class="link white-70 hover-white no-underline mr2 mr4-ns" {
-                                    "Information"
-                                }
-                                a href="/settings" class="link white-70 hover-white no-underline mr2 mr4-ns" {
-                                    "Settings"
-                                }
-                                form method="POST" action="/auth/logout" class="dib ma0" {
-                                    button
-                                        type="submit"
-                                        class="link white-70 hover-white no-underline bg-transparent bn pointer pa0"
-                                    {
-                                        "Logout"
+            body hx-ext="response-targets" class="fig-shell" {
+                a class="fig-skip" href="#main" { "Skip to content" }
+                header class="fig-masthead" {
+                    div class="fig-page" {
+                        a class="fig-wordmark" href="/" { "Fig" }
+                        nav aria-label="Primary" class="fig-nav" {
+                            @match username {
+                                Some(name) => {
+                                    span class="fig-nav-user" { (name) }
+                                    a class="fig-btn fig-btn--quiet" href="/_info" { "Information" }
+                                    a class="fig-btn fig-btn--quiet" href="/settings" { "Settings" }
+                                    form method="POST" action="/auth/logout" {
+                                        button class="fig-btn fig-btn--quiet" type="submit" { "Logout" }
                                     }
                                 }
-                            }
-                            None => {
-                                a href="/_info" class="link white-70 hover-white no-underline mr2 mr4-ns" {
-                                    "Information"
-                                }
-                                a href="/auth/login" class="link white-70 hover-white no-underline mr2 mr4-ns" {
-                                    "Login"
-                                }
-                                a href="/auth/signup" class="link white no-underline" {
-                                    "Signup"
+                                None => {
+                                    a class="fig-btn fig-btn--quiet" href="/_info" { "Information" }
+                                    a class="fig-btn fig-btn--quiet" href="/auth/login" { "Login" }
+                                    a class="fig-btn fig-btn--quiet" href="/auth/signup" { "Signup" }
                                 }
                             }
                         }
                     }
-                    }
                 }
-                main id="feature" class="pa3" {
-                    div class="tf-container" {
+                div class="fig-optic-rule" aria-hidden="true" {}
+                main id="main" class="fig-main" {
+                    div class="fig-page" {
                         (main_content)
                     }
                 }
@@ -89,16 +72,30 @@ pub fn render_layout(main_content: &maud::Markup, username: Option<&str>) -> mau
 
 pub fn render_error(message: &str) -> maud::Markup {
     maud::html! {
-        div class="ba b--red br2 pa3 bg-dark-red mt3" {
-            p class="f6 white ma0" { (message) }
+        div class="fig-notice fig-notice--danger" role="alert" {
+            p class="fig-eyebrow" { "ERROR" }
+            p class="fig-notice-body" { (message) }
+        }
+    }
+}
+
+pub fn render_error_with_action(message: &str, href: &str, label: &str) -> maud::Markup {
+    maud::html! {
+        div class="fig-notice fig-notice--danger" role="alert" {
+            p class="fig-eyebrow" { "ERROR" }
+            p class="fig-notice-body" { (message) }
+            div class="fig-notice-actions" {
+                a class="fig-btn fig-btn--ghost" href=(href) { (label) }
+            }
         }
     }
 }
 
 pub fn render_success(message: &str) -> maud::Markup {
     maud::html! {
-        div class="ba b--green br2 pa3 bg-dark-green mt3" {
-            p class="f6 white ma0" { (message) }
+        div class="fig-notice fig-notice--success" role="status" {
+            p class="fig-eyebrow" { "DONE" }
+            p class="fig-notice-body" { (message) }
         }
     }
 }
@@ -107,58 +104,225 @@ pub fn render_success(message: &str) -> maud::Markup {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_render_layout_contains_doctype_and_title() {
+    fn layout_html(username: Option<&str>) -> String {
         let content = maud::html! { p { "hello" } };
-        let layout = render_layout(&content, Some("testuser"));
-        let html = layout.into_string();
-        assert!(
-            html.contains("<!DOCTYPE html>"),
-            "layout should contain DOCTYPE"
-        );
-        assert!(
-            html.contains("<title>Fig</title>"),
-            "layout should contain title"
-        );
-        assert!(
-            html.contains("/assets/t.css"),
-            "layout should reference t.css"
-        );
-        assert!(
-            html.contains("/assets/h.js"),
-            "layout should reference h.js"
-        );
-        assert!(html.contains("testuser"), "layout should show username");
+        render_layout(&content, username, None).into_string()
+    }
+
+    fn classes_in(html: &str) -> Vec<String> {
+        let marker = "class=\"";
+        html.match_indices(marker)
+            .flat_map(|(start, _)| {
+                let rest = &html[start + marker.len()..];
+                let end = rest.find('"').expect("class attribute must be closed");
+                rest[..end]
+                    .split_whitespace()
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
+    fn index_of(html: &str, needle: &str) -> usize {
+        html.find(needle)
+            .unwrap_or_else(|| panic!("expected markup to contain {needle}\n{html}"))
     }
 
     #[test]
-    fn test_render_layout_shows_login_when_no_user() {
+    fn test_layout_declares_document_language_and_landmarks() {
+        let html = layout_html(Some("testuser"));
+        assert!(html.contains("<!DOCTYPE html>"), "{html}");
+        assert!(html.contains("<title>Fig</title>"), "{html}");
+        assert!(
+            html.contains("<html lang=\"en\""),
+            "document language must be declared: {html}"
+        );
+        for landmark in [
+            "<header",
+            "<nav aria-label=\"Primary\"",
+            "<main id=\"main\"",
+        ] {
+            assert!(
+                html.contains(landmark),
+                "missing landmark {landmark}: {html}"
+            );
+        }
+        assert!(html.contains("hello"), "page content must be rendered");
+    }
+
+    #[test]
+    fn test_layout_prefixes_named_page_title() {
         let content = maud::html! { p { "hello" } };
-        let layout = render_layout(&content, None);
-        let html = layout.into_string();
+        let html = render_layout(&content, None, Some("Settings")).into_string();
+
+        assert!(html.contains("<title>Settings · Fig</title>"), "{html}");
+    }
+
+    #[test]
+    fn test_layout_escapes_named_page_title() {
+        let content = maud::html! { p { "hello" } };
+        let html = render_layout(&content, None, Some("<script>boom()</script>")).into_string();
+
+        assert!(!html.contains("<title><script>"), "{html}");
         assert!(
-            html.contains("/auth/login"),
-            "layout should show login link"
-        );
-        assert!(
-            html.contains("/auth/signup"),
-            "layout should show signup link"
+            html.contains("<title>&lt;script&gt;boom()&lt;/script&gt; · Fig</title>"),
+            "{html}"
         );
     }
 
     #[test]
-    fn test_render_error_contains_message() {
-        let markup = render_error("something went wrong");
-        let html = markup.into_string();
-        assert!(html.contains("something went wrong"));
-        assert!(html.contains("bg-dark-red"));
+    fn test_layout_skip_link_is_the_first_focusable_element() {
+        let html = layout_html(None);
+        let skip = index_of(&html, "href=\"#main\"");
+        assert!(
+            skip < index_of(&html, "<header"),
+            "skip link must precede the masthead: {html}"
+        );
+        assert!(
+            skip < index_of(&html, "<a class=\"fig-wordmark\""),
+            "skip link must precede the wordmark: {html}"
+        );
     }
 
     #[test]
-    fn test_render_success_contains_message() {
-        let markup = render_success("operation completed");
-        let html = markup.into_string();
-        assert!(html.contains("operation completed"));
-        assert!(html.contains("bg-dark-green"));
+    fn test_layout_loads_space_grotesk_and_tachyons_before_fig_css() {
+        let html = layout_html(None);
+        assert!(
+            html.contains("family=Space+Grotesk"),
+            "Space Grotesk is the sole grotesque: {html}"
+        );
+        for outgoing in ["Anton", "Bricolage"] {
+            assert!(
+                !html.contains(outgoing),
+                "outgoing face {outgoing} must be removed: {html}"
+            );
+        }
+        assert!(
+            index_of(&html, "/assets/t.css") < index_of(&html, "/assets/fig.css"),
+            "fig.css must override t.css: {html}"
+        );
+    }
+
+    #[test]
+    fn test_layout_preserves_htmx_wiring() {
+        let html = layout_html(None);
+        assert!(html.contains("hx-ext=\"response-targets\""), "{html}");
+        assert!(html.contains("/assets/h.js"), "{html}");
+        assert!(html.contains("/assets/hx-response-targets.js"), "{html}");
+    }
+
+    #[test]
+    fn test_layout_keeps_all_styling_in_stylesheets() {
+        let html = layout_html(Some("testuser"));
+        assert!(
+            !html.contains("style=\""),
+            "no inline style attributes: {html}"
+        );
+        assert!(
+            !html.contains("<style"),
+            "no inline style element; markdown table rules live in fig.css: {html}"
+        );
+    }
+
+    #[test]
+    fn test_layout_uses_only_fig_design_system_classes() {
+        for username in [Some("testuser"), None] {
+            let html = layout_html(username);
+            let classes = classes_in(&html);
+            assert!(!classes.is_empty(), "layout should carry classes: {html}");
+            for class in classes {
+                assert!(
+                    class.starts_with("fig-"),
+                    "non design-system class {class:?} in layout: {html}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_layout_optic_rule_is_decorative() {
+        let html = layout_html(None);
+        assert!(
+            html.contains("class=\"fig-optic-rule\" aria-hidden=\"true\""),
+            "the masthead optic rule must be hidden from assistive tech: {html}"
+        );
+    }
+
+    #[test]
+    fn test_layout_authenticated_nav_exposes_user_actions() {
+        let html = layout_html(Some("testuser"));
+        assert!(html.contains("testuser"), "{html}");
+        for target in ["/_info", "/settings"] {
+            assert!(html.contains(target), "missing nav target {target}: {html}");
+        }
+        assert!(
+            html.contains("method=\"POST\" action=\"/auth/logout\""),
+            "logout stays a real POST form: {html}"
+        );
+        assert!(
+            !html.contains("/auth/login"),
+            "authenticated nav has no login link: {html}"
+        );
+    }
+
+    #[test]
+    fn test_layout_anonymous_nav_offers_login_and_signup() {
+        let html = layout_html(None);
+        for target in ["/_info", "/auth/login", "/auth/signup"] {
+            assert!(html.contains(target), "missing nav target {target}: {html}");
+        }
+        assert!(
+            !html.contains("/auth/logout"),
+            "anonymous nav has no logout: {html}"
+        );
+    }
+
+    #[test]
+    fn test_render_error_is_an_announced_danger_notice() {
+        let html = render_error("something went wrong").into_string();
+        assert!(html.contains("role=\"alert\""), "{html}");
+        assert!(html.contains("fig-notice--danger"), "{html}");
+        assert!(
+            html.contains(">ERROR<"),
+            "the signal word carries the meaning, not the colour: {html}"
+        );
+        assert!(html.contains("something went wrong"), "{html}");
+    }
+
+    #[test]
+    fn test_render_error_with_action_uses_a_real_recovery_link() {
+        let html =
+            render_error_with_action("Sign in required.", "/auth/login", "Log in").into_string();
+
+        assert!(html.contains("role=\"alert\""), "{html}");
+        assert!(
+            html.contains("<a class=\"fig-btn fig-btn--ghost\" href=\"/auth/login\">Log in</a>"),
+            "{html}"
+        );
+    }
+
+    #[test]
+    fn test_render_success_is_an_announced_status_notice() {
+        let html = render_success("operation completed").into_string();
+        assert!(html.contains("role=\"status\""), "{html}");
+        assert!(html.contains("fig-notice--success"), "{html}");
+        assert!(
+            html.contains(">DONE<"),
+            "the signal word carries the meaning, not the colour: {html}"
+        );
+        assert!(html.contains("operation completed"), "{html}");
+    }
+
+    #[test]
+    fn test_notices_escape_message_markup() {
+        for html in [
+            render_error("<script>boom()</script>").into_string(),
+            render_error_with_action("<script>boom()</script>", "/auth/login", "Log in")
+                .into_string(),
+            render_success("<script>boom()</script>").into_string(),
+        ] {
+            assert!(!html.contains("<script>"), "{html}");
+            assert!(html.contains("&lt;script&gt;"), "{html}");
+        }
     }
 }

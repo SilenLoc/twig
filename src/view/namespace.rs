@@ -4,7 +4,7 @@ use log::info;
 use serde::Deserialize;
 
 use super::session_auth::get_username_from_request;
-use super::{render_error, render_success};
+use super::{render_error, render_error_with_action, render_success};
 use crate::{
     auth::FigContext,
     config,
@@ -57,16 +57,24 @@ fn format_date(date: &chrono::DateTime<chrono::Utc>) -> String {
     let now = chrono::Utc::now();
     let duration = now.signed_duration_since(*date);
 
-    if duration.num_days() > 365 {
-        format!("{} years ago", duration.num_days() / 365)
-    } else if duration.num_days() > 30 {
-        format!("{} months ago", duration.num_days() / 30)
+    if duration.num_days() >= 365 {
+        let years = duration.num_days() / 365;
+        format!("{years} year{} ago", if years == 1 { "" } else { "s" })
+    } else if duration.num_days() >= 30 {
+        let months = duration.num_days() / 30;
+        format!("{months} month{} ago", if months == 1 { "" } else { "s" })
     } else if duration.num_days() > 0 {
-        format!("{} days ago", duration.num_days())
+        let days = duration.num_days();
+        format!("{days} day{} ago", if days == 1 { "" } else { "s" })
     } else if duration.num_hours() > 0 {
-        format!("{} hours ago", duration.num_hours())
+        let hours = duration.num_hours();
+        format!("{hours} hour{} ago", if hours == 1 { "" } else { "s" })
     } else if duration.num_minutes() > 0 {
-        format!("{} minutes ago", duration.num_minutes())
+        let minutes = duration.num_minutes();
+        format!(
+            "{minutes} minute{} ago",
+            if minutes == 1 { "" } else { "s" }
+        )
     } else {
         "just now".to_string()
     }
@@ -79,90 +87,88 @@ fn render_namespace(
     has_access: bool,
     repos: &[git::bare::RepoInfo],
 ) -> maud::Markup {
+    let namespace_href = format!("/{namespace}");
+
     maud::html! {
-        div class="mb3 mb4-ns tf-kicker white-50" {
-            a href="/" class="link white-50 hover-white no-underline" { "Namespaces" }
-            span class="mh2" { "/" }
-            span class="white" { (namespace) }
-        }
-
-        h1 class="tf-hero white ma0 mb3 mb4-ns word-wrap" style="overflow-wrap: anywhere;" {
-            (namespace)
-        }
-
-        div class="flex flex-wrap justify-between items-end mb3 mb4-ns" {
+        div class="fig-pagehead" {
+            nav class="fig-crumbs fig-crumbs--page" aria-label="Breadcrumb" {
+                a href="/" { "Namespaces" }
+                span class="fig-crumb-sep" aria-hidden="true" { "/" }
+                h1 class="fig-crumb-current" aria-current="page" { (namespace) }
+            }
             @if has_access {
-                button
-                    hx-get=(format!("/{}/create-repo-form", namespace))
-                    hx-target="#create-repo-container"
-                    hx-swap="innerHTML"
-                    class="tf-btn"
-                {
-                    "Create repo"
+                div class="fig-cluster" {
+                    button
+                        type="button"
+                        class="fig-btn fig-btn--primary"
+                        hx-get=(format!("/{namespace}/create-repo-form"))
+                        hx-target="#create-repo-container"
+                        hx-swap="innerHTML"
+                    {
+                        "Create repo"
+                    }
                 }
             }
         }
 
-        div id="create-repo-container" class="mb3 mb4-ns" {}
+        div class="fig-optic-rule fig-optic-rule--column" aria-hidden="true" {}
 
-        div class="mb3 mb4-ns" {
-            form
-                method="GET"
-                action=(format!("/{}", namespace))
-                class="flex items-center"
-            {
+        div class="fig-stack" {
+            form class="fig-search" role="search" method="GET" action=(namespace_href) {
+                label class="fig-sr" for="repo-search" { "Search repositories" }
                 input
-                    type="text"
+                    class="fig-input fig-input--mono"
+                    id="repo-search"
+                    type="search"
                     name="q"
                     value=(search_query)
-                    placeholder="Search repositories..."
-                    class="tf-input flex-auto mr2"
-                    style="min-width: 0;";
-                button
-                    type="submit"
-                    class="tf-btn tf-btn-ghost"
-                {
-                    "Search"
-                }
+                    placeholder="Search repositories...";
+                button type="submit" class="fig-btn fig-btn--ghost" { "Search" }
                 @if !search_query.is_empty() {
-                    a
-                        href=(format!("/{}", namespace))
-                        class="ml2 pa2 link white-70 hover-white no-underline tf-kicker"
-                    {
-                        "Clear"
-                    }
+                    a class="fig-btn fig-btn--quiet" href=(namespace_href) { "Clear" }
                 }
             }
-        }
 
-        div class="ba b--white-20 bg-black-20 overflow-hidden overflow-x-auto" {
-            div class="flex pa3 bb b--white-20 white-50 f6 fw6 tf-kicker" {
-                div class="flex-auto" { "Repository" }
-                div class="tr dn db-ns" style="min-width: 150px;" { "Last Commit" }
+            @if has_access {
+                div id="create-repo-container" {}
             }
 
-            @if repos.is_empty() {
-                div class="pa4 tc" {
-                    @if search_query.is_empty() {
-                        p class="f6 white-70" { "No repositories yet. Click 'Create repo' to add one!" }
-                    } @else {
-                        p class="f6 white-70" { "No repositories found matching your search." }
-                    }
+            section class="fig-panel fig-panel--flush" aria-labelledby="repositories-heading" {
+                header class="fig-panel-head" {
+                    h2 id="repositories-heading" class="fig-eyebrow" { "REPOSITORIES" }
                 }
-            } @else {
-                div class="flex flex-column" {
-                    @for repo in repos {
-                        a
-                            href=(format!("{}/{}", namespace, repo.name))
-                            class="flex pa3 bb b--white-10 link white hover-white hover-bg-white-10 no-underline items-baseline"
-                        {
-                            div class="flex-auto" {
-                                span class="f4 fw6" style="letter-spacing: -0.01em;" { (repo.name) }
+                div class="fig-panel-body" {
+                    @if repos.is_empty() {
+                        @if search_query.is_empty() {
+                            div class="fig-empty fig-empty--void" {
+                                p class="fig-eyebrow" { "NO REPOSITORIES" }
+                                p class="fig-empty-body" { "No repositories yet. Click 'Create repo' to add one!" }
                             }
-                            div class="tr white-50 f6 dn db-ns" style="min-width: 150px;" {
-                                @match repo.last_commit_date {
-                                    Some(date) => { (format_date(&date)) }
-                                    None => { "No commits" }
+                        } @else {
+                            div class="fig-empty fig-empty--filtered" {
+                                p class="fig-eyebrow" { "NO MATCHES" }
+                                p class="fig-empty-body" { "No repositories found matching your search." }
+                                div class="fig-empty-actions" {
+                                    a class="fig-btn fig-btn--ghost" href=(namespace_href) { "Clear search" }
+                                }
+                            }
+                        }
+                    } @else {
+                        div class="fig-colhead" {
+                            span { "Repository" }
+                            span { "Last Commit" }
+                        }
+                        div class="fig-list" {
+                            @for repo in repos {
+                                a class="fig-row" href=(format!("{namespace}/{}", repo.name)) {
+                                    span class="fig-row-id" { (repo.name) }
+                                    span class="fig-row-meta" {
+                                        span class="fig-sr" { "Last commit: " }
+                                        @match repo.last_commit_date {
+                                            Some(date) => { (format_date(&date)) }
+                                            None => { "No commits" }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -198,7 +204,67 @@ pub async fn handler(
     if req.headers().get("HX-Request").is_some() {
         Ok(content)
     } else {
-        Ok(super::render_layout(&content, username.as_deref()))
+        Ok(super::render_layout(
+            &content,
+            username.as_deref(),
+            Some(namespace),
+        ))
+    }
+}
+
+/// Renders the create-repository panel swapped into `#create-repo-container`.
+fn render_create_repo_form(namespace: &str) -> maud::Markup {
+    maud::html! {
+        section class="fig-panel" aria-labelledby="create-repo-heading" {
+            header class="fig-panel-head" {
+                h2 id="create-repo-heading" class="fig-eyebrow" { "Create Repository" }
+                div class="fig-panel-action" {
+                    button
+                        type="button"
+                        class="fig-btn fig-btn--quiet"
+                        onclick="document.getElementById('create-repo-container').innerHTML = ''"
+                    {
+                        "Cancel"
+                    }
+                }
+            }
+            div class="fig-panel-body" {
+                form
+                    class="fig-form fig-form--narrow"
+                    hx-post=(format!("/{namespace}/create-repo"))
+                    hx-target="#create-repo-result"
+                    hx-target-error="#create-repo-result"
+                    hx-swap="innerHTML"
+                    hx-on::after-request="if(event.detail.successful) { setTimeout(() => { document.getElementById('create-repo-container').innerHTML = ''; window.location.reload(); }, 1500); }"
+                {
+                    div class="fig-field" {
+                        label class="fig-label" for="repo_name" { "Repository Name" }
+                        input
+                            class="fig-input fig-input--mono"
+                            type="text"
+                            name="repo_name"
+                            id="repo_name"
+                            required
+                            minlength="1"
+                            placeholder="Enter repository name (e.g., my-project)";
+                    }
+                    div class="fig-field" {
+                        label class="fig-label" for="branch" { "Default Branch" }
+                        input
+                            class="fig-input fig-input--mono"
+                            type="text"
+                            name="branch"
+                            id="branch"
+                            value="main"
+                            placeholder="main";
+                    }
+                    div class="fig-form-actions" {
+                        button type="submit" class="fig-btn fig-btn--primary" { "Create Repository" }
+                    }
+                }
+                div id="create-repo-result" aria-live="polite" {}
+            }
+        }
     }
 }
 
@@ -207,59 +273,7 @@ pub async fn create_repo_form_handler(
     _req: HttpRequest,
     params: web::Path<Params>,
 ) -> AwResult<maud::Markup> {
-    let namespace = &params.namespace;
-
-    let form = maud::html! {
-        div class="ba b--white-20 pa3 bg-black-20" {
-            div class="flex justify-between items-center mb3" {
-                h2 class="tf-section white ma0" { "Create Repository" }
-                button
-                    onclick="document.getElementById('create-repo-container').innerHTML = ''"
-                    class="pa1 bg-transparent white bn pointer hover-white-70 tf-kicker"
-                {
-                    "✕ Cancel"
-                }
-            }
-            form
-                hx-post=(format!("/{}/create-repo", namespace))
-                hx-target="#create-repo-result"
-                hx-target-error="#create-repo-result"
-                hx-swap="innerHTML"
-                hx-on::after-request="if(event.detail.successful) { setTimeout(() => { document.getElementById('create-repo-container').innerHTML = ''; window.location.reload(); }, 1500); }"
-            {
-                div class="mb3" {
-                    label class="db tf-kicker white-50 mb2" for="repo_name" { "Repository Name" }
-                    input
-                        type="text"
-                        name="repo_name"
-                        id="repo_name"
-                        required
-                        minlength="1"
-                        class="tf-input db w-100"
-                        placeholder="Enter repository name (e.g., my-project)";
-                }
-                div class="mb3" {
-                    label class="db tf-kicker white-50 mb2" for="branch" { "Default Branch" }
-                    input
-                        type="text"
-                        name="branch"
-                        id="branch"
-                        value="main"
-                        class="tf-input db w-100"
-                        placeholder="main";
-                }
-                button
-                    type="submit"
-                    class="tf-btn tf-btn-block"
-                {
-                    "Create Repository"
-                }
-            }
-            div id="create-repo-result" class="mt3" {}
-        }
-    };
-
-    Ok(form)
+    Ok(render_create_repo_form(&params.namespace))
 }
 
 #[post("/{namespace}/create-repo")]
@@ -332,8 +346,7 @@ pub async fn create_repo_handler(
     // Require user to have set an email before creating repositories
     let Some(email) = &user.email else {
         let _ = std::fs::remove_dir_all(&repo_path);
-        return HttpResponse::BadRequest()
-            .body(render_error("Please set your email in settings before creating a repository. <a href='/settings' class='link white underline'>Go to Settings</a>").into_string());
+        return missing_email_response();
     };
     let author_email = email.as_str();
 
@@ -362,9 +375,304 @@ pub async fn create_repo_handler(
     }
 }
 
+fn missing_email_response() -> HttpResponse {
+    HttpResponse::BadRequest().body(
+        render_error_with_action(
+            "Please set your email in settings before creating a repository.",
+            "/settings",
+            "Go to Settings",
+        )
+        .into_string(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn repo(name: &str, days_ago: Option<i64>) -> git::bare::RepoInfo {
+        git::bare::RepoInfo {
+            name: name.to_string(),
+            last_commit_date: days_ago
+                .map(|days| chrono::Utc::now() - chrono::Duration::days(days)),
+        }
+    }
+
+    fn classes_in(html: &str) -> Vec<String> {
+        let marker = "class=\"";
+        html.match_indices(marker)
+            .flat_map(|(start, _)| {
+                let rest = &html[start + marker.len()..];
+                let end = rest.find('"').expect("class attribute must be closed");
+                rest[..end]
+                    .split_whitespace()
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
+    fn index_of(html: &str, needle: &str) -> usize {
+        html.find(needle)
+            .unwrap_or_else(|| panic!("expected markup to contain {needle}\n{html}"))
+    }
+
+    #[test]
+    fn test_namespace_breadcrumb_trail_is_semantic() {
+        let html = render_namespace("acme", "", false, &[]).into_string();
+        let trail = &html[..index_of(&html, "</nav>")];
+
+        assert!(
+            trail.contains("<nav class=\"fig-crumbs fig-crumbs--page\" aria-label=\"Breadcrumb\">"),
+            "{html}"
+        );
+        assert!(trail.contains("<a href=\"/\">Namespaces</a>"), "{html}");
+        assert!(
+            trail.contains("<span class=\"fig-crumb-sep\" aria-hidden=\"true\">/</span>"),
+            "the separator is decorative: {html}"
+        );
+        assert!(
+            trail.contains("aria-current=\"page\">acme</h1>"),
+            "the final segment marks the current page: {html}"
+        );
+        assert_eq!(
+            trail.matches("<a ").count(),
+            1,
+            "the final segment must not be a link: {html}"
+        );
+    }
+
+    #[test]
+    fn test_namespace_is_headed_by_its_identifier_inside_the_trail() {
+        let html = render_namespace("Acme-Corp", "", false, &[]).into_string();
+
+        assert!(
+            html.contains("<h1 class=\"fig-crumb-current\" aria-current=\"page\">Acme-Corp</h1>"),
+            "the trail's final segment is the heading, never uppercased: {html}"
+        );
+        assert_eq!(html.matches("<h1").count(), 1, "one h1 per page: {html}");
+        assert!(
+            !html.contains("fig-eyebrow\">NAMESPACE"),
+            "the identifier is not restated as a title block: {html}"
+        );
+        assert!(
+            html.contains(
+                "<div class=\"fig-optic-rule fig-optic-rule--column\" aria-hidden=\"true\"></div>"
+            ),
+            "{html}"
+        );
+        assert!(
+            index_of(&html, "class=\"fig-pagehead\"") < index_of(&html, "fig-crumbs"),
+            "the trail is the page head: {html}"
+        );
+        assert!(
+            index_of(&html, "<h1") < index_of(&html, "fig-optic-rule--column"),
+            "the rule closes the head: {html}"
+        );
+    }
+
+    #[test]
+    fn test_namespace_head_action_is_gated_on_namespace_access() {
+        let member = render_namespace("acme", "", true, &[]).into_string();
+        for wiring in [
+            "<div class=\"fig-cluster\">",
+            "class=\"fig-btn fig-btn--primary\"",
+            "hx-get=\"/acme/create-repo-form\"",
+            "hx-target=\"#create-repo-container\"",
+            "hx-swap=\"innerHTML\"",
+            "<div id=\"create-repo-container\"></div>",
+            ">Create repo</button>",
+        ] {
+            assert!(member.contains(wiring), "missing {wiring}: {member}");
+        }
+
+        let visitor = render_namespace("acme", "", false, &[]).into_string();
+        for wiring in ["fig-cluster", "hx-get", "create-repo-container"] {
+            assert!(
+                !visitor.contains(wiring),
+                "visitors without access get no create affordance, found {wiring}: {visitor}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_namespace_search_cluster_uses_the_field_primitives() {
+        let unfiltered = render_namespace("acme", "", false, &[]).into_string();
+        for part in [
+            "<form class=\"fig-search\" role=\"search\" method=\"GET\" action=\"/acme\">",
+            "<label class=\"fig-sr\" for=\"repo-search\">Search repositories</label>",
+            "class=\"fig-input fig-input--mono\" id=\"repo-search\"",
+            "placeholder=\"Search repositories...\"",
+            "<button type=\"submit\" class=\"fig-btn fig-btn--ghost\">Search</button>",
+        ] {
+            assert!(unfiltered.contains(part), "missing {part}: {unfiltered}");
+        }
+        assert!(
+            !unfiltered.contains("fig-btn--quiet"),
+            "Clear only appears while a query is active: {unfiltered}"
+        );
+
+        let filtered = render_namespace("acme", "fig", false, &[]).into_string();
+        assert!(filtered.contains("value=\"fig\""), "{filtered}");
+        assert!(
+            filtered.contains("<a class=\"fig-btn fig-btn--quiet\" href=\"/acme\">Clear</a>"),
+            "{filtered}"
+        );
+    }
+
+    #[test]
+    fn test_namespace_rows_keep_last_commit_labelled_when_stacked() {
+        let repos = [repo("fig", Some(5)), repo("fresh", None)];
+        let html = render_namespace("acme", "", true, &repos).into_string();
+
+        assert!(
+            html.contains(
+                "<div class=\"fig-colhead\"><span>Repository</span><span>Last Commit</span></div>"
+            ),
+            "{html}"
+        );
+        assert!(html.contains("<div class=\"fig-list\">"), "{html}");
+        assert!(
+            html.contains(
+                "<a class=\"fig-row\" href=\"acme/fig\"><span class=\"fig-row-id\">fig</span>"
+            ),
+            "{html}"
+        );
+        assert_eq!(
+            html.matches("<span class=\"fig-sr\">Last commit: </span>")
+                .count(),
+            repos.len(),
+            "every stacked row labels its metadata: {html}"
+        );
+        assert!(html.contains("5 days ago"), "{html}");
+        assert!(
+            html.contains("No commits"),
+            "repos without commits keep their value: {html}"
+        );
+        assert!(!html.contains("fig-empty"), "{html}");
+    }
+
+    #[test]
+    fn test_namespace_empty_states_preserve_their_messages() {
+        let void = render_namespace("acme", "", true, &[]).into_string();
+        assert!(
+            void.contains("class=\"fig-empty fig-empty--void\""),
+            "{void}"
+        );
+        assert!(
+            void.contains("<p class=\"fig-eyebrow\">NO REPOSITORIES</p>"),
+            "{void}"
+        );
+        assert!(
+            void.contains("No repositories yet. Click 'Create repo' to add one!"),
+            "{void}"
+        );
+
+        let filtered = render_namespace("acme", "zzz", true, &[]).into_string();
+        assert!(
+            filtered.contains("class=\"fig-empty fig-empty--filtered\""),
+            "{filtered}"
+        );
+        assert!(
+            filtered.contains("<p class=\"fig-eyebrow\">NO MATCHES</p>"),
+            "{filtered}"
+        );
+        assert!(
+            filtered.contains("No repositories found matching your search."),
+            "{filtered}"
+        );
+        assert!(
+            filtered
+                .contains("<a class=\"fig-btn fig-btn--ghost\" href=\"/acme\">Clear search</a>"),
+            "a filtered empty state offers Clear, never a creation prompt: {filtered}"
+        );
+        assert!(
+            !filtered.contains("fig-colhead"),
+            "no column header without rows: {filtered}"
+        );
+    }
+
+    #[test]
+    fn test_namespace_uses_only_fig_design_system_classes() {
+        let repos = [repo("fig", Some(2))];
+        for (query, has_access, listed) in [
+            ("", true, &repos[..]),
+            ("", false, &[][..]),
+            ("fig", true, &repos[..]),
+            ("zzz", false, &[][..]),
+        ] {
+            let html = render_namespace("acme", query, has_access, listed).into_string();
+            let classes = classes_in(&html);
+            assert!(!classes.is_empty(), "{html}");
+            for class in classes {
+                assert!(
+                    class.starts_with("fig-"),
+                    "non design-system class {class:?}: {html}"
+                );
+            }
+            assert!(!html.contains("style=\""), "no inline styles: {html}");
+            assert!(!html.contains('\u{2715}'), "no glyph icons: {html}");
+        }
+    }
+
+    #[test]
+    fn test_create_repo_form_preserves_the_htmx_contract() {
+        let html = render_create_repo_form("acme").into_string();
+        for attribute in [
+            "hx-post=\"/acme/create-repo\"",
+            "hx-target=\"#create-repo-result\"",
+            "hx-target-error=\"#create-repo-result\"",
+            "hx-swap=\"innerHTML\"",
+            "hx-on::after-request=\"if(event.detail.successful) { setTimeout(() =&gt; { document.getElementById('create-repo-container').innerHTML = ''; window.location.reload(); }, 1500); }\"",
+        ] {
+            assert!(html.contains(attribute), "missing {attribute}: {html}");
+        }
+        assert!(
+            html.contains("<div id=\"create-repo-result\" aria-live=\"polite\"></div>"),
+            "the result target announces its swaps: {html}"
+        );
+    }
+
+    #[test]
+    fn test_create_repo_form_cancel_is_plain_text_with_its_dismiss_behaviour() {
+        let html = render_create_repo_form("acme").into_string();
+        assert!(
+            html.contains(
+                "<button type=\"button\" class=\"fig-btn fig-btn--quiet\" onclick=\"document.getElementById('create-repo-container').innerHTML = ''\">Cancel</button>"
+            ),
+            "{html}"
+        );
+        assert!(
+            !html.contains('\u{2715}'),
+            "the cross glyph is removed: {html}"
+        );
+    }
+
+    #[test]
+    fn test_create_repo_form_is_a_panel_that_keeps_its_field_contract() {
+        let html = render_create_repo_form("acme").into_string();
+        for part in [
+            "<section class=\"fig-panel\" aria-labelledby=\"create-repo-heading\">",
+            "<h2 id=\"create-repo-heading\" class=\"fig-eyebrow\">Create Repository</h2>",
+            "class=\"fig-form fig-form--narrow\"",
+            "<label class=\"fig-label\" for=\"repo_name\">Repository Name</label>",
+            "name=\"repo_name\" id=\"repo_name\" required minlength=\"1\"",
+            "placeholder=\"Enter repository name (e.g., my-project)\"",
+            "<label class=\"fig-label\" for=\"branch\">Default Branch</label>",
+            "name=\"branch\" id=\"branch\" value=\"main\"",
+            "<button type=\"submit\" class=\"fig-btn fig-btn--primary\">Create Repository</button>",
+        ] {
+            assert!(html.contains(part), "missing {part}: {html}");
+        }
+
+        for class in classes_in(&html) {
+            assert!(
+                class.starts_with("fig-"),
+                "non design-system class {class:?}: {html}"
+            );
+        }
+        assert!(!html.contains("style=\""), "no inline styles: {html}");
+    }
 
     #[test]
     fn test_format_date_years() {
@@ -420,6 +728,50 @@ mod tests {
     fn test_format_date_just_now() {
         let date = chrono::Utc::now();
         assert_eq!(format_date(&date), "just now");
+    }
+
+    #[test]
+    fn test_format_date_singular_units() {
+        for (date, expected) in [
+            (
+                chrono::Utc::now() - chrono::Duration::days(365),
+                "1 year ago",
+            ),
+            (
+                chrono::Utc::now() - chrono::Duration::days(30),
+                "1 month ago",
+            ),
+            (chrono::Utc::now() - chrono::Duration::days(1), "1 day ago"),
+            (
+                chrono::Utc::now() - chrono::Duration::hours(1),
+                "1 hour ago",
+            ),
+            (
+                chrono::Utc::now() - chrono::Duration::minutes(1),
+                "1 minute ago",
+            ),
+        ] {
+            assert_eq!(format_date(&date), expected);
+        }
+    }
+
+    #[actix_web::test]
+    async fn test_missing_email_response_is_a_bad_request_fragment_with_settings_link() {
+        let response = missing_email_response();
+        assert_eq!(response.status(), actix_web::http::StatusCode::BAD_REQUEST);
+
+        let body = actix_web::body::to_bytes(response.into_body())
+            .await
+            .expect("response body");
+        let html = String::from_utf8(body.to_vec()).expect("HTML response");
+        assert!(!html.contains("<!DOCTYPE html>"), "{html}");
+        assert!(
+            html.contains(
+                "<a class=\"fig-btn fig-btn--ghost\" href=\"/settings\">Go to Settings</a>"
+            ),
+            "{html}"
+        );
+        assert!(!html.contains("&lt;a "), "{html}");
     }
 
     #[test]

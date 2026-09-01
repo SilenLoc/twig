@@ -1,3 +1,7 @@
+use actix_web::http::header::HeaderValue;
+
+pub const DEFAULT_CACHE_CONTROL: &str = "public, max-age=31536000, immutable";
+
 #[derive(Clone)]
 pub struct Server {
     address: (String, u16),
@@ -7,11 +11,8 @@ pub struct Server {
     api_key: String,
     reset_db: bool,
     traces_sample_rate: f32,
+    cache_control: HeaderValue,
 }
-
-/// Where ticket attachments are stored. They live outside `PROJECT_ROOT` so
-/// they are never mistaken for a namespace directory.
-pub const DEFAULT_ATTACHMENT_ROOT: &str = "/srv/attachments";
 
 impl Server {
     #[allow(clippy::too_many_arguments)]
@@ -32,7 +33,13 @@ impl Server {
             api_key,
             reset_db,
             traces_sample_rate,
+            cache_control: HeaderValue::from_static(DEFAULT_CACHE_CONTROL),
         }
+    }
+
+    pub fn with_cache_control(mut self, cache_control: HeaderValue) -> Self {
+        self.cache_control = cache_control;
+        self
     }
 
     pub fn address(&self) -> (String, u16) {
@@ -81,6 +88,10 @@ impl Server {
         self.traces_sample_rate
     }
 
+    pub fn cache_control(&self) -> &HeaderValue {
+        &self.cache_control
+    }
+
     /// Returns the API key, generating a random one if not provided.
     /// Logs a warning when generating a random key.
     pub fn effective_api_key(&self) -> String {
@@ -110,12 +121,17 @@ pub fn from_env() -> Server {
     let db_path = std::env::var("DB_PATH").unwrap_or_else(|_| "fig.db".to_string());
     let api_key = std::env::var("API_KEY").unwrap_or_default();
     let reset_db = std::env::var("RESET_DB").unwrap_or_default() == "true";
-    let _attachment_root =
-        std::env::var("ATTACHMENT_ROOT").unwrap_or_else(|_| DEFAULT_ATTACHMENT_ROOT.to_string());
     let traces_sample_rate = std::env::var("SENTRY_TRACES_SAMPLE_RATE")
         .ok()
         .and_then(|s| s.parse::<f32>().ok())
         .unwrap_or(1.0);
+    let cache_control = std::env::var("CACHE_CONTROL")
+        .unwrap_or_else(|_| DEFAULT_CACHE_CONTROL.to_string())
+        .parse::<HeaderValue>()
+        .unwrap_or_else(|error| {
+            log::error!("Invalid CACHE_CONTROL header value: {error}; using default");
+            HeaderValue::from_static(DEFAULT_CACHE_CONTROL)
+        });
 
     Server::new(
         ("0.0.0.0".to_string(), port),
@@ -126,6 +142,7 @@ pub fn from_env() -> Server {
         reset_db,
         traces_sample_rate,
     )
+    .with_cache_control(cache_control)
 }
 
 fn ascii(server: &Server) -> String {
@@ -170,6 +187,29 @@ mod tests {
         assert_eq!(server.log_level(), "debug");
         assert_eq!(server.project_root(), "/srv/git");
         assert_eq!(server.db_path(), "fig.db");
+        assert_eq!(
+            server.cache_control(),
+            &HeaderValue::from_static(DEFAULT_CACHE_CONTROL)
+        );
+    }
+
+    #[test]
+    fn test_server_cache_control_round_trip() {
+        let server = Server::new(
+            ("127.0.0.1".to_string(), 8080),
+            "debug".to_string(),
+            "/srv/git".to_string(),
+            "fig.db".to_string(),
+            "mykey".to_string(),
+            false,
+            1.0,
+        )
+        .with_cache_control(HeaderValue::from_static("no-cache"));
+
+        assert_eq!(
+            server.cache_control(),
+            &HeaderValue::from_static("no-cache")
+        );
     }
 
     #[test]

@@ -46,14 +46,13 @@ impl Tab {
 fn render_tabs(active: Tab) -> maud::Markup {
     let tabs = [(Tab::Docs, "Docs"), (Tab::About, "About")];
     maud::html! {
-        div class="flex flex-wrap mb4 bb b--white-20" {
+        nav class="fig-tabs" aria-label="Information views" {
             @for (tab, label) in tabs {
-                @let classes = if tab == active {
-                    "tf-tab pa2 ph3 white bg-white-10 no-underline"
-                } else {
-                    "tf-tab pa2 ph3 white-50 hover-white no-underline"
-                };
-                a href=(format!("/_info?tab={}", tab.as_str())) class=(classes) {
+                a
+                    class="fig-tab"
+                    aria-current=[(tab == active).then_some("page")]
+                    href=(format!("/_info?tab={}", tab.as_str()))
+                {
                     (label)
                 }
             }
@@ -61,8 +60,8 @@ fn render_tabs(active: Tab) -> maud::Markup {
     }
 }
 
-/// Renders the Docs left-hand menu, grouping consecutive pages that share a
-/// `section` under a small subheading. Pages sort by `order` then title
+/// Renders the Docs rail, grouping consecutive pages that share a `section`
+/// under a small eyebrow label. Pages sort by `order` then title
 /// (see [`info::list_doc_pages`]), so a section's pages need not be
 /// contiguous in principle, but the built-in content keeps them so; a
 /// section is only headed once, at its first appearance.
@@ -79,31 +78,25 @@ fn render_docs_menu(docs: &[DocPage], active_slug: &str) -> maud::Markup {
         .collect();
 
     maud::html! {
-        nav class="mb3 mb0-ns" {
-            ul class="list pl0 ma0" {
-                @for (doc, is_new_section) in docs.iter().zip(&show_heading) {
-                    @if *is_new_section {
-                        li class="tf-kicker white-50 mt3 mb1" { (doc.page.section.unwrap_or_default()) }
-                    }
-                    @let is_active = doc.slug == active_slug;
-                    @let classes = if is_active {
-                        "db pa2 br1 bg-white-10 white no-underline mb1"
-                    } else {
-                        "db pa2 br1 white-70 hover-white hover-bg-white-10 no-underline mb1"
-                    };
-                    li {
-                        a href=(format!("/_info?tab=docs&page={}", doc.slug)) class=(classes) {
-                            (doc.page.title)
-                        }
-                    }
+        nav class="fig-rail fig-rail--docs" aria-label="Documentation" {
+            @for (doc, is_new_section) in docs.iter().zip(&show_heading) {
+                @if *is_new_section {
+                    p class="fig-eyebrow" { (doc.page.section.unwrap_or_default()) }
+                }
+                a
+                    class="fig-rail-item"
+                    aria-current=[(doc.slug == active_slug).then_some("page")]
+                    href=(format!("/_info?tab=docs&page={}", doc.slug))
+                {
+                    (doc.page.title)
                 }
             }
         }
     }
 }
 
-/// Renders the Docs tab: a left menu of pages (see [`render_docs_menu`]),
-/// plus the selected page's rendered content.
+/// Renders the Docs tab: the rail of pages (see [`render_docs_menu`]) beside
+/// the selected page's rendered content.
 fn render_docs_tab(requested_slug: Option<&str>) -> maud::Markup {
     let docs = info::list_doc_pages();
 
@@ -117,13 +110,11 @@ fn render_docs_tab(requested_slug: Option<&str>) -> maud::Markup {
     let html = info::render_page_html(&active_page);
 
     maud::html! {
-        div class="flex flex-wrap flex-nowrap-ns" {
-            div class="w-100 w-30-ns pr4-ns" {
-                (render_docs_menu(&docs, active_slug))
-            }
-            div class="w-100 w-70-ns" {
-                h1 class="tf-title white mt0 mb3" { (active_page.title) }
-                div class="markdown-body white lh-copy" {
+        div class="fig-rail-shell" {
+            (render_docs_menu(&docs, active_slug))
+            div class="fig-rail-body fig-stack" {
+                h2 class="fig-title" { (active_page.title) }
+                div class="fig-md fig-md--prose" {
                     (maud::PreEscaped(html))
                 }
             }
@@ -135,18 +126,21 @@ fn render_about_tab() -> maud::Markup {
     let html = info::render_page_html(&info::ABOUT_PAGE);
 
     maud::html! {
-        h1 class="tf-title white mt0 mb3" { (info::ABOUT_PAGE.title) }
-        div class="markdown-body white lh-copy" {
-            (maud::PreEscaped(html))
+        div class="fig-stack" {
+            h2 class="fig-title" { (info::ABOUT_PAGE.title) }
+            div class="fig-md fig-md--prose" {
+                (maud::PreEscaped(html))
+            }
         }
     }
 }
 
 fn render_page(active: Tab, body: &maud::Markup) -> maud::Markup {
     maud::html! {
-        div class="pt3 pt4-ns" {
-            h1 class="tf-hero white ma0" { "Information" }
+        section class="fig-pagehead" {
+            h1 class="fig-display-xl" { "Information" }
         }
+        div class="fig-optic-rule fig-optic-rule--column" aria-hidden="true" {}
         (render_tabs(active))
         (body)
     }
@@ -169,12 +163,38 @@ pub async fn index(
     Ok(render_layout(
         &render_page(active, &body),
         username.as_deref(),
+        Some("Information"),
     ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn classes_in(html: &str) -> Vec<String> {
+        let marker = "class=\"";
+        html.match_indices(marker)
+            .flat_map(|(start, _)| {
+                let rest = &html[start + marker.len()..];
+                let end = rest.find('"').expect("class attribute must be closed");
+                rest[..end]
+                    .split_whitespace()
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
+    fn anchor_containing<'a>(html: &'a str, needle: &str) -> &'a str {
+        html.split("<a ")
+            .find(|anchor| anchor.contains(needle))
+            .unwrap_or_else(|| panic!("expected an anchor for {needle}\n{html}"))
+    }
+
+    fn index_of(html: &str, needle: &str) -> usize {
+        html.find(needle)
+            .unwrap_or_else(|| panic!("expected markup to contain {needle}\n{html}"))
+    }
 
     #[test]
     fn test_tab_from_query_defaults_to_docs() {
@@ -189,18 +209,58 @@ mod tests {
     }
 
     #[test]
-    fn test_render_tabs_marks_active_tab() {
+    fn test_render_tabs_is_a_labelled_navigation_landmark() {
         let html = render_tabs(Tab::About).into_string();
-        assert!(html.contains("tab=docs"));
-        assert!(html.contains("tab=about"));
+        assert!(
+            html.starts_with("<nav class=\"fig-tabs\" aria-label=\"Information views\">"),
+            "tabs are a labelled navigation landmark: {html}"
+        );
+        assert_eq!(html.matches("class=\"fig-tab\"").count(), 2, "{html}");
     }
 
     #[test]
-    fn test_render_docs_menu_marks_active_page() {
+    fn test_render_tabs_marks_only_the_active_tab() {
+        let html = render_tabs(Tab::About).into_string();
+        assert!(
+            anchor_containing(&html, "tab=about").contains("aria-current=\"page\""),
+            "the active tab carries aria-current: {html}"
+        );
+        assert!(
+            !anchor_containing(&html, "tab=docs").contains("aria-current"),
+            "the inactive tab carries no aria-current: {html}"
+        );
+    }
+
+    #[test]
+    fn test_render_docs_menu_is_a_labelled_rail() {
+        let docs = info::list_doc_pages();
+        let html = render_docs_menu(&docs, docs[0].slug).into_string();
+        assert!(
+            html.starts_with(
+                "<nav class=\"fig-rail fig-rail--docs\" aria-label=\"Documentation\">"
+            ),
+            "the docs menu is a labelled rail landmark: {html}"
+        );
+        assert!(
+            html.contains("<p class=\"fig-eyebrow\">Self-hosting</p>"),
+            "section labels are eyebrow paragraphs, not headings: {html}"
+        );
+    }
+
+    #[test]
+    fn test_render_docs_menu_marks_only_the_active_page() {
         let docs = info::list_doc_pages();
         let html = render_docs_menu(&docs, docs[1].slug).into_string();
-        assert!(html.contains(&format!("page={}", docs[0].slug)));
-        assert!(html.contains(&format!("page={}", docs[1].slug)));
+        assert!(html.contains(&format!("page={}", docs[0].slug)), "{html}");
+        assert!(
+            anchor_containing(&html, &format!("page={}", docs[1].slug))
+                .contains("aria-current=\"page\""),
+            "the active rail item carries aria-current: {html}"
+        );
+        assert!(
+            !anchor_containing(&html, &format!("page={}", docs[0].slug)).contains("aria-current"),
+            "inactive rail items carry no aria-current: {html}"
+        );
     }
 
     #[test]
@@ -215,12 +275,69 @@ mod tests {
         let docs = info::list_doc_pages();
         let html = render_docs_tab(Some("does-not-exist")).into_string();
         assert!(html.contains(docs[0].page.title));
+        assert!(
+            anchor_containing(&html, &format!("page={}", docs[0].slug))
+                .contains("aria-current=\"page\""),
+            "the fallback page is the marked rail item: {html}"
+        );
+    }
+
+    #[test]
+    fn test_render_docs_tab_pairs_the_rail_with_measured_prose() {
+        let html = render_docs_tab(None).into_string();
+        for hook in [
+            "class=\"fig-rail-shell\"",
+            "class=\"fig-rail-body fig-stack\"",
+            "<h2 class=\"fig-title\">",
+            "class=\"fig-md fig-md--prose\"",
+        ] {
+            assert!(html.contains(hook), "missing {hook}: {html}");
+        }
     }
 
     #[test]
     fn test_render_about_tab_contains_about_content() {
         let html = render_about_tab().into_string();
         assert!(html.contains("Fig exists"));
+        assert!(
+            html.contains("<h2 class=\"fig-title\">About</h2>"),
+            "{html}"
+        );
+        assert!(html.contains("class=\"fig-md fig-md--prose\""), "{html}");
+    }
+
+    #[test]
+    fn test_render_page_opens_with_the_head_and_optic_baseline() {
+        let html = render_page(Tab::About, &render_about_tab()).into_string();
+        assert!(
+            html.starts_with(
+                "<section class=\"fig-pagehead\"><h1 class=\"fig-display-xl\">Information</h1></section>"
+            ),
+            "the head is the first block and owns the only page h1: {html}"
+        );
+        assert_eq!(html.matches("<h1").count(), 1, "{html}");
+        assert!(
+            index_of(
+                &html,
+                "class=\"fig-optic-rule fig-optic-rule--column\" aria-hidden=\"true\""
+            ) < index_of(&html, "<nav class=\"fig-tabs\""),
+            "the optic rule closes the head, above the tabs: {html}"
+        );
+    }
+
+    #[test]
+    fn test_page_carries_no_outgoing_classes_or_inline_styles() {
+        for body in [render_docs_tab(None), render_about_tab()] {
+            let html = render_page(Tab::Docs, &body).into_string();
+            assert!(!html.contains("style="), "no inline styles: {html}");
+            assert!(!html.contains("markdown-body"), "{html}");
+            for class in classes_in(&html) {
+                assert!(
+                    class.starts_with("fig-") || class.starts_with("language-"),
+                    "non design-system class {class:?} on /_info: {html}"
+                );
+            }
+        }
     }
 
     #[test]

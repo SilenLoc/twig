@@ -4,6 +4,7 @@ PROJECT_ROOT = "tests/git/srv"
 API_KEY = "secure"
 RESET_DB = "true"
 PORT = "8080"
+CACHE_CONTROL = "no-cache"
 
 [tools]
 rust = { version = "1.97" }
@@ -13,6 +14,7 @@ rust = { version = "1.97" }
 "cargo-binstall" = "latest"
 "cargo:cargo-nextest" = "latest"
 "cargo:cargo-watch" = "latest"
+watchexec = "2.7.0"
 
 [tasks.run]
 run = 'cargo run'
@@ -35,7 +37,7 @@ run = ['cargo fmt', 'cargo clippy --fix --all-targets --allow-dirty']
 
 
 [tasks.watch]
-run = 'cargo watch -w src -x run'
+run = 'watchexec --exts rs,css,js -r cargo run'
 
 [tasks.docker]
 run = ['docker run -p 8080:80 silenloc/fig']

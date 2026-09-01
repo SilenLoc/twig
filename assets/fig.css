@@ -1,231 +1,1605 @@
-/* Fig — quiet typographic theme
-   One reading face (Bricolage Grotesque) carries both headings and body copy:
-   sentence case, normal tracking, headings that step up in size and weight
-   rather than shout. Anton is reserved for the wordmark alone. Stark
-   black/white fields, zero radii, containers subordinate to the type. */
+/* Fig — warm minimal design system: autumn mulberry fields, blush-rose interaction.
+   Implements DESIGN.md and nothing else. Raw colour values appear only in the
+   :root token block below; every other rule references var(--fig-*). */
+
+/* ---- 1. Tokens ---------------------------------------------------------- */
 
 :root {
-  --fig-wordmark: "Anton", "Arial Narrow", "Impact", sans-serif;
-  --fig-body: "Bricolage Grotesque", system-ui, -apple-system, sans-serif;
-  --fig-heading: var(--fig-body);
+    color-scheme: dark;
+
+    /* Fields — warm mulberry, kept off pure black so the page reads autumnal */
+    --fig-void: #150d0f;
+    --fig-surface-0: #1f1418;
+    --fig-surface-1: #291a1f;
+    --fig-surface-2: #342228;
+    --fig-surface-3: #3f2a31;
+
+    /* Ink — blush cream rather than cool white */
+    --fig-ink-primary: #f8ece8;
+    --fig-ink-secondary: #d8bcb8;
+    --fig-ink-tertiary: #bfa19c;
+
+    /* Rules */
+    --fig-rule: #4a3239;
+    --fig-rule-strong: #a1787c;
+
+    /* Accent — interaction only, unambiguously blush rose */
+    --fig-accent-700: #cf7f8b;
+    --fig-accent-500: #eeaab0;
+    --fig-accent-300: #f6c9cb;
+    --fig-accent-100: #fce9e6;
+
+    /* Signals — autumn harvest hues, held off the accent so status never
+       reads as interaction */
+    --fig-signal-danger: #e5806a;
+    --fig-signal-ok: #9cbd6e;
+    --fig-signal-warn: #dda15e;
+
+    /* Families */
+    --fig-sans: "Space Grotesk", "Helvetica Neue", Arial, system-ui, sans-serif;
+    --fig-mono:
+        ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas,
+        "Liberation Mono", "DejaVu Sans Mono", monospace;
+
+    /* Type scale */
+    --fig-t-h1: clamp(1.5rem, 1rem + 1.75vw, 2.25rem);
+    --fig-t-h2: clamp(1.25rem, 1.05rem + 0.6vw, 1.5rem);
+    --fig-t-h3: 1.0625rem;
+    --fig-t-body-lg: 1.125rem;
+    --fig-t-body: 1rem;
+    --fig-t-body-sm: 0.875rem;
+    --fig-t-data-lg: 0.9375rem;
+    --fig-t-data: 0.8125rem;
+    --fig-t-label: 0.75rem;
+    --fig-t-eyebrow: 0.6875rem;
+    --fig-t-wordmark: 1rem;
+
+    /* Spacing — base 4px */
+    --fig-space-1: 4px;
+    --fig-space-2: 8px;
+    --fig-space-3: 12px;
+    --fig-space-4: 16px;
+    --fig-space-5: 20px;
+    --fig-space-6: 24px;
+    --fig-space-8: 32px;
+    --fig-space-10: 40px;
+    --fig-space-12: 48px;
+    --fig-space-16: 64px;
+    --fig-space-20: 80px;
+    --fig-space-24: 96px;
+
+    /* Measures */
+    --fig-page-max: 76rem;
+    --fig-measure-prose: 42rem;
+    --fig-measure-form: 26rem;
+    --fig-measure-slide: 50rem;
+    --fig-measure-slide-fs: 60rem;
+    --fig-control-h: 2.75rem;
+
+    /* Rail widths apply from 768px; below that the rail is a horizontal scroller */
+    --fig-rail-docs: 13rem;
+    --fig-rail-files: 11rem;
+
+    /* Responsive steps, overridden at the two authoritative breakpoints */
+    --fig-gutter: var(--fig-space-4);
+    --fig-masthead-h: 56px;
+    --fig-panel-pad: var(--fig-space-5);
+    --fig-row-h: 68px;
+    --fig-nav-gap: var(--fig-space-3);
+
+    /* Motion */
+    --fig-dur-micro: 90ms;
+    --fig-dur-standard: 160ms;
+    --fig-dur-deliberate: 320ms;
+    --fig-ease-out: cubic-bezier(0.2, 0, 0, 1);
+    --fig-ease-emphasis: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-body,
-body.sans-serif {
-  font-family: var(--fig-body);
-  overflow-x: hidden;
+@media (min-width: 48rem) {
+    :root {
+        --fig-gutter: var(--fig-space-6);
+        --fig-masthead-h: 64px;
+        --fig-panel-pad: var(--fig-space-6);
+        --fig-row-h: 56px;
+        --fig-nav-gap: var(--fig-space-6);
+    }
+}
+
+@media (min-width: 80rem) {
+    :root {
+        --fig-gutter: var(--fig-space-8);
+        --fig-rail-docs: 15rem;
+        --fig-rail-files: 13rem;
+    }
+}
+
+/* ---- 2. Base ------------------------------------------------------------ */
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    border-radius: 0;
+}
+
+html {
+    background-color: var(--fig-surface-0);
+    -webkit-text-size-adjust: 100%;
+}
+
+body.fig-shell {
+    margin: 0;
+    min-block-size: 100dvh;
+    background-color: var(--fig-surface-0);
+    color: var(--fig-ink-primary);
+    font-family: var(--fig-sans);
+    font-size: var(--fig-t-body);
+    font-weight: 400;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
 }
 
 ::selection {
-  background: #fff;
-  color: #000;
+    background-color: var(--fig-accent-500);
+    color: var(--fig-void);
 }
 
-/* ---- Shape language: baselines and boxes, never curves ---------------- */
-
-.br1,
-.br2,
-.br3,
-.br4,
-.br-100 {
-  border-radius: 0 !important;
+/* t.css ships dotted focus outlines at `a:focus` (0,1,1) and `.link:focus` (0,2,0).
+   :is() gives this ring (0,2,0) so it wins; :where() would score 0 and lose. */
+:is(a, button, input, select, textarea, [tabindex]):focus:not(:focus-visible) {
+    outline: none;
 }
 
-/* ---- Shared page grid --------------------------------------------------- */
-
-/* Centered column shared by nav and main so everything aligns */
-.tf-container {
-  width: 100%;
-  max-width: 72rem;
-  margin-left: auto;
-  margin-right: auto;
+:is(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--fig-accent-500);
+    outline-offset: 2px;
+    border-radius: 0;
 }
 
-/* ---- Display type ------------------------------------------------------ */
+/* ---- 3. Shell, page column, masthead ------------------------------------ */
 
-/* Wordmark only — the single place the display face is allowed */
-.display {
-  font-family: var(--fig-wordmark);
-  font-weight: 400;
-  line-height: 1;
-  letter-spacing: 0;
+.fig-skip {
+    position: fixed;
+    z-index: 20;
+    inset-block-start: var(--fig-space-4);
+    inset-inline-start: var(--fig-space-4);
+    display: inline-flex;
+    align-items: center;
+    min-block-size: var(--fig-control-h);
+    padding-inline: var(--fig-space-5);
+    background-color: var(--fig-surface-0);
+    border: 1px solid var(--fig-rule-strong);
+    color: var(--fig-ink-primary);
+    font-size: var(--fig-t-label);
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    text-decoration: none;
 }
 
-/* Page headline */
-.tf-hero {
-  font-family: var(--fig-heading);
-  font-weight: 600;
-  line-height: 1.15;
-  letter-spacing: -0.02em;
-  font-size: clamp(1.5rem, 3vw, 2rem);
-  margin-bottom: 0.5em;
+.fig-skip:not(:focus) {
+    clip-path: inset(50%);
+    block-size: 1px;
+    inline-size: 1px;
+    min-block-size: 0;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    white-space: nowrap;
 }
 
-/* Title for inner pages (auth, settings) */
-.tf-title {
-  font-family: var(--fig-heading);
-  font-weight: 600;
-  line-height: 1.2;
-  letter-spacing: -0.015em;
-  font-size: clamp(1.25rem, 2vw, 1.5rem);
+.fig-skip:hover {
+    color: var(--fig-ink-primary);
 }
 
-/* Section headings: a step down from the page headline */
-.tf-section {
-  font-family: var(--fig-heading);
-  font-weight: 600;
-  line-height: 1.3;
-  letter-spacing: -0.01em;
-  font-size: clamp(1rem, 1.5vw, 1.1875rem);
+.fig-page {
+    inline-size: 100%;
+    max-inline-size: var(--fig-page-max);
+    margin-inline: auto;
+    padding-inline: var(--fig-gutter);
 }
 
-/* Small label — navigation, meta, column headers */
-.tf-kicker {
-  font-size: 0.8125rem;
-  font-weight: 500;
-  letter-spacing: 0.005em;
+.fig-masthead {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 10;
+    background-color: var(--fig-surface-0);
 }
 
-/* ---- Controls: shared height so inputs, search fields and buttons align - */
-
-:root {
-  --fig-control-h: 2.5rem;
+.fig-masthead > .fig-page {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--fig-space-3);
+    min-block-size: var(--fig-masthead-h);
 }
 
-/* ---- Buttons: visually subordinate, square, typographic ---------------- */
-
-.tf-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: var(--fig-control-h);
-  padding: 0 1.4rem;
-  background: #fff;
-  color: #000;
-  border: none;
-  border-radius: 0;
-  font-family: var(--fig-body);
-  font-size: 0.875rem;
-  font-weight: 500;
-  letter-spacing: 0.005em;
-  text-decoration: none;
-  line-height: 1;
-  cursor: pointer;
+.fig-wordmark {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    min-block-size: var(--fig-control-h);
+    color: var(--fig-ink-primary);
+    font-size: var(--fig-t-wordmark);
+    font-weight: 500;
+    line-height: 1;
+    letter-spacing: 0.38em;
+    text-transform: uppercase;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: color var(--fig-dur-micro) linear;
 }
 
-.tf-btn:hover {
-  background: rgba(255, 255, 255, 0.82);
+.fig-wordmark:hover {
+    color: var(--fig-accent-500);
 }
 
-.tf-btn-ghost {
-  background: transparent;
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.45);
+.fig-nav {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--fig-nav-gap);
+    min-inline-size: 0;
 }
 
-.tf-btn-ghost:hover {
-  background: rgba(255, 255, 255, 0.12);
+/* Masthead nav items are inline text links (Section 8 target-size exception):
+   full 44px height, natural text width, so every item stays visible at 375px. */
+.fig-nav .fig-btn {
+    padding-inline: 0;
 }
 
-.tf-btn-danger {
-  background: #7f1d1d;
-  color: #fff;
+.fig-nav form {
+    display: flex;
+    margin: 0;
 }
 
-.tf-btn-danger:hover {
-  background: #dc2626;
+.fig-nav-user {
+    min-inline-size: 0;
+    overflow: hidden;
+    color: var(--fig-ink-tertiary);
+    font-family: var(--fig-mono);
+    font-size: var(--fig-t-data);
+    letter-spacing: 0.01em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.tf-btn-block {
-  display: flex;
-  width: 100%;
-  text-align: center;
+/* A flat hairline, not a painted band: the rule separates zones and says
+   nothing else. */
+.fig-optic-rule {
+    position: sticky;
+    inset-block-start: var(--fig-masthead-h);
+    z-index: 10;
+    block-size: 1px;
+    background-color: var(--fig-rule);
 }
 
-/* ---- Inputs: quiet fields with hairline rules -------------------------- */
-
-.tf-input {
-  height: var(--fig-control-h);
-  padding: 0 0.75rem;
-  background: #000;
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  border-radius: 0;
-  font-family: var(--fig-body);
-  font-size: 1rem;
-  outline: none;
+.fig-optic-rule--column {
+    position: static;
+    margin-block-end: var(--fig-space-10);
 }
 
-.tf-input:focus {
-  border-color: #fff;
+.fig-main {
+    display: block;
+    padding-block-end: var(--fig-space-24);
 }
 
-/* ---- Tabs: underline-first navigation ---------------------------------- */
-
-.tf-tab {
-  font-size: 0.875rem;
-  font-weight: 500;
-  letter-spacing: 0.005em;
+@media (min-width: 48rem) {
+    .fig-optic-rule--column {
+        margin-block-end: var(--fig-space-12);
+    }
 }
 
-/* ---- Markdown reading surface ------------------------------------------ */
+/* ---- 4. Spatial primitives ---------------------------------------------- */
 
-.markdown-body h1,
-.markdown-body h2,
-.markdown-body h3,
-.markdown-body h4 {
-  font-family: var(--fig-heading);
-  font-weight: 600;
-  line-height: 1.25;
-  letter-spacing: -0.015em;
+.fig-stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--fig-space-6);
+    min-inline-size: 0;
 }
 
-.markdown-body h1 {
-  font-size: clamp(1.375rem, 2.5vw, 1.75rem);
+.fig-stack--tight {
+    gap: var(--fig-space-3);
 }
 
-.markdown-body h2 {
-  font-size: clamp(1.125rem, 1.9vw, 1.375rem);
+.fig-stack--loose {
+    gap: var(--fig-space-8);
 }
 
-.markdown-body h3 {
-  font-size: clamp(1rem, 1.5vw, 1.125rem);
+.fig-cluster {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--fig-space-4);
+    min-inline-size: 0;
 }
 
-.markdown-body a {
-  color: #fff;
-  text-decoration: underline;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 0.2em;
+.fig-cluster--tight {
+    gap: var(--fig-space-2);
 }
 
-.markdown-body a:hover {
-  color: rgba(255, 255, 255, 0.7);
+.fig-bento {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1px;
+    background-color: var(--fig-rule);
 }
 
-.markdown-body code {
-  background: rgba(255, 255, 255, 0.08);
-  padding: 0.1em 0.35em;
+.fig-bento > .fig-panel {
+    border: 0;
 }
 
-/* ---- Ticket tracker ----------------------------------------------------- */
-
-/* @mention highlight inside rendered ticket/comment markdown */
-.tf-mention {
-  background: rgba(255, 255, 255, 0.12);
-  padding: 0.05em 0.3em;
-  border-radius: 0;
+@media (min-width: 48rem) {
+    .fig-bento {
+        grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr));
+    }
 }
 
-/* Small uppercase status pill; pair with a tachyons colour class */
-.tf-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.15em 0.5em;
-  font-family: var(--fig-body);
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  line-height: 1.4;
+/* ---- 5. Type primitives -------------------------------------------------- */
+
+/* Utility page names (Namespaces, Settings, Information, the auth titles) are
+   wayfinding, not identity: they sit back as a quiet caption so the content
+   below them owns the fold. Pages named after a git identifier carry that name
+   in the trail instead — see .fig-crumb-current. */
+.fig-display-xl {
+    margin: 0;
+    color: var(--fig-ink-tertiary);
+    font-size: var(--fig-t-label);
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    overflow-wrap: anywhere;
+}
+
+.fig-title,
+.fig-section,
+.fig-subsection {
+    margin: 0;
+    color: var(--fig-ink-primary);
+    overflow-wrap: anywhere;
+}
+
+.fig-title {
+    font-size: var(--fig-t-h1);
+    font-weight: 500;
+    line-height: 1.08;
+    letter-spacing: -0.03em;
+}
+
+.fig-section {
+    font-size: var(--fig-t-h2);
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+}
+
+.fig-subsection {
+    font-size: var(--fig-t-h3);
+    font-weight: 600;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+}
+
+.fig-eyebrow {
+    margin: 0;
+    color: var(--fig-ink-tertiary);
+    font-size: var(--fig-t-eyebrow);
+    font-weight: 500;
+    line-height: 1.25;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+}
+
+.fig-label {
+    display: block;
+    color: var(--fig-ink-tertiary);
+    font-size: var(--fig-t-label);
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.fig-body,
+.fig-body-lg,
+.fig-body-sm {
+    margin: 0;
+    color: var(--fig-ink-primary);
+    font-weight: 400;
+}
+
+.fig-body {
+    font-size: var(--fig-t-body);
+    line-height: 1.7;
+}
+
+.fig-body-lg {
+    font-size: var(--fig-t-body-lg);
+    line-height: 1.65;
+    letter-spacing: -0.005em;
+}
+
+.fig-body-sm {
+    font-size: var(--fig-t-body-sm);
+    line-height: 1.55;
+}
+
+.fig-data,
+.fig-data-lg {
+    font-family: var(--fig-mono);
+    font-variant-numeric: tabular-nums;
+}
+
+.fig-data {
+    font-size: var(--fig-t-data);
+    font-weight: 400;
+    line-height: 1.6;
+    letter-spacing: 0.01em;
+}
+
+.fig-data-lg {
+    font-size: var(--fig-t-data-lg);
+    font-weight: 500;
+    line-height: 1.4;
+    letter-spacing: 0.005em;
+}
+
+/* ---- 6. Page head -------------------------------------------------------- */
+
+/* Never a hero: one quiet line that names the page — a caption title or the
+   trail — with the page's single action pulled alongside it. */
+.fig-pagehead {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--fig-space-4);
+    padding-block: var(--fig-space-6) var(--fig-space-4);
+}
+
+/* A trail above the head has already opened the page. */
+.fig-crumbs--page + .fig-pagehead {
+    padding-block-start: var(--fig-space-2);
+}
+
+/* ---- 7. Panel, column header, technical row ------------------------------ */
+
+.fig-panel {
+    background-color: var(--fig-surface-1);
+    border: 1px solid var(--fig-rule);
+    min-inline-size: 0;
+}
+
+.fig-panel--danger {
+    border-inline-start: 2px solid var(--fig-signal-danger);
+}
+
+.fig-panel-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--fig-space-4);
+    padding: var(--fig-panel-pad);
+    padding-block-end: var(--fig-space-4);
+}
+
+.fig-panel-action {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--fig-space-2);
+}
+
+.fig-panel-body {
+    padding: var(--fig-panel-pad);
+    min-inline-size: 0;
+}
+
+.fig-panel-head + .fig-panel-body {
+    padding-block-start: 0;
+}
+
+.fig-panel--flush > .fig-panel-body {
+    padding: 0;
+}
+
+.fig-colhead {
+    display: none;
+    align-items: center;
+    gap: var(--fig-space-4);
+    min-block-size: 36px;
+    padding-inline: var(--fig-space-4);
+    background-color: var(--fig-surface-3);
+    border-block-end: 1px solid var(--fig-rule-strong);
+    border-inline-start: 2px solid transparent;
+    color: var(--fig-ink-tertiary);
+    font-size: var(--fig-t-eyebrow);
+    font-weight: 500;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+}
+
+.fig-colhead > :first-child {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+}
+
+.fig-colhead > :not(:first-child) {
+    flex: 0 0 9.375rem;
+    text-align: end;
+}
+
+.fig-list {
+    display: block;
+    min-inline-size: 0;
+}
+
+.fig-row {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: var(--fig-space-1);
+    min-block-size: var(--fig-row-h);
+    padding-block: var(--fig-space-3);
+    padding-inline: var(--fig-space-4);
+    border-block-end: 1px solid var(--fig-rule);
+    border-inline-start: 2px solid transparent;
+    color: var(--fig-ink-primary);
+    text-decoration: none;
+    transition:
+        background-color var(--fig-dur-micro) linear,
+        border-color var(--fig-dur-micro) linear,
+        color var(--fig-dur-micro) linear;
+}
+
+.fig-row:last-child {
+    border-block-end: 0;
+}
+
+.fig-row:hover {
+    background-color: var(--fig-surface-2);
+    border-inline-start-color: var(--fig-accent-500);
+    color: var(--fig-ink-primary);
+}
+
+.fig-row:active {
+    border-inline-start-color: var(--fig-accent-700);
+}
+
+.fig-row:focus-visible {
+    border-inline-start-color: transparent;
+}
+
+.fig-row[aria-busy="true"] {
+    color: var(--fig-ink-tertiary);
+    cursor: progress;
+}
+
+.fig-row--form {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--fig-space-4);
+}
+
+.fig-row--form:hover {
+    background-color: transparent;
+    border-inline-start-color: transparent;
+}
+
+.fig-row-id {
+    min-inline-size: 0;
+    color: var(--fig-ink-primary);
+    font-family: var(--fig-mono);
+    font-size: var(--fig-t-data-lg);
+    font-weight: 500;
+    line-height: 1.4;
+    letter-spacing: 0.005em;
+    overflow-wrap: anywhere;
+}
+
+.fig-row--file .fig-row-id {
+    color: var(--fig-ink-secondary);
+    font-weight: 400;
+}
+
+.fig-row-meta {
+    color: var(--fig-ink-tertiary);
+    font-family: var(--fig-mono);
+    font-size: var(--fig-t-data);
+    line-height: 1.6;
+    letter-spacing: 0.01em;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+}
+
+@media (min-width: 48rem) {
+    .fig-colhead {
+        display: flex;
+    }
+
+    .fig-row {
+        flex-direction: row;
+        align-items: center;
+        gap: var(--fig-space-4);
+    }
+
+    .fig-row-id {
+        flex: 1 1 auto;
+    }
+
+    .fig-row-meta {
+        flex: 0 0 9.375rem;
+        text-align: end;
+    }
+
+    .fig-row--form .fig-row-meta {
+        flex: 0 0 auto;
+    }
+}
+
+/* ---- 8. Tabs ------------------------------------------------------------- */
+
+.fig-tabs {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    margin-block-end: var(--fig-space-6);
+    border-block-end: 1px solid var(--fig-rule);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    min-inline-size: 0;
+}
+
+.fig-tab {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    min-block-size: var(--fig-control-h);
+    margin-block-end: -1px;
+    padding-inline: var(--fig-space-4);
+    border-block-end: 2px solid transparent;
+    color: var(--fig-ink-secondary);
+    font-size: var(--fig-t-label);
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    text-decoration: none;
+    white-space: nowrap;
+    transition:
+        color var(--fig-dur-micro) linear,
+        border-color var(--fig-dur-micro) linear;
+}
+
+.fig-tab:hover {
+    color: var(--fig-ink-primary);
+    border-block-end-color: var(--fig-rule-strong);
+}
+
+.fig-tab[aria-current="page"] {
+    color: var(--fig-ink-primary);
+    border-block-end-color: var(--fig-accent-500);
+}
+
+/* ---- 9. Buttons ---------------------------------------------------------- */
+
+.fig-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--fig-space-2);
+    min-block-size: var(--fig-control-h);
+    padding-inline: var(--fig-space-5);
+    background-color: transparent;
+    border: 1px solid transparent;
+    color: var(--fig-ink-primary);
+    font-family: var(--fig-sans);
+    font-size: var(--fig-t-label);
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+        background-color var(--fig-dur-micro) linear,
+        border-color var(--fig-dur-micro) linear,
+        color var(--fig-dur-micro) linear;
+}
+
+.fig-btn:hover {
+    color: var(--fig-ink-primary);
+}
+
+.fig-btn--primary {
+    background-color: var(--fig-ink-primary);
+    border-color: var(--fig-ink-primary);
+    color: var(--fig-void);
+}
+
+.fig-btn--primary:hover {
+    background-color: var(--fig-accent-500);
+    border-color: var(--fig-accent-500);
+    color: var(--fig-void);
+}
+
+.fig-btn--primary:active {
+    background-color: var(--fig-accent-700);
+    border-color: var(--fig-accent-700);
+    color: var(--fig-void);
+}
+
+.fig-btn--ghost {
+    border-color: var(--fig-rule-strong);
+    color: var(--fig-ink-primary);
+}
+
+.fig-btn--ghost:hover {
+    border-color: var(--fig-accent-500);
+    color: var(--fig-accent-500);
+}
+
+.fig-btn--ghost:active {
+    background-color: var(--fig-surface-2);
+    border-color: var(--fig-accent-700);
+    color: var(--fig-accent-700);
+}
+
+.fig-btn--quiet {
+    padding-inline: var(--fig-space-4);
+    color: var(--fig-ink-secondary);
+}
+
+.fig-btn--quiet:hover {
+    color: var(--fig-ink-primary);
+}
+
+.fig-btn--quiet:active {
+    color: var(--fig-accent-500);
+}
+
+.fig-btn--danger {
+    border-color: var(--fig-signal-danger);
+    color: var(--fig-signal-danger);
+}
+
+.fig-btn--danger:hover {
+    background-color: var(--fig-signal-danger);
+    border-color: var(--fig-signal-danger);
+    color: var(--fig-void);
+}
+
+.fig-btn--danger:active {
+    background-color: var(--fig-signal-danger);
+    border-color: var(--fig-ink-primary);
+    color: var(--fig-void);
+}
+
+.fig-btn--block {
+    display: flex;
+    inline-size: 100%;
+}
+
+.fig-btn:disabled {
+    background-color: transparent;
+    border-color: var(--fig-rule);
+    color: var(--fig-ink-tertiary);
+    cursor: not-allowed;
+}
+
+.fig-btn[aria-busy="true"] {
+    cursor: progress;
+}
+
+/* ---- 10. Fields ---------------------------------------------------------- */
+
+.fig-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--fig-space-5);
+    min-inline-size: 0;
+}
+
+.fig-form--narrow {
+    max-inline-size: var(--fig-measure-form);
+}
+
+.fig-form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--fig-space-4);
+    margin-block-start: var(--fig-space-1);
+}
+
+.fig-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--fig-space-2);
+    min-inline-size: 0;
+}
+
+.fig-input {
+    inline-size: 100%;
+    min-inline-size: 0;
+    min-block-size: var(--fig-control-h);
+    padding-inline: var(--fig-space-4);
+    appearance: none;
+    background-color: var(--fig-surface-0);
+    border: 1px solid var(--fig-rule-strong);
+    color: var(--fig-ink-primary);
+    font-family: var(--fig-sans);
+    font-size: var(--fig-t-body);
+    line-height: 1.2;
+    transition: border-color var(--fig-dur-micro) linear;
+}
+
+.fig-input--mono {
+    font-family: var(--fig-mono);
+    letter-spacing: 0.01em;
+}
+
+.fig-input::placeholder {
+    color: var(--fig-ink-tertiary);
+    opacity: 1;
+}
+
+.fig-input:hover {
+    border-color: var(--fig-ink-tertiary);
+}
+
+.fig-input:focus {
+    border-color: var(--fig-accent-500);
+}
+
+.fig-input:disabled {
+    background-color: var(--fig-surface-1);
+    border-color: var(--fig-rule);
+    color: var(--fig-ink-tertiary);
+}
+
+.fig-input[aria-invalid="true"] {
+    border-color: var(--fig-signal-danger);
+}
+
+.fig-hint {
+    margin: 0;
+    color: var(--fig-ink-tertiary);
+    font-size: var(--fig-t-body-sm);
+    line-height: 1.55;
+}
+
+.fig-search {
+    display: flex;
+    align-items: center;
+    gap: var(--fig-space-2);
+    min-inline-size: 0;
+}
+
+.fig-search .fig-input {
+    flex: 1 1 auto;
+}
+
+.fig-search .fig-btn {
+    flex: 0 0 auto;
+}
+
+/* ---- 11. Rail ------------------------------------------------------------ */
+
+.fig-rail-shell {
+    display: flex;
+    flex-direction: column;
+    gap: var(--fig-space-6);
+    min-inline-size: 0;
+}
+
+.fig-rail {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 0;
+    border-block-end: 1px solid var(--fig-rule);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    min-inline-size: 0;
+}
+
+.fig-rail .fig-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    padding-inline-end: var(--fig-space-3);
+}
+
+.fig-rail-item {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    min-block-size: var(--fig-control-h);
+    margin-block-end: -1px;
+    padding-inline: var(--fig-space-3);
+    border-block-end: 2px solid transparent;
+    color: var(--fig-ink-secondary);
+    font-size: var(--fig-t-body-sm);
+    text-decoration: none;
+    white-space: nowrap;
+    transition:
+        background-color var(--fig-dur-micro) linear,
+        border-color var(--fig-dur-micro) linear,
+        color var(--fig-dur-micro) linear;
+}
+
+.fig-rail-item:hover {
+    background-color: var(--fig-surface-2);
+    color: var(--fig-ink-primary);
+}
+
+.fig-rail-item[aria-current="page"] {
+    background-color: var(--fig-surface-2);
+    border-block-end-color: var(--fig-accent-500);
+    color: var(--fig-ink-primary);
+}
+
+.fig-rail--files .fig-rail-item {
+    font-family: var(--fig-mono);
+    font-size: var(--fig-t-data);
+    letter-spacing: 0.01em;
+}
+
+.fig-rail-body {
+    min-inline-size: 0;
+}
+
+@media (min-width: 48rem) {
+    .fig-rail-shell {
+        flex-direction: row;
+        align-items: flex-start;
+    }
+
+    .fig-rail {
+        position: sticky;
+        inset-block-start: calc(var(--fig-masthead-h) + var(--fig-space-6));
+        flex-direction: column;
+        flex: 0 0 var(--fig-rail-docs);
+        inline-size: var(--fig-rail-docs);
+        max-block-size: calc(
+            100dvh - var(--fig-masthead-h) - var(--fig-space-12)
+        );
+        border-block-end: 0;
+        border-inline-end: 1px solid var(--fig-rule);
+        overflow: auto;
+        min-block-size: 0;
+    }
+
+    .fig-rail--files {
+        flex-basis: var(--fig-rail-files);
+        inline-size: var(--fig-rail-files);
+    }
+
+    .fig-rail .fig-eyebrow {
+        display: block;
+        margin-block-start: var(--fig-space-6);
+        margin-block-end: var(--fig-space-2);
+        padding-inline: var(--fig-space-3);
+    }
+
+    .fig-rail .fig-eyebrow:first-child {
+        margin-block-start: 0;
+    }
+
+    .fig-rail-item {
+        inline-size: 100%;
+        margin-block-end: 0;
+        border-block-end: 0;
+        border-inline-start: 2px solid transparent;
+    }
+
+    .fig-rail-item[aria-current="page"] {
+        border-inline-start-color: var(--fig-accent-500);
+    }
+
+    .fig-rail-body {
+        flex: 1 1 auto;
+    }
+}
+
+/* ---- 12. Breadcrumbs ----------------------------------------------------- */
+
+.fig-crumbs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-block-end: var(--fig-space-6);
+    color: var(--fig-ink-secondary);
+    font-family: var(--fig-mono);
+    font-size: var(--fig-t-data);
+    letter-spacing: 0.01em;
+    overflow-wrap: anywhere;
+}
+
+.fig-crumbs a {
+    color: var(--fig-ink-tertiary);
+    text-decoration: none;
+    transition: color var(--fig-dur-micro) linear;
+}
+
+.fig-crumbs a:hover {
+    color: var(--fig-ink-primary);
+}
+
+.fig-crumbs a:active {
+    color: var(--fig-accent-500);
+}
+
+.fig-crumbs [aria-current="page"] {
+    color: var(--fig-ink-secondary);
+}
+
+.fig-crumb-sep {
+    margin-inline: var(--fig-space-2);
+    color: var(--fig-rule-strong);
+}
+
+/* The trail belongs to the head it opens, so it carries no gap of its own;
+   the 44px touch rows already hold the lines apart. */
+.fig-crumbs--page {
+    margin-block-end: 0;
+    font-family: var(--fig-sans);
+}
+
+.fig-crumbs--page > * {
+    display: inline-flex;
+    align-items: center;
+    min-block-size: var(--fig-control-h);
+}
+
+/* A page named after a git identifier is headed here rather than by a title
+   block: the final segment is the h1, set like the same name in a list row. */
+.fig-crumbs .fig-crumb-current {
+    margin: 0;
+    color: var(--fig-ink-primary);
+    font-family: var(--fig-mono);
+    font-size: var(--fig-t-data-lg);
+    font-weight: 500;
+    letter-spacing: 0.005em;
+    overflow-wrap: anywhere;
+}
+
+.fig-crumbs--path {
+    padding-block-start: var(--fig-space-3);
+    padding-block-end: 0;
+}
+
+/* ---- 13. Notice ---------------------------------------------------------- */
+
+.fig-notice {
+    display: flex;
+    flex-direction: column;
+    gap: var(--fig-space-2);
+    margin-block-start: var(--fig-space-4);
+    padding-block: var(--fig-space-4);
+    padding-inline: var(--fig-space-5);
+    background-color: var(--fig-surface-2);
+    border-inline-start: 2px solid var(--fig-accent-500);
+}
+
+.fig-notice-body {
+    margin: 0;
+    color: var(--fig-ink-primary);
+    font-size: var(--fig-t-body-sm);
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+}
+
+.fig-notice-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--fig-space-4);
+    margin-block-start: var(--fig-space-2);
+}
+
+.fig-notice > .fig-code {
+    margin-block-start: var(--fig-space-2);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.fig-notice--danger {
+    border-inline-start-color: var(--fig-signal-danger);
+}
+
+.fig-notice--danger > .fig-eyebrow {
+    color: var(--fig-signal-danger);
+}
+
+.fig-notice--success {
+    border-inline-start-color: var(--fig-signal-ok);
+}
+
+.fig-notice--success > .fig-eyebrow {
+    color: var(--fig-signal-ok);
+}
+
+.fig-notice--warning {
+    border-inline-start-color: var(--fig-signal-warn);
+}
+
+.fig-notice--warning > .fig-eyebrow {
+    color: var(--fig-signal-warn);
+}
+
+.fig-notice--info {
+    border-inline-start-color: var(--fig-accent-500);
+}
+
+.fig-notice--info > .fig-eyebrow {
+    color: var(--fig-accent-500);
+}
+
+/* ---- 14. Empty state ----------------------------------------------------- */
+
+.fig-empty {
+    display: flex;
+    flex-direction: column;
+    gap: var(--fig-space-3);
+    padding-block: var(--fig-space-12);
+    padding-inline: var(--fig-space-5);
+    background-color: var(--fig-surface-1);
+}
+
+.fig-empty-body {
+    margin: 0;
+    color: var(--fig-ink-secondary);
+    font-size: var(--fig-t-body-sm);
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+}
+
+.fig-empty > .fig-code,
+.fig-empty > .fig-empty-actions {
+    margin-block-start: var(--fig-space-2);
+}
+
+.fig-empty-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--fig-space-4);
+}
+
+/* ---- 15. Code surface ---------------------------------------------------- */
+
+.fig-code,
+.fig-md pre {
+    display: block;
+    margin: 0;
+    padding: var(--fig-space-5);
+    background-color: var(--fig-surface-3);
+    border: 1px solid var(--fig-rule);
+    color: var(--fig-ink-primary);
+    font-family: var(--fig-mono);
+    font-size: var(--fig-t-data);
+    line-height: 1.6;
+    letter-spacing: 0.01em;
+    white-space: pre;
+    overflow-x: auto;
+    min-inline-size: 0;
+    tab-size: 2;
+}
+
+/* ---- 16. Markdown surface ------------------------------------------------ */
+
+.fig-md {
+    color: var(--fig-ink-primary);
+    font-size: var(--fig-t-body);
+    line-height: 1.7;
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+}
+
+.fig-md--prose {
+    max-inline-size: var(--fig-measure-prose);
+}
+
+.fig-md--slide {
+    max-inline-size: var(--fig-measure-slide);
+}
+
+.fig-md--boxed {
+    padding: var(--fig-space-6);
+    background-color: var(--fig-surface-1);
+    border: 1px solid var(--fig-rule);
+}
+
+.fig-md > * {
+    margin-block: 0;
+}
+
+.fig-md > * + * {
+    margin-block-start: var(--fig-space-6);
+}
+
+.fig-md > * + :is(h1, h2, h3, h4, h5, h6) {
+    margin-block-start: var(--fig-space-10);
+}
+
+.fig-md :is(h1, h2, h3) {
+    color: var(--fig-ink-primary);
+}
+
+.fig-md h1 {
+    font-size: var(--fig-t-h1);
+    font-weight: 500;
+    line-height: 1.08;
+    letter-spacing: -0.03em;
+}
+
+.fig-md h2 {
+    padding-block-end: var(--fig-space-3);
+    border-block-end: 1px solid var(--fig-rule);
+    font-size: var(--fig-t-h2);
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+}
+
+.fig-md h3 {
+    font-size: var(--fig-t-h3);
+    font-weight: 600;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+}
+
+.fig-md :is(h4, h5, h6) {
+    color: var(--fig-ink-tertiary);
+    font-size: var(--fig-t-label);
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.fig-md a {
+    color: var(--fig-accent-500);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.2em;
+    transition: color var(--fig-dur-micro) linear;
+}
+
+.fig-md a:hover {
+    color: var(--fig-accent-300);
+    text-decoration-thickness: 2px;
+}
+
+.fig-md a:active {
+    color: var(--fig-accent-700);
+}
+
+.fig-md strong {
+    color: var(--fig-ink-primary);
+    font-weight: 600;
+}
+
+.fig-md em {
+    color: var(--fig-ink-primary);
+    font-style: italic;
+}
+
+.fig-md :is(ul, ol) {
+    padding-inline-start: var(--fig-space-6);
+}
+
+.fig-md li::marker {
+    color: var(--fig-ink-tertiary);
+}
+
+.fig-md li + li {
+    margin-block-start: var(--fig-space-2);
+}
+
+.fig-md code {
+    padding: 2px 6px;
+    background-color: var(--fig-surface-3);
+    color: var(--fig-ink-primary);
+    font-family: var(--fig-mono);
+    font-size: 0.875em;
+}
+
+.fig-md pre code {
+    padding: 0;
+    background-color: transparent;
+    font-size: inherit;
+}
+
+.fig-md blockquote {
+    margin-inline: 0;
+    padding-inline-start: var(--fig-space-5);
+    border-inline-start: 2px solid var(--fig-rule-strong);
+    color: var(--fig-ink-secondary);
+    font-style: normal;
+}
+
+.fig-md hr {
+    margin-block: var(--fig-space-10);
+    block-size: 1px;
+    border: 0;
+    background-color: var(--fig-rule);
+}
+
+.fig-md table {
+    display: block;
+    border-collapse: collapse;
+    overflow-x: auto;
+    min-inline-size: 0;
+}
+
+.fig-md :is(th, td) {
+    padding: var(--fig-space-3);
+    border: 1px solid var(--fig-rule);
+    text-align: start;
+}
+
+.fig-md th {
+    background-color: var(--fig-surface-3);
+    color: var(--fig-ink-tertiary);
+    font-size: var(--fig-t-eyebrow);
+    font-weight: 500;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+}
+
+.fig-md td {
+    color: var(--fig-ink-primary);
+    font-size: var(--fig-t-body-sm);
+}
+
+.fig-md tr {
+    background-color: transparent;
+}
+
+.fig-md img {
+    max-inline-size: 100%;
+    block-size: auto;
+}
+
+/* ---- 17. Commit row ------------------------------------------------------ */
+
+.fig-commits {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-block-start: 1px solid var(--fig-rule);
+}
+
+.fig-commit {
+    display: flex;
+    flex-direction: column;
+    gap: var(--fig-space-2);
+    padding-block: var(--fig-space-4);
+    border-block-end: 1px solid var(--fig-rule);
+}
+
+.fig-commit-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--fig-space-4);
+}
+
+.fig-commit-hash,
+.fig-commit-author,
+.fig-commit-date {
+    font-family: var(--fig-mono);
+    font-size: var(--fig-t-data);
+    line-height: 1.6;
+    letter-spacing: 0.01em;
+    font-variant-numeric: tabular-nums;
+}
+
+.fig-commit-hash {
+    padding: 0;
+    background-color: transparent;
+    color: var(--fig-ink-primary);
+}
+
+.fig-commit-author,
+.fig-commit-date {
+    color: var(--fig-ink-tertiary);
+}
+
+.fig-commit-msg {
+    margin: 0;
+    color: var(--fig-ink-primary);
+    font-size: var(--fig-t-body-lg);
+    font-weight: 500;
+    line-height: 1.65;
+    letter-spacing: -0.01em;
+    overflow-wrap: anywhere;
+}
+
+/* ---- 18. Presentation ---------------------------------------------------- */
+
+.fig-present {
+    display: flex;
+    flex-direction: column;
+    gap: var(--fig-space-6);
+    min-block-size: 50dvh;
+}
+
+.fig-present-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--fig-space-4);
+}
+
+.fig-present-tools {
+    display: flex;
+    align-items: center;
+    gap: var(--fig-space-4);
+}
+
+.fig-present-count {
+    color: var(--fig-ink-tertiary);
+    font-family: var(--fig-mono);
+    font-size: var(--fig-t-data);
+    letter-spacing: 0.01em;
+    font-variant-numeric: tabular-nums;
+}
+
+.fig-present-stage {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1 1 auto;
+    padding: var(--fig-space-8);
+    overflow-y: auto;
+    min-block-size: 0;
+    min-inline-size: 0;
+}
+
+.fig-present-stage > * {
+    inline-size: 100%;
+    transition: opacity var(--fig-dur-deliberate) var(--fig-ease-emphasis);
+}
+
+.fig-present-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--fig-space-4);
+}
+
+.fig-ticks {
+    display: flex;
+    align-items: center;
+    gap: var(--fig-space-1);
+}
+
+/* content-box keeps the visible mark 2px while the padded hit area reaches 44px */
+.fig-tick {
+    box-sizing: content-box;
+    inline-size: 24px;
+    block-size: 2px;
+    padding-block: 21px;
+    padding-inline: 0;
+    border: 0;
+    background-color: var(--fig-rule-strong);
+    background-clip: content-box;
+    cursor: pointer;
+    transition: background-color var(--fig-dur-micro) linear;
+}
+
+.fig-tick:hover {
+    background-color: var(--fig-ink-secondary);
+}
+
+.fig-tick[aria-current="true"] {
+    background-color: var(--fig-accent-500);
+}
+
+.fig-present:fullscreen {
+    min-block-size: 100dvh;
+    background-color: var(--fig-void);
+}
+
+.fig-present:fullscreen .fig-present-stage {
+    padding: var(--fig-space-16);
+}
+
+.fig-present:fullscreen .fig-md--slide {
+    max-inline-size: var(--fig-measure-slide-fs);
+    font-size: var(--fig-t-body-lg);
+}
+
+/* ---- 19. htmx swap contract ---------------------------------------------- */
+
+.htmx-swapping {
+    opacity: 0;
+    transition: opacity var(--fig-dur-micro) linear;
+}
+
+.htmx-settling {
+    opacity: 0;
+}
+
+:where(.fig-notice, [aria-live], [aria-live] > *) {
+    transition: opacity var(--fig-dur-standard) var(--fig-ease-out);
+}
+
+.htmx-request {
+    cursor: progress;
+}
+
+:is(
+    .fig-btn--ghost,
+    .fig-btn--quiet,
+    .fig-tab,
+    .fig-row,
+    .fig-rail-item
+).htmx-request {
+    color: var(--fig-ink-tertiary);
+}
+
+[aria-busy="true"] {
+    cursor: progress;
+}
+
+/* ---- 20. Utilities ------------------------------------------------------- */
+
+.fig-sr {
+    position: absolute;
+    clip-path: inset(50%);
+    block-size: 1px;
+    inline-size: 1px;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.fig-break {
+    overflow-wrap: anywhere;
+}
+
+.fig-nowrap {
+    white-space: nowrap;
+}
+
+.fig-mono {
+    font-family: var(--fig-mono);
+    font-variant-numeric: tabular-nums;
+}
+
+.fig-ink-secondary {
+    color: var(--fig-ink-secondary);
+}
+
+.fig-ink-tertiary {
+    color: var(--fig-ink-tertiary);
+}
+
+.fig-prose {
+    max-inline-size: var(--fig-measure-prose);
+}
+
+.fig-scroll-x {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    min-inline-size: 0;
+}
+
+/* ---- 21. Reduced motion -------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 1ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 1ms !important;
+        scroll-behavior: auto !important;
+    }
 }
