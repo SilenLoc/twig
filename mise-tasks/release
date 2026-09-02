@@ -44,7 +44,7 @@ awk -v new="$nv" '
 ' Cargo.toml > Cargo.toml.tmp && mv Cargo.toml.tmp Cargo.toml
 
 # 4. Build the release image and push it as silenloc/fig:<nv> in one pass.
-docker buildx build --provenance=false --push -t "silenloc/fig:$nv" .
+docker buildx build --provenance=false --push -t "silenloc/fig:$nv" -t "silenloc/fig:latest" .
 
 # 5. Commit the bumped Cargo.toml and push to the default branch.
 git add .
