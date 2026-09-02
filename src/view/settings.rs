@@ -21,9 +21,18 @@ struct DeleteRepoForm {
     repo_name: String,
 }
 
+#[derive(Deserialize)]
+struct MoveRepoForm {
+    source_namespace: String,
+    repo_name: String,
+    target_namespace: String,
+}
+
 /// Renders the settings page body shared by the full-page and HTMX responses.
 fn render_settings(
     user: &crate::auth::User,
+    movable_repos: &[(String, Vec<git::bare::RepoInfo>)],
+    owned_namespaces: &[String],
     repos_by_namespace: &[(String, Vec<git::bare::RepoInfo>)],
     deletable_namespaces: &[String],
 ) -> maud::Markup {
@@ -39,8 +48,76 @@ fn render_settings(
 
         div class="fig-bento" {
             (render_profile_panel(user))
+            (render_repo_move_panel(movable_repos, owned_namespaces))
             (render_repo_deletion_panel(repos_by_namespace))
             (render_namespace_deletion_panel(deletable_namespaces))
+        }
+    }
+}
+
+/// Repositories in owned namespaces that can be moved to another owned namespace.
+fn render_repo_move_panel(
+    repos_by_namespace: &[(String, Vec<git::bare::RepoInfo>)],
+    owned_namespaces: &[String],
+) -> maud::Markup {
+    let has_move = repos_by_namespace.iter().any(|(source, repos)| {
+        !repos.is_empty() && owned_namespaces.iter().any(|target| target != source)
+    });
+
+    maud::html! {
+        section class="fig-panel" aria-labelledby="settings-move-repo-heading" {
+            header class="fig-panel-head" {
+                h2 class="fig-eyebrow" id="settings-move-repo-heading" { "Move Repository" }
+            }
+
+            @if !has_move {
+                div class="fig-empty" {
+                    p class="fig-eyebrow" { "NO MOVES AVAILABLE" }
+                    p class="fig-empty-body" { "You need a repository and another namespace you own before you can move one." }
+                }
+            } @else {
+                div class="fig-panel-body fig-stack fig-stack--tight" {
+                    p class="fig-body-sm fig-ink-secondary" {
+                        "Moving a repository changes its web and Git URLs. Its history and configuration are preserved."
+                    }
+                    div id="move-repo-result" aria-live="polite" {}
+                }
+
+                div class="fig-list" {
+                    @for (source, repos) in repos_by_namespace {
+                        @for repo in repos {
+                            @if owned_namespaces.iter().any(|target| target != source) {
+                                form
+                                    class="fig-row fig-row--form"
+                                    hx-post="/settings/move-repo"
+                                    hx-target="#move-repo-result"
+                                    "hx-status:4xx"="swap:innerHTML target:#move-repo-result"
+                                    "hx-status:5xx"="swap:innerHTML target:#move-repo-result"
+                                    hx-swap="innerHTML"
+                                {
+                                    input type="hidden" name="source_namespace" value=(source);
+                                    input type="hidden" name="repo_name" value=(repo.name);
+                                    span class="fig-row-id" { (source) "/" (repo.name) }
+                                    label class="fig-label" for=(format!("move-{}-{}", source, repo.name)) { "Move to" }
+                                    select
+                                        class="fig-input fig-input--mono"
+                                        id=(format!("move-{}-{}", source, repo.name))
+                                        name="target_namespace"
+                                        required
+                                    {
+                                        @for target in owned_namespaces {
+                                            @if target != source {
+                                                option value=(target) { (target) }
+                                            }
+                                        }
+                                    }
+                                    button class="fig-btn fig-btn--ghost" type="submit" { "Move" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -230,14 +307,32 @@ pub async fn settings_page(
         }
     };
 
+    let mut movable_repos: Vec<(String, Vec<git::bare::RepoInfo>)> = Vec::new();
+    let mut owned_namespaces: Vec<String> = Vec::new();
     let mut repos_by_namespace: Vec<(String, Vec<git::bare::RepoInfo>)> = Vec::new();
     let mut deletable_namespaces: Vec<String> = Vec::new();
     for ns in &namespaces {
         let has_repos = git::bare::namespace::has_any_repository(server.project_root(), &ns.name);
-        if ns.owner_id == user_id && !has_repos {
-            deletable_namespaces.push(ns.name.clone());
+        if ns.owner_id == user_id {
+            owned_namespaces.push(ns.name.clone());
+            if !has_repos {
+                deletable_namespaces.push(ns.name.clone());
+            }
         }
         let repos = git::bare::get_repos_with_info(server.project_root(), &ns.name);
+        if ns.owner_id == user_id {
+            let repos_to_move: Vec<_> = repos
+                .iter()
+                .filter(|repo| git::reserved::validate_repo_name(&repo.name).is_ok())
+                .map(|repo| git::bare::RepoInfo {
+                    name: repo.name.clone(),
+                    last_commit_date: repo.last_commit_date,
+                })
+                .collect();
+            if !repos_to_move.is_empty() {
+                movable_repos.push((ns.name.clone(), repos_to_move));
+            }
+        }
         let deletable_repos: Vec<_> = repos
             .into_iter()
             .filter(|repo| {
@@ -251,7 +346,13 @@ pub async fn settings_page(
         }
     }
 
-    let content = render_settings(&user, &repos_by_namespace, &deletable_namespaces);
+    let content = render_settings(
+        &user,
+        &movable_repos,
+        &owned_namespaces,
+        &repos_by_namespace,
+        &deletable_namespaces,
+    );
 
     if req.headers().get("HX-Request").is_some() {
         Ok(content)
@@ -396,6 +497,109 @@ pub async fn delete_repo(
     }
 }
 
+#[post("/settings/move-repo")]
+pub async fn move_repo(
+    req: HttpRequest,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<FigContext>,
+    form: web::Form<MoveRepoForm>,
+) -> impl Responder {
+    if !git::bare::is_safe_component(&form.source_namespace)
+        || !git::bare::is_safe_component(&form.target_namespace)
+    {
+        return HttpResponse::BadRequest()
+            .body(render_error("Invalid namespace name").into_string());
+    }
+    if let Err(message) = git::reserved::validate_repo_name(&form.repo_name) {
+        return HttpResponse::BadRequest().body(render_error(&message).into_string());
+    }
+    if form.repo_name.trim() != form.repo_name {
+        return HttpResponse::BadRequest()
+            .body(render_error("Invalid repository name").into_string());
+    }
+    if form.source_namespace == form.target_namespace {
+        return HttpResponse::BadRequest()
+            .body(render_error("Choose a different destination namespace").into_string());
+    }
+
+    let Some(cookie) = req.cookie("session") else {
+        return HttpResponse::Unauthorized()
+            .body(render_error("Not logged in. Please log in first.").into_string());
+    };
+    let Some(user_id) = auth_state.validate_token(cookie.value()).await else {
+        return HttpResponse::Unauthorized()
+            .body(render_error("Session expired. Please log in again.").into_string());
+    };
+
+    let db = auth_state.db();
+    for (name, description) in [
+        (&form.source_namespace, "source"),
+        (&form.target_namespace, "destination"),
+    ] {
+        let namespace = match db.get_namespace_by_name(name).await {
+            Ok(Some(namespace)) => namespace,
+            Ok(None) => {
+                return HttpResponse::NotFound().body(
+                    render_error(&format!("{description} namespace not found")).into_string(),
+                );
+            }
+            Err(e) => {
+                log::error!("Failed to load {description} namespace: {e}");
+                return HttpResponse::InternalServerError()
+                    .body(render_error("Database error").into_string());
+            }
+        };
+        if namespace.owner_id != user_id {
+            return HttpResponse::Forbidden().body(
+                render_error("Repositories can only be moved between namespaces you own")
+                    .into_string(),
+            );
+        }
+    }
+
+    let source = Path::new(server.project_root())
+        .join(&form.source_namespace)
+        .join(&form.repo_name);
+    let destination_namespace = Path::new(server.project_root()).join(&form.target_namespace);
+    let destination = destination_namespace.join(&form.repo_name);
+
+    if !source.exists() {
+        return HttpResponse::NotFound().body(render_error("Repository not found").into_string());
+    }
+    if git2::Repository::open(&source).is_err() {
+        return HttpResponse::BadRequest()
+            .body(render_error("Path is not a valid git repository").into_string());
+    }
+    if destination.exists() {
+        return HttpResponse::Conflict().body(
+            render_error("A repository with that name already exists in the destination namespace")
+                .into_string(),
+        );
+    }
+    if let Err(e) = std::fs::create_dir_all(&destination_namespace) {
+        log::error!("Failed to create destination namespace directory: {e}");
+        return HttpResponse::InternalServerError()
+            .body(render_error("Failed to prepare destination namespace").into_string());
+    }
+    if let Err(e) = std::fs::rename(&source, &destination) {
+        log::error!("Failed to move repository: {e}");
+        return HttpResponse::InternalServerError()
+            .body(render_error("Failed to move repository").into_string());
+    }
+
+    info!(
+        "Moved repository '{}/{}' to '{}/{}' by user: {}",
+        form.source_namespace, form.repo_name, form.target_namespace, form.repo_name, user_id
+    );
+    HttpResponse::Ok().content_type("text/html").body(
+        render_success(&format!(
+            "Repository moved to {}/{}.",
+            form.target_namespace, form.repo_name
+        ))
+        .into_string(),
+    )
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct NamespaceForm {
     pub namespace: String,
@@ -494,13 +698,15 @@ mod tests {
         render_settings(
             &user_fixture(Some("silen@example.com")),
             &[("acme".to_string(), vec![repo_fixture("fig")])],
+            &["acme".to_string(), "solo".to_string()],
+            &[("acme".to_string(), vec![repo_fixture("fig")])],
             &["solo".to_string()],
         )
         .into_string()
     }
 
     fn empty_html() -> String {
-        render_settings(&user_fixture(None), &[], &[]).into_string()
+        render_settings(&user_fixture(None), &[], &[], &[], &[]).into_string()
     }
 
     fn classes_in(html: &str) -> Vec<String> {
@@ -546,7 +752,7 @@ mod tests {
     }
 
     #[test]
-    fn test_settings_panels_are_a_three_cell_bento_with_head_and_body() {
+    fn test_settings_panels_are_a_four_cell_bento_with_head_and_body() {
         let html = populated_html();
         assert_eq!(
             html.matches("class=\"fig-bento\"").count(),
@@ -555,21 +761,22 @@ mod tests {
         );
         assert_eq!(
             html.matches("<section class=\"fig-panel").count(),
-            3,
-            "Profile, Delete Repository and Delete Namespace panels: {html}"
+            4,
+            "Profile, Move Repository, Delete Repository and Delete Namespace panels: {html}"
         );
         assert_eq!(
             html.matches("class=\"fig-panel-head\"").count(),
-            3,
+            4,
             "every panel declares a head: {html}"
         );
         assert_eq!(
             html.matches("<h2 class=\"fig-eyebrow\"").count(),
-            3,
+            4,
             "panel headings are h2 eyebrows under the page h1: {html}"
         );
         for (heading_id, heading_text) in [
             ("settings-profile-heading", "Profile Information"),
+            ("settings-move-repo-heading", "Move Repository"),
             ("settings-delete-repo-heading", "Delete Repository"),
             ("settings-delete-namespace-heading", "Delete Namespace"),
         ] {
@@ -587,6 +794,30 @@ mod tests {
         assert!(
             !html.contains("<h4"),
             "panels never nest a fourth heading level: {html}"
+        );
+    }
+
+    #[test]
+    fn test_settings_move_repo_rows_offer_other_owned_namespaces() {
+        let html = populated_html();
+        for attribute in [
+            "hx-post=\"/settings/move-repo\"",
+            "hx-target=\"#move-repo-result\"",
+            "hx-status:4xx=\"swap:innerHTML target:#move-repo-result\"",
+            "hx-status:5xx=\"swap:innerHTML target:#move-repo-result\"",
+        ] {
+            assert!(html.contains(attribute), "missing {attribute}: {html}");
+        }
+        for payload in [
+            "<input type=\"hidden\" name=\"source_namespace\" value=\"acme\">",
+            "<input type=\"hidden\" name=\"repo_name\" value=\"fig\">",
+            "<option value=\"solo\">solo</option>",
+        ] {
+            assert!(html.contains(payload), "missing {payload}: {html}");
+        }
+        assert!(
+            !html.contains("<option value=\"acme\">"),
+            "the source namespace is not a destination: {html}"
         );
     }
 
@@ -716,6 +947,7 @@ mod tests {
         let html = populated_html();
         for target in [
             "settings-result",
+            "move-repo-result",
             "delete-repo-result",
             "delete-namespace-result",
         ] {
@@ -755,10 +987,14 @@ mod tests {
         let html = empty_html();
         assert_eq!(
             html.matches("<div class=\"fig-empty\">").count(),
-            2,
-            "both deletion panels degrade to empty states: {html}"
+            3,
+            "move and deletion panels degrade to empty states: {html}"
         );
         for (eyebrow, body) in [
+            (
+                ">NO MOVES AVAILABLE<",
+                "You need a repository and another namespace you own before you can move one.",
+            ),
             (
                 ">NO REPOSITORIES<",
                 "You don't have any repositories to delete.",
@@ -817,5 +1053,16 @@ mod tests {
             serde_urlencoded::from_str("namespace=ns&repo_name=repo").unwrap();
         assert_eq!(form.namespace, "ns");
         assert_eq!(form.repo_name, "repo");
+    }
+
+    #[test]
+    fn test_move_repo_form_deserialization() {
+        let form: MoveRepoForm = serde_urlencoded::from_str(
+            "source_namespace=source&repo_name=repo&target_namespace=target",
+        )
+        .unwrap();
+        assert_eq!(form.source_namespace, "source");
+        assert_eq!(form.repo_name, "repo");
+        assert_eq!(form.target_namespace, "target");
     }
 }

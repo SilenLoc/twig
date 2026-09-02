@@ -102,6 +102,7 @@ mod tests {
                 .service(auth::handlers::logout_ui_handler)
                 .service(view::settings::settings_page)
                 .service(view::settings::update_email)
+                .service(view::settings::move_repo)
                 .service(view::settings::delete_repo)
                 .service(view::settings::delete_namespace)
                 .service(view::overview::index)
@@ -372,6 +373,90 @@ mod tests {
             .find(|c| c.name() == "session")
             .expect("login should set a session cookie")
             .into_owned()
+    }
+
+    async fn create_namespace<S>(app: &S, session: actix_web::cookie::Cookie<'static>, name: &str)
+    where
+        S: actix_web::dev::Service<
+                Request,
+                Response = actix_web::dev::ServiceResponse,
+                Error = actix_web::Error,
+            >,
+    {
+        let req = test::TestRequest::post()
+            .uri("/auth/namespace")
+            .cookie(session)
+            .set_form([("name", name)])
+            .to_request();
+        let resp = test::call_service(app, req).await;
+        assert!(
+            resp.status().is_success(),
+            "namespace creation should succeed"
+        );
+    }
+
+    #[actix_web::test]
+    async fn test_move_repo_between_owned_namespaces() {
+        let root = format!("/tmp/test_fig_move_repo_{}", uuid::Uuid::new_v4());
+        let app = create_test_service_in(&root).await;
+        let session = signup_and_login(&app, "moveowner").await;
+        create_namespace(&app, session.clone(), "source").await;
+        create_namespace(&app, session.clone(), "target").await;
+
+        let source = std::path::Path::new(&root).join("source/repo");
+        std::fs::create_dir_all(&source).unwrap();
+        crate::git::repo::bare_init(&source, "main", "Test", "test@example.com").unwrap();
+
+        let req = test::TestRequest::post()
+            .uri("/settings/move-repo")
+            .cookie(session)
+            .set_form([
+                ("source_namespace", "source"),
+                ("repo_name", "repo"),
+                ("target_namespace", "target"),
+            ])
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert!(!source.exists());
+        let destination = std::path::Path::new(&root).join("target/repo");
+        assert!(git2::Repository::open(destination).is_ok());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[actix_web::test]
+    async fn test_move_repo_rejects_namespace_owned_by_another_user() {
+        let root = format!("/tmp/test_fig_move_denied_{}", uuid::Uuid::new_v4());
+        let app = create_test_service_in(&root).await;
+        let owner_session = signup_and_login(&app, "sourceowner").await;
+        create_namespace(&app, owner_session.clone(), "ownedsource").await;
+        let other_session = signup_and_login(&app, "targetowner").await;
+        create_namespace(&app, other_session, "foreigntarget").await;
+
+        let source = std::path::Path::new(&root).join("ownedsource/repo");
+        std::fs::create_dir_all(&source).unwrap();
+        crate::git::repo::bare_init(&source, "main", "Test", "test@example.com").unwrap();
+
+        let req = test::TestRequest::post()
+            .uri("/settings/move-repo")
+            .cookie(owner_session)
+            .set_form([
+                ("source_namespace", "ownedsource"),
+                ("repo_name", "repo"),
+                ("target_namespace", "foreigntarget"),
+            ])
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+        assert!(source.exists());
+        assert!(
+            !std::path::Path::new(&root)
+                .join("foreigntarget/repo")
+                .exists()
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[actix_web::test]

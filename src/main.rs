@@ -138,6 +138,7 @@ fn configure_routes(cfg: &mut web::ServiceConfig) {
         // Settings page MUST come before namespace handler (which matches /{namespace})
         .service(view::settings::settings_page)
         .service(view::settings::update_email)
+        .service(view::settings::move_repo)
         .service(view::settings::delete_repo)
         .service(view::settings::delete_namespace)
         .service(view::namespace::handler)
