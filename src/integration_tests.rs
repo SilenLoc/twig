@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::{assets, auth, config, db::Database, health, view};
+    use crate::{api, assets, auth, config, db::Database, health, view};
     use actix_http::Request;
     use actix_web::{App, http::StatusCode, test, web};
 
@@ -91,6 +91,7 @@ mod tests {
                 .service(health::health)
                 .service(health::up)
                 .service(assets::assets)
+                .service(api::tree_endpoint)
                 .service(view::auth::invite_page)
                 .service(view::auth::signup_page)
                 .service(view::auth::login_page)

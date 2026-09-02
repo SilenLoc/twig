@@ -9,6 +9,7 @@ use env_logger::Env;
 use log::{info, warn};
 use sentry::integrations::log::LogFilter;
 
+mod api;
 mod assets;
 mod auth;
 mod config;
@@ -122,6 +123,7 @@ fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(health::health)
         .service(health::up)
         .service(assets::assets)
+        .service(api::tree_endpoint)
         .service(view::info::index)
         // Auth UI endpoints (HTML forms)
         .service(view::auth::invite_page)
