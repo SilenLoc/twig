@@ -182,6 +182,9 @@ pub fn bare_init(
 # Whether the repository can be deleted from the UI.
 #deleteable = false
 
+# Whether the repository is private (read operations require authentication).
+#private = false
+
 [present]
 # Markdown files to include in the presentation view.
 #files = []

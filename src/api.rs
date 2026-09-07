@@ -45,9 +45,13 @@ pub fn msgpack_responder<T: Serialize>(data: T) -> impl Responder {
 /// Returns the public namespace/repository hierarchy as named `MessagePack`.
 #[get("/api/tree")]
 pub async fn tree_endpoint(
+    req: HttpRequest,
     server: web::Data<config::Server>,
     auth_state: web::Data<FigContext>,
 ) -> Result<impl Responder, Error> {
+    let username = crate::view::session_auth::get_username_from_request(&req, &auth_state).await;
+    let is_logged_in = username.is_some();
+
     let namespaces = match auth_state.db().get_all_namespaces_with_owners().await {
         Ok(namespaces) => namespaces,
         Err(e) => {
@@ -65,6 +69,7 @@ pub async fn tree_endpoint(
                 let mut repositories =
                     git::bare::get_repos_with_info(server.project_root(), &namespace.name)
                         .into_iter()
+                        .filter(|repo| is_logged_in || !repo.is_private)
                         .map(|repo| repo.name)
                         .collect::<Vec<_>>();
                 repositories.sort();
@@ -188,6 +193,97 @@ mod tests {
         assert_eq!(decoded.namespaces.len(), 1);
         assert_eq!(decoded.namespaces[0].name, "silen");
         assert_eq!(decoded.namespaces[0].repositories, ["fig"]);
+
+        let _ = std::fs::remove_file(db_path);
+        let _ = std::fs::remove_dir_all(project_root);
+    }
+
+    #[actix_web::test]
+    async fn test_tree_endpoint_filters_private_repositories() {
+        let id = uuid::Uuid::new_v4();
+        let project_root = std::env::temp_dir().join(format!("fig_api_root_{id}"));
+        let db_path = std::env::temp_dir().join(format!("fig_api_db_{id}.db"));
+        std::fs::create_dir_all(project_root.join("silen")).expect("create namespace");
+        git2::Repository::init_bare(project_root.join("silen").join("public"))
+            .expect("create repository");
+
+        let secret_repo = project_root.join("silen").join("secret");
+        std::fs::create_dir_all(&secret_repo).expect("create secret repo dir");
+        crate::git::repo::bare_init(&secret_repo, "main", "Owner", "owner@example.com")
+            .expect("bare init");
+        {
+            let sh = xshell::Shell::new().unwrap();
+            let _p = sh.push_dir(&secret_repo);
+            let blob = xshell::cmd!(sh, "git hash-object -w --stdin")
+                .stdin("private = true\n")
+                .read()
+                .unwrap();
+            let tree = xshell::cmd!(sh, "git mktree")
+                .stdin(format!("100644 blob {blob}\t.fig.toml\n"))
+                .read()
+                .unwrap();
+            let commit = xshell::cmd!(sh, "git commit-tree {tree} -m 'private'")
+                .read()
+                .unwrap();
+            xshell::cmd!(sh, "git update-ref refs/heads/main {commit}")
+                .run()
+                .unwrap();
+        }
+
+        let db = crate::db::Database::new(db_path.to_str().expect("db path"));
+        db.init_tables().await.expect("init tables");
+        let user = crate::auth::create_user(
+            "owner".to_string(),
+            "owner@example.com".to_string(),
+            "password",
+        )
+        .expect("create user");
+        db.create_user(&user).await.expect("store user");
+        let namespace = crate::auth::create_namespace("silen".to_string(), user.id.clone());
+        db.create_namespace(&namespace)
+            .await
+            .expect("store namespace");
+
+        let token = "test_token_for_tree_endpoint_12345678901234567890123456789012";
+        db.create_token(token, &user.id)
+            .await
+            .expect("create token");
+
+        let app = aw_test::init_service(
+            App::new()
+                .app_data(web::Data::new(test_config(
+                    project_root.to_str().expect("project root"),
+                    db_path.to_str().expect("db path"),
+                )))
+                .app_data(web::Data::new(FigContext::new(db, "secure".to_string())))
+                .service(tree_endpoint),
+        )
+        .await;
+
+        // Anonymous request should omit secret repo
+        let response = aw_test::call_service(
+            &app,
+            aw_test::TestRequest::get().uri("/api/tree").to_request(),
+        )
+        .await;
+        assert_eq!(response.status(), actix_web::http::StatusCode::OK);
+        let body = aw_test::read_body(response).await;
+        let decoded: NamespaceTree = rmp_serde::from_slice(&body).expect("decode response");
+        assert_eq!(decoded.namespaces[0].repositories, ["public"]);
+
+        // Authenticated request should include secret repo
+        let response = aw_test::call_service(
+            &app,
+            aw_test::TestRequest::get()
+                .uri("/api/tree")
+                .cookie(actix_web::cookie::Cookie::new("session", token))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(response.status(), actix_web::http::StatusCode::OK);
+        let body = aw_test::read_body(response).await;
+        let decoded: NamespaceTree = rmp_serde::from_slice(&body).expect("decode response");
+        assert_eq!(decoded.namespaces[0].repositories, ["public", "secret"]);
 
         let _ = std::fs::remove_file(db_path);
         let _ = std::fs::remove_dir_all(project_root);

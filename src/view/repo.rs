@@ -7,7 +7,9 @@ use serde::Deserialize;
 use crate::{
     auth::FigContext,
     config,
-    git::bare::{Commit, Depth, PresentConfig, RepoHandle, TreeEntry, is_safe_repo_path},
+    git::bare::{
+        Commit, Depth, FigConfigWithRaw, PresentConfig, RepoHandle, TreeEntry, is_safe_repo_path,
+    },
     md,
 };
 
@@ -90,6 +92,15 @@ fn render_for_request(
     }
 }
 
+fn render_repo_auth_error(req: &HttpRequest, page_title: &str) -> Markup {
+    let content = super::render_error_with_action(
+        "Not logged in. Please log in first.",
+        "/auth/login",
+        "Log in",
+    );
+    render_for_request(req, content, None, page_title)
+}
+
 /// A rendered slide for the presentation view
 struct PresentSlide {
     html: String,
@@ -127,6 +138,31 @@ struct ContentHtmxContext<'a> {
     has_present: bool,
 }
 
+fn render_tab_response(
+    ctx: &TabContentContext<'_>,
+    is_htmx: bool,
+    has_config: bool,
+    has_present: bool,
+) -> Markup {
+    if is_htmx {
+        let inner = render_tab_content_inner(ctx);
+        let tabs = render_tabs(
+            ctx.namespace,
+            ctx.repo,
+            ctx.tab,
+            has_config,
+            ctx.tabs_config,
+            has_present,
+        );
+        maud::html! {
+            (tabs)
+            (inner)
+        }
+    } else {
+        render_tab_content(ctx)
+    }
+}
+
 #[get("/{namespace}/{repo}")]
 pub async fn handler(
     req: HttpRequest,
@@ -156,6 +192,10 @@ pub async fn handler(
     let fig_config = &fig_result.config;
     let fig_content = fig_result.raw.as_deref();
     let fig_filename = fig_result.filename.as_deref();
+
+    if fig_config.private && username.is_none() {
+        return Ok(render_repo_auth_error(&req, &page_title));
+    }
 
     let commits_result = handle.get_commits(&Depth::default());
     let files_result = handle.list_files(Some(fig_config));
@@ -242,6 +282,10 @@ pub async fn tab_handler(
     let fig_content = fig_result.raw.as_deref();
     let fig_filename = fig_result.filename.as_deref();
 
+    if fig_config.private && username.is_none() {
+        return Ok(render_repo_auth_error(&req, &page_title));
+    }
+
     let commits_result = handle.get_commits(&Depth::default());
     let files_result = handle.list_files(Some(fig_config));
 
@@ -286,25 +330,13 @@ pub async fn tab_handler(
                 content_entries: &content_entries,
                 content_file_bytes: None,
             };
-            let content = if req.headers().get("HX-Request").is_some() {
-                let has_config = fig_content.is_some();
-                let has_present = !fig_config.present.files.is_empty();
-                let inner = render_tab_content_inner(&ctx);
-                let tabs = render_tabs(
-                    namespace,
-                    repo,
-                    tab,
-                    has_config,
-                    &fig_config.tabs,
-                    has_present,
-                );
-                maud::html! {
-                    (tabs)
-                    (inner)
-                }
-            } else {
-                render_tab_content(&ctx)
-            };
+            let is_htmx = req.headers().get("HX-Request").is_some();
+            let content = render_tab_response(
+                &ctx,
+                is_htmx,
+                fig_content.is_some(),
+                !fig_config.present.files.is_empty(),
+            );
             Ok(render_for_request(
                 &req,
                 content,
@@ -365,6 +397,10 @@ pub async fn markdown_handler(
     let fig_config = &fig_result.config;
     let fig_content = fig_result.raw.as_deref();
     let fig_filename = fig_result.filename.as_deref();
+
+    if fig_config.private && username.is_none() {
+        return Ok(render_repo_auth_error(&req, &page_title));
+    }
 
     let commits_result = handle.get_commits(&Depth::default());
     let files_result = handle.list_files(Some(fig_config));
@@ -428,6 +464,47 @@ pub async fn markdown_handler(
     }
 }
 
+struct ContentFullContext<'a> {
+    handle: &'a RepoHandle,
+    fig_result: &'a FigConfigWithRaw,
+    namespace: &'a str,
+    repo: &'a str,
+    path: &'a str,
+    commits: &'a [Commit],
+    entries: &'a [TreeEntry],
+    file_bytes: Option<&'a [u8]>,
+}
+
+fn render_content_full(ctx: &ContentFullContext<'_>) -> Markup {
+    let files_result = ctx.handle.list_files(Some(&ctx.fig_result.config));
+    let markdown_files = files_result.unwrap_or_default().markdown_files;
+    let default_file = get_default_markdown_file(&markdown_files);
+    let default_content = default_file.and_then(|f| ctx.handle.read_file(f).ok().flatten());
+    let present_slides = load_present_slides(ctx.handle, &ctx.fig_result.config.present);
+    let license_content = ctx.handle.get_license_content();
+
+    let tab_ctx = TabContentContext {
+        namespace: ctx.namespace,
+        repo: ctx.repo,
+        tab: "content",
+        commits: ctx.commits,
+        markdown_files: &markdown_files,
+        selected_md_file: default_file,
+        selected_content: default_content.as_deref(),
+        fig_content: ctx.fig_result.raw.as_deref(),
+        fig_filename: ctx.fig_result.filename.as_deref(),
+        tabs_config: &ctx.fig_result.config.tabs,
+        present_config: &ctx.fig_result.config.present,
+        present_slides: &present_slides,
+        license_content: Some(&license_content),
+        has_license: ctx.handle.has_license(),
+        content_path: ctx.path,
+        content_entries: ctx.entries,
+        content_file_bytes: ctx.file_bytes,
+    };
+    render_repo(&tab_ctx)
+}
+
 #[get("/{namespace}/{repo}/content/{path:.*}")]
 pub async fn content_handler(
     req: HttpRequest,
@@ -468,7 +545,10 @@ pub async fn content_handler(
     let fig_result = handle.load_config_with_raw();
     let fig_config = &fig_result.config;
     let fig_content = fig_result.raw.as_deref();
-    let fig_filename = fig_result.filename.as_deref();
+
+    if fig_config.private && username.is_none() {
+        return Ok(render_repo_auth_error(&req, &page_title));
+    }
 
     let commits_result = handle.get_commits(&Depth::default());
 
@@ -493,33 +573,16 @@ pub async fn content_handler(
                     has_present: !fig_config.present.files.is_empty(),
                 })
             } else {
-                let files_result = handle.list_files(Some(fig_config));
-                let markdown_files = files_result.unwrap_or_default().markdown_files;
-                let default_file = get_default_markdown_file(&markdown_files);
-                let default_content = default_file.and_then(|f| handle.read_file(f).ok().flatten());
-                let present_slides = load_present_slides(&handle, &fig_config.present);
-                let license_content = handle.get_license_content();
-
-                let ctx = TabContentContext {
+                render_content_full(&ContentFullContext {
+                    handle: &handle,
+                    fig_result: &fig_result,
                     namespace,
                     repo,
-                    tab: "content",
+                    path: &path,
                     commits: &commits,
-                    markdown_files: &markdown_files,
-                    selected_md_file: default_file,
-                    selected_content: default_content.as_deref(),
-                    fig_content,
-                    fig_filename,
-                    tabs_config: &fig_config.tabs,
-                    present_config: &fig_config.present,
-                    present_slides: &present_slides,
-                    license_content: Some(&license_content),
-                    has_license: handle.has_license(),
-                    content_path: &path,
-                    content_entries: &entries,
-                    content_file_bytes: file_bytes.as_deref(),
-                };
-                render_repo(&ctx)
+                    entries: &entries,
+                    file_bytes: file_bytes.as_deref(),
+                })
             };
             Ok(render_for_request(
                 &req,
@@ -570,6 +633,10 @@ pub async fn slide_handler(
     };
 
     let fig_result = handle.load_config_with_raw();
+    if fig_result.config.private && username.is_none() {
+        return Ok(render_repo_auth_error(&req, &page_title));
+    }
+
     let present_slides = load_present_slides(&handle, &fig_result.config.present);
 
     if index >= present_slides.len() {
@@ -2136,7 +2203,31 @@ mod tests {
                 "git error",
                 render_git_error(&git2::Error::from_str("boom")).into_string(),
             ),
+            (
+                "repo auth error",
+                render_repo_auth_error(
+                    &actix_web::test::TestRequest::default().to_http_request(),
+                    "acme/secret",
+                )
+                .into_string(),
+            ),
         ]
+    }
+
+    #[test]
+    fn test_render_repo_auth_error() {
+        let req = actix_web::test::TestRequest::default().to_http_request();
+        let html = render_repo_auth_error(&req, "acme/secret").into_string();
+        assert!(html.contains("Not logged in. Please log in first."));
+        assert!(html.contains("href=\"/auth/login\""));
+        assert!(html.contains("<title>acme/secret · Fig</title>"));
+
+        let htmx_req = actix_web::test::TestRequest::default()
+            .insert_header(("HX-Request", "true"))
+            .to_http_request();
+        let htmx_html = render_repo_auth_error(&htmx_req, "acme/secret").into_string();
+        assert!(htmx_html.contains("Not logged in. Please log in first."));
+        assert!(!htmx_html.contains("<!DOCTYPE html>"));
     }
 
     #[test]

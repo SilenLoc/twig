@@ -195,6 +195,12 @@ pub async fn handler(
         git::bare::search_repos_with_info(server.project_root(), namespace, search_query)
     };
 
+    let repos: Vec<_> = if username.is_some() {
+        repos
+    } else {
+        repos.into_iter().filter(|r| !r.is_private).collect()
+    };
+
     let content = render_namespace(namespace, search_query, has_access, &repos);
 
     if req.headers().get("HX-Request").is_some() {
@@ -392,6 +398,7 @@ mod tests {
             name: name.to_string(),
             last_commit_date: days_ago
                 .map(|days| chrono::Utc::now() - chrono::Duration::days(days)),
+            is_private: false,
         }
     }
 

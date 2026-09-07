@@ -119,7 +119,7 @@ fn spawn_database_init(
 /// used to be. Order still matters: static/UI routes must be registered
 /// before the dynamic `/{namespace}` and `/{namespace}/{repo}` patterns they
 /// would otherwise be shadowed by.
-fn configure_routes(cfg: &mut web::ServiceConfig) {
+pub(crate) fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(health::health)
         .service(health::up)
         .service(assets::assets)
@@ -237,7 +237,7 @@ fn main() -> std::io::Result<()> {
     })
 }
 
-fn is_git() -> impl guard::Guard {
+pub(crate) fn is_git() -> impl guard::Guard {
     guard::fn_guard(|ctx| {
         ctx.head()
             .headers

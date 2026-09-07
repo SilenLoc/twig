@@ -327,6 +327,7 @@ pub async fn settings_page(
                 .map(|repo| git::bare::RepoInfo {
                     name: repo.name.clone(),
                     last_commit_date: repo.last_commit_date,
+                    is_private: repo.is_private,
                 })
                 .collect();
             if !repos_to_move.is_empty() {
@@ -691,6 +692,7 @@ mod tests {
         git::bare::RepoInfo {
             name: name.to_string(),
             last_commit_date: None,
+            is_private: false,
         }
     }
 

@@ -1,7 +1,6 @@
 use std::path::Path;
 
 use actix_web::{HttpRequest, HttpResponse, web};
-use log::info;
 
 use crate::auth::{FigContext, User, extract_basic_auth, verify_password};
 use crate::config;
@@ -19,6 +18,26 @@ pub async fn git_handler(
 ) -> HttpResponse {
     let (namespace, repo, endpoint) = path.into_inner();
 
+    let clean_repo = if Path::new(server.project_root())
+        .join(&namespace)
+        .join(&repo)
+        .exists()
+    {
+        repo.clone()
+    } else if let Some(stripped) = repo.strip_suffix(".git") {
+        if Path::new(server.project_root())
+            .join(&namespace)
+            .join(stripped)
+            .exists()
+        {
+            stripped.to_string()
+        } else {
+            repo.clone()
+        }
+    } else {
+        repo.clone()
+    };
+
     let git_backend_config = crate::git_backend::Config::new(server.project_root());
 
     let method = req.method().as_str();
@@ -29,56 +48,24 @@ pub async fn git_handler(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
 
-    let path_info = format!("/{repo}/{endpoint}");
+    let path_info = format!("/{clean_repo}/{endpoint}");
 
     let git_req = crate::git_backend::GitRequest::new(method, path_info, query, content_type);
 
     let kind = git_req.kind();
 
-    match kind.clone() {
-        crate::git_backend::GitRequestKind::AdvertiseRefs(git_service) => {
-            info!("handling advertise refs {repo}: {endpoint} kind: {git_service}");
-        }
-        crate::git_backend::GitRequestKind::FetchClone => {
-            info!("handling fetch or clone {repo}: {endpoint}");
-        }
-        crate::git_backend::GitRequestKind::Push => {
-            info!("handling push {repo}: {endpoint}");
-        }
-        crate::git_backend::GitRequestKind::DumbGet => {
-            info!("handling dumb get {repo}: {endpoint}");
-        }
-    }
-
-    // Auth gate for write operations
-    let username = match &kind {
-        crate::git_backend::GitRequestKind::Push
-        | crate::git_backend::GitRequestKind::AdvertiseRefs(
-            crate::git_backend::GitService::WriteRef,
-        ) => match is_authenticated(&req, &auth_state, &namespace).await {
-            Ok(Some(auth_result)) => {
-                if !auth_result.namespace_exists
-                    && let Err(e) =
-                        ensure_namespace_exists(&auth_state, &auth_result.user, &namespace).await
-                {
-                    log::error!("Failed to ensure namespace exists: {e}");
-                    return actix_web::HttpResponse::InternalServerError()
-                        .body("Failed to create namespace");
-                }
-                // Auto-create repo if it doesn't exist
-                if let Err(e) = ensure_repo_exists(server.project_root(), &namespace, &repo) {
-                    log::error!("Failed to ensure repo exists: {e}");
-                    return actix_web::HttpResponse::InternalServerError()
-                        .body("Failed to create repository");
-                }
-                Some(auth_result.user.username.clone())
-            }
-            Ok(None) => {
-                return actix_web::HttpResponse::Forbidden().body("Access denied to namespace");
-            }
-            Err(response) => return response,
-        },
-        _ => None,
+    let username = match authenticate_git_request(
+        &req,
+        &server,
+        &auth_state,
+        &namespace,
+        &repo,
+        &kind,
+    )
+    .await
+    {
+        Ok(username) => username,
+        Err(response) => return response,
     };
 
     // Run in blocking thread — xshell/process::Command is blocking
@@ -136,6 +123,61 @@ fn build_response(headers: &str, body: Vec<u8>) -> actix_web::HttpResponse {
         }
     }
     response.body(body)
+}
+
+async fn authenticate_git_request(
+    req: &HttpRequest,
+    server: &config::Server,
+    auth_state: &web::Data<FigContext>,
+    namespace: &str,
+    repo: &str,
+    kind: &crate::git_backend::GitRequestKind,
+) -> Result<Option<String>, HttpResponse> {
+    let is_write = matches!(
+        kind,
+        crate::git_backend::GitRequestKind::Push
+            | crate::git_backend::GitRequestKind::AdvertiseRefs(
+                crate::git_backend::GitService::WriteRef,
+            )
+    );
+
+    if is_write {
+        match is_authenticated(req, auth_state, namespace).await {
+            Ok(Some(auth_result)) => {
+                if !auth_result.namespace_exists
+                    && let Err(e) =
+                        ensure_namespace_exists(auth_state, &auth_result.user, namespace).await
+                {
+                    log::error!("Failed to ensure namespace exists: {e}");
+                    return Err(
+                        HttpResponse::InternalServerError().body("Failed to create namespace")
+                    );
+                }
+                if let Err(e) = ensure_repo_exists(server.project_root(), namespace, repo) {
+                    log::error!("Failed to ensure repo exists: {e}");
+                    return Err(
+                        HttpResponse::InternalServerError().body("Failed to create repository")
+                    );
+                }
+                Ok(Some(auth_result.user.username))
+            }
+            Ok(None) => Err(HttpResponse::Forbidden().body("Access denied to namespace")),
+            Err(response) => Err(response),
+        }
+    } else if bare::is_repo_private(server.project_root(), namespace, repo) {
+        match is_authenticated(req, auth_state, namespace).await {
+            Ok(Some(auth_result)) => {
+                if !auth_result.namespace_exists {
+                    return Err(HttpResponse::NotFound().body("Repository not found"));
+                }
+                Ok(Some(auth_result.user.username))
+            }
+            Ok(None) => Err(HttpResponse::Forbidden().body("Access denied to namespace")),
+            Err(response) => Err(response),
+        }
+    } else {
+        Ok(None)
+    }
 }
 
 struct AuthResult {

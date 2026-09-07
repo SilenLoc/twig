@@ -278,6 +278,9 @@ pub struct FigConfig {
     /// Whether the repository can be deleted from the UI.
     #[serde(default)]
     pub deleteable: bool,
+    /// Whether the repository is private (read operations require authentication).
+    #[serde(default)]
+    pub private: bool,
     /// Presentation configuration.
     #[serde(default)]
     pub present: PresentConfig,
@@ -437,6 +440,7 @@ fn chrono(git_time: git2::Time) -> chrono::DateTime<Utc> {
 pub struct RepoInfo {
     pub name: String,
     pub last_commit_date: Option<chrono::DateTime<Utc>>,
+    pub is_private: bool,
 }
 
 /// Extract license from Cargo.toml content
@@ -535,9 +539,14 @@ pub fn get_repos_with_info(root: &str, namespace: &str) -> Vec<RepoInfo> {
             continue;
         };
 
+        let last_commit = last_commit_date(&repo);
+        let handle = RepoHandle { repo };
+        let is_private = handle.load_config_with_raw().config.private;
+
         repos.push(RepoInfo {
             name: repo_name,
-            last_commit_date: last_commit_date(&repo),
+            last_commit_date: last_commit,
+            is_private,
         });
     }
 
@@ -570,13 +579,35 @@ pub fn search_repos_with_info(root: &str, namespace: &str, query: &str) -> Vec<R
             continue;
         };
 
+        let last_commit = last_commit_date(&repo);
+        let handle = RepoHandle { repo };
+        let is_private = handle.load_config_with_raw().config.private;
+
         repos.push(RepoInfo {
             name: repo_name,
-            last_commit_date: last_commit_date(&repo),
+            last_commit_date: last_commit,
+            is_private,
         });
     }
 
     repos
+}
+
+/// Check if a repository is configured as private in its `.fig.toml` or `.fig`.
+pub fn is_repo_private(root: &str, namespace: &str, repo: &str) -> bool {
+    let clean_repo = repo.strip_suffix(".git").unwrap_or(repo);
+    if let Ok(handle) = RepoHandle::open(root, namespace, clean_repo)
+        && handle.load_config_with_raw().config.private
+    {
+        return true;
+    }
+    if clean_repo != repo
+        && let Ok(handle) = RepoHandle::open(root, namespace, repo)
+        && handle.load_config_with_raw().config.private
+    {
+        return true;
+    }
+    false
 }
 
 #[cfg(test)]
@@ -681,6 +712,7 @@ author = "Jane Doe"
             ignore_for_view: vec!["skills".to_string()],
             tabs: vec![],
             deleteable: false,
+            private: false,
             present: PresentConfig::default(),
         };
 
@@ -701,6 +733,7 @@ author = "Jane Doe"
             ignore_for_view: vec!["drafts/".to_string()],
             tabs: vec![],
             deleteable: false,
+            private: false,
             present: PresentConfig::default(),
         };
 
@@ -719,6 +752,7 @@ author = "Jane Doe"
             ignore_for_view: vec!["temp".to_string(), "archive".to_string()],
             tabs: vec![],
             deleteable: false,
+            private: false,
             present: PresentConfig::default(),
         };
 
@@ -738,6 +772,7 @@ author = "Jane Doe"
             ignore_for_view: vec![],
             tabs: vec![],
             deleteable: false,
+            private: false,
             present: PresentConfig::default(),
         };
 
@@ -752,6 +787,7 @@ author = "Jane Doe"
             ignore_for_view: vec!["skills/".to_string()],
             tabs: vec![],
             deleteable: false,
+            private: false,
             present: PresentConfig::default(),
         };
 
@@ -776,6 +812,7 @@ author = "Jane Doe"
             ignore_for_view: vec!["AGENTS.md".to_string()],
             tabs: vec![],
             deleteable: false,
+            private: false,
             present: PresentConfig::default(),
         };
 
@@ -834,9 +871,89 @@ ignore_for_view = ["skills/", "AGENTS.md"]
         let info = RepoInfo {
             name: "test-repo".to_string(),
             last_commit_date: None,
+            is_private: false,
         };
         assert_eq!(info.name, "test-repo");
         assert!(info.last_commit_date.is_none());
+        assert!(!info.is_private);
+    }
+
+    #[test]
+    fn test_fig_config_parse_private() {
+        let toml_content = r"
+private = true
+";
+        let config = FigConfig::parse(toml_content);
+        assert!(config.private);
+
+        let default_config = FigConfig::parse("");
+        assert!(!default_config.private);
+    }
+
+    #[test]
+    fn test_is_repo_private() {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+
+        let temp = create_temp_dir("is_private");
+        let _cleanup = TempDir { path: &temp };
+
+        let repo_path = temp.join("ns").join("secret");
+        std::fs::create_dir_all(&repo_path).unwrap();
+        init_bare_repo(&repo_path, "main");
+
+        let git_pipe = |args: &[&str], input: &str| -> String {
+            let mut child = Command::new("git")
+                .args(args)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .current_dir(&repo_path)
+                .spawn()
+                .unwrap();
+            child
+                .stdin
+                .as_mut()
+                .unwrap()
+                .write_all(input.as_bytes())
+                .unwrap();
+            let out = child.wait_with_output().unwrap();
+            assert!(out.status.success(), "{args:?}: {out:?}");
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+
+        let blob = git_pipe(&["hash-object", "-w", "--stdin"], "private = true\n");
+        let root_hash = git_pipe(&["mktree"], &format!("100644 blob {blob}\t.fig.toml\n"));
+        let commit = Command::new("git")
+            .args(["commit-tree", &root_hash, "-m", "set private"])
+            .env("GIT_AUTHOR_NAME", "Test")
+            .env("GIT_AUTHOR_EMAIL", "t@example.com")
+            .env("GIT_COMMITTER_NAME", "Test")
+            .env("GIT_COMMITTER_EMAIL", "t@example.com")
+            .current_dir(&repo_path)
+            .output()
+            .unwrap();
+        assert!(commit.status.success());
+        let commit_hash = String::from_utf8_lossy(&commit.stdout).trim().to_string();
+
+        let update_ref = Command::new("git")
+            .args(["update-ref", "refs/heads/main", &commit_hash])
+            .current_dir(&repo_path)
+            .output()
+            .unwrap();
+        assert!(update_ref.status.success());
+
+        assert!(is_repo_private(temp.to_str().unwrap(), "ns", "secret"));
+        assert!(is_repo_private(temp.to_str().unwrap(), "ns", "secret.git"));
+        assert!(!is_repo_private(
+            temp.to_str().unwrap(),
+            "ns",
+            "nonexistent"
+        ));
+
+        let repos = get_repos_with_info(temp.to_str().unwrap(), "ns");
+        assert_eq!(repos.len(), 1);
+        assert_eq!(repos[0].name, "secret");
+        assert!(repos[0].is_private);
     }
 
     #[test]
