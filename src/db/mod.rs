@@ -8,6 +8,7 @@ use turso::Builder;
 pub mod invites;
 pub mod migration;
 pub mod namespaces;
+pub mod test_pins;
 pub mod tokens;
 pub mod users;
 

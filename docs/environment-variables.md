@@ -8,5 +8,6 @@
 | `API_KEY` | API key for user signup endpoint | Auto-generated |
 | `RESET_DB` | Set to `true` to delete the database on startup | `false` |
 | `CACHE_CONTROL` | `Cache-Control` header value for static assets | `public, max-age=31536000, immutable` |
+| `TEST_USER` | Admin username allowed to access the rapid endpoint test page. If unset, the test page is disabled | unset |
 | `SENTRY_DSN` | Sentry project DSN. If unset, Sentry instrumentation is disabled | unset |
 | `SENTRY_TRACES_SAMPLE_RATE` | Fraction of transactions sent to Sentry (0.0–1.0) | `1.0` |

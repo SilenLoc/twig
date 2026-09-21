@@ -10,6 +10,7 @@ pub struct Server {
     db_path: String,
     api_key: String,
     reset_db: bool,
+    test_user: Option<String>,
     traces_sample_rate: f32,
     cache_control: HeaderValue,
 }
@@ -32,6 +33,7 @@ impl Server {
             db_path,
             api_key,
             reset_db,
+            test_user: None,
             traces_sample_rate,
             cache_control: HeaderValue::from_static(DEFAULT_CACHE_CONTROL),
         }
@@ -39,6 +41,11 @@ impl Server {
 
     pub fn with_cache_control(mut self, cache_control: HeaderValue) -> Self {
         self.cache_control = cache_control;
+        self
+    }
+
+    pub fn with_test_user(mut self, test_user: Option<String>) -> Self {
+        self.test_user = test_user;
         self
     }
 
@@ -61,6 +68,21 @@ impl Server {
     /// Returns whether `RESET_DB` is set to true.
     pub fn reset_db(&self) -> bool {
         self.reset_db
+    }
+
+    /// Returns the configured test admin user, if set.
+    pub fn test_user(&self) -> Option<&str> {
+        self.test_user.as_deref()
+    }
+
+    /// Returns whether a test user is configured.
+    pub fn is_test_user_enabled(&self) -> bool {
+        self.test_user.is_some()
+    }
+
+    /// Returns whether the provided username matches the configured test admin user.
+    pub fn is_admin_user(&self, username: &str) -> bool {
+        self.test_user.as_deref() == Some(username)
     }
 
     /// Deletes the database file if `RESET_DB` is set to true.
@@ -121,6 +143,11 @@ pub fn from_env() -> Server {
     let db_path = std::env::var("DB_PATH").unwrap_or_else(|_| "fig.db".to_string());
     let api_key = std::env::var("API_KEY").unwrap_or_default();
     let reset_db = std::env::var("RESET_DB").unwrap_or_default() == "true";
+    let test_user = std::env::var("TEST_USER")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .map(|s| if s == "true" { "admin".to_string() } else { s });
     let traces_sample_rate = std::env::var("SENTRY_TRACES_SAMPLE_RATE")
         .ok()
         .and_then(|s| s.parse::<f32>().ok())
@@ -143,6 +170,7 @@ pub fn from_env() -> Server {
         traces_sample_rate,
     )
     .with_cache_control(cache_control)
+    .with_test_user(test_user)
 }
 
 fn ascii(server: &Server) -> String {
@@ -285,5 +313,27 @@ mod tests {
         );
         let addr = server.address();
         assert_eq!(addr, ("0.0.0.0".to_string(), 3000));
+    }
+
+    #[test]
+    fn test_server_test_user() {
+        let server = Server::new(
+            ("0.0.0.0".to_string(), 8080),
+            "info".to_string(),
+            "/srv/git".to_string(),
+            "fig.db".to_string(),
+            "key".to_string(),
+            false,
+            1.0,
+        );
+        assert_eq!(server.test_user(), None);
+        assert!(!server.is_test_user_enabled());
+        assert!(!server.is_admin_user("admin"));
+
+        let server_with_admin = server.with_test_user(Some("admin".to_string()));
+        assert_eq!(server_with_admin.test_user(), Some("admin"));
+        assert!(server_with_admin.is_test_user_enabled());
+        assert!(server_with_admin.is_admin_user("admin"));
+        assert!(!server_with_admin.is_admin_user("alice"));
     }
 }

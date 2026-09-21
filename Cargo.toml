@@ -9,6 +9,7 @@ glob = "0.3"
 hex = "0.4"
 log = "0.4"
 pulldown-cmark = "0.12"
+qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
 sha2 = "0.10"
 toml = "0.8"
 turso = { version = "0.5.3", default-features = false }

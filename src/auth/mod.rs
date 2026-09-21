@@ -168,6 +168,37 @@ impl FigContext {
         let db = self.db();
         db.delete_token(token).await
     }
+
+    pub async fn get_test_pin(&self) -> Option<String> {
+        match self.db().get_test_pin().await {
+            Ok(pin) => pin,
+            Err(e) => {
+                log::error!("Failed to get test pin from database: {e}");
+                None
+            }
+        }
+    }
+
+    pub async fn set_test_pin(&self, pin: &str) -> Result<(), String> {
+        self.db().set_test_pin(pin).await
+    }
+
+    pub async fn clear_test_pin(&self) -> Result<(), String> {
+        self.db().clear_test_pins().await
+    }
+
+    pub async fn validate_test_pin(&self, pin: &str) -> bool {
+        if pin.is_empty() {
+            return false;
+        }
+        match self.db().validate_test_pin(pin).await {
+            Ok(valid) => valid,
+            Err(e) => {
+                log::error!("Failed to validate test pin from database: {e}");
+                false
+            }
+        }
+    }
 }
 
 /// Dev convenience seeded when `RESET_DB` is true: creates a fixed
@@ -300,6 +331,28 @@ mod tests {
         let ctx = FigContext::new(db, "my-api-key".to_string());
         assert!(ctx.validate_api_key("my-api-key"));
         assert!(!ctx.validate_api_key("wrong-key"));
+    }
+
+    #[tokio::test]
+    async fn test_fig_context_test_pin() {
+        let db_path = format!("/tmp/test_fig_ctx_pin_{}.db", Uuid::new_v4());
+        let db = Database::new(&db_path);
+        db.init_tables().await.expect("init tables");
+        let ctx = FigContext::new(db, "key".to_string());
+        assert_eq!(ctx.get_test_pin().await, None);
+        assert!(!ctx.validate_test_pin("123456").await);
+
+        ctx.set_test_pin("123456").await.expect("set test pin");
+        assert_eq!(ctx.get_test_pin().await.as_deref(), Some("123456"));
+        assert!(ctx.validate_test_pin("123456").await);
+        assert!(!ctx.validate_test_pin("654321").await);
+        assert!(!ctx.validate_test_pin("").await);
+
+        ctx.clear_test_pin().await.expect("clear test pin");
+        assert_eq!(ctx.get_test_pin().await, None);
+        assert!(!ctx.validate_test_pin("123456").await);
+
+        let _ = std::fs::remove_file(&db_path);
     }
 
     #[tokio::test]

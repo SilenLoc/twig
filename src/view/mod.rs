@@ -7,6 +7,7 @@ pub mod overview;
 pub mod repo;
 pub mod session_auth;
 pub mod settings;
+pub mod test_page;
 
 pub fn render_layout(
     main_content: &maud::Markup,

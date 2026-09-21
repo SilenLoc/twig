@@ -5,6 +5,7 @@ API_KEY = "secure"
 RESET_DB = "true"
 PORT = "8080"
 CACHE_CONTROL = "no-cache"
+TEST_USER = "admin"
 
 [tools]
 rust = { version = "1.97" }

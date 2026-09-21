@@ -89,6 +89,13 @@ const MIGRATIONS: &[Migration] = &[
         name: "create_invites_user_index",
         sql: r"CREATE INDEX IF NOT EXISTS idx_invites_user ON invites(user_id);",
     },
+    Migration {
+        name: "create_test_pins_table",
+        sql: r"CREATE TABLE IF NOT EXISTS test_pins (
+            pin TEXT PRIMARY KEY,
+            created_at TEXT NOT NULL
+        );",
+    },
 ];
 
 impl Database {
@@ -213,6 +220,7 @@ mod tests {
         assert!(tables.contains(&"namespace_members".to_string()));
         assert!(tables.contains(&"invites".to_string()));
         assert!(tables.contains(&"tokens".to_string()));
+        assert!(tables.contains(&"test_pins".to_string()));
         assert!(tables.contains(&"_migrations".to_string()));
         assert!(
             !tables.contains(&"tickets".to_string()),
