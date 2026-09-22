@@ -169,7 +169,8 @@ pub fn bare_init(
 
     // Create initial commit with .fig.toml file
     // Use git plumbing commands to create a commit in a bare repo
-    let blob_content = r#"# Created with Fig
+    let blob_content = r#"#:schema https://fig.silenlocatelli.ch/assets/fig.schema.json
+# Created with Fig
 # All configuration options are listed below, commented out with their defaults.
 
 # Files or folders to ignore in the file browser view.
@@ -273,6 +274,21 @@ mod tests {
         // Verify git2 can open it
         let repo = git2::Repository::open(repo_path);
         assert!(repo.is_ok(), "repo should be openable by git2");
+
+        // The initial commit's .fig.toml points editors at the TOML schema.
+        let repo = repo.unwrap();
+        let commit = repo.head().unwrap().peel_to_commit().unwrap();
+        let entry = commit
+            .tree()
+            .unwrap()
+            .get_path(Path::new(".fig.toml"))
+            .unwrap();
+        let blob = entry.to_object(&repo).unwrap().into_blob().unwrap();
+        let content = std::str::from_utf8(blob.content()).unwrap();
+        assert!(
+            content.starts_with("#:schema https://fig.silenlocatelli.ch/assets/fig.schema.json"),
+            "default .fig.toml should reference the schema, got: {content}"
+        );
 
         // Cleanup
         let _ = std::fs::remove_dir_all(&temp_dir);

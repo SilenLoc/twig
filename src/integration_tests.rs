@@ -982,10 +982,11 @@ mod tests {
         let body = test::read_body(resp).await;
         let body_str = String::from_utf8(body.to_vec()).unwrap();
         assert!(body_str.contains("Test Suite"));
-        assert!(body_str.contains("Run all endpoints &amp; features"));
+        assert!(body_str.contains("id=\"btn-start\""));
         assert!(body_str.contains("id=\"btn-stop\""));
         assert!(body_str.contains("id=\"test-runner-container\""));
-        assert!(body_str.contains("id=\"test-runner\""));
+        assert!(body_str.contains("id=\"test-runner-idle\""));
+        assert!(!body_str.contains("id=\"test-runner\""));
 
         // 2. Load runner content (very low trigger on page, even smaller on contents)
         let req = test::TestRequest::get()
@@ -1012,7 +1013,8 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
         let body = test::read_body(resp).await;
         let body_str = String::from_utf8(body.to_vec()).unwrap();
-        assert_eq!(body_str, "<div>Stop</div>");
+        assert!(body_str.contains("id=\"test-runner-stopped\""));
+        assert!(body_str.contains("Test run interrupted"));
 
         // 4. Ping and feature-check endpoints
         let req = test::TestRequest::get()

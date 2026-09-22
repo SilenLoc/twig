@@ -221,12 +221,12 @@ fn render_pagehead(role: &CallerRole) -> maud::Markup {
                     h1 class="fig-title" { "Test Suite & Rapid Endpoint Runner" }
                 }
                 div class="fig-cluster" {
-                    button id="btn-run-all"
+                    button id="btn-start"
                         class="fig-btn fig-btn--primary"
                         hx-get="/_test/runner"
                         hx-target="#test-runner-container"
                         hx-swap="innerHTML" {
-                        "Run all endpoints & features"
+                        "Start"
                     }
                     button id="btn-stop"
                         class="fig-btn fig-btn--ghost"
@@ -368,7 +368,24 @@ pub fn render_test_page(
         (render_pagehead(role))
         (render_pin_panel(role.is_admin(), active_pin, base_url))
         div id="test-runner-container" {
-            (render_runner_content())
+            (render_idle_content())
+        }
+    }
+}
+
+#[must_use]
+pub fn render_idle_content() -> maud::Markup {
+    maud::html! {
+        div id="test-runner-idle" class="fig-panel" {
+            div class="fig-panel-head" {
+                span class="fig-eyebrow" { "IDLE" }
+                span class="fig-title" { "Test run has not started" }
+            }
+            div class="fig-panel-body" {
+                p class="fig-body-sm" {
+                    "Press Start to run every read-only endpoint and feature check. Press Stop at any time to interrupt the run."
+                }
+            }
         }
     }
 }
@@ -376,8 +393,16 @@ pub fn render_test_page(
 #[must_use]
 pub fn render_stopped_content() -> maud::Markup {
     maud::html! {
-        div {
-            "Stop"
+        div id="test-runner-stopped" class="fig-panel" {
+            div class="fig-panel-head" {
+                span class="fig-eyebrow" { "STOPPED" }
+                span class="fig-title" { "Test run interrupted" }
+            }
+            div class="fig-panel-body" {
+                p class="fig-body-sm" {
+                    "The run has been stopped. Press Start to run the endpoints again."
+                }
+            }
         }
     }
 }
@@ -697,18 +722,23 @@ mod tests {
     #[test]
     fn test_render_stopped_content() {
         let markup = render_stopped_content().into_string();
-        assert_eq!(markup, "<div>Stop</div>");
+        assert!(markup.contains("id=\"test-runner-stopped\""));
+        assert!(markup.contains("Test run interrupted"));
     }
 
     #[test]
-    fn test_render_test_page_has_runner_and_stop_button() {
+    fn test_render_test_page_is_idle_until_started() {
         let role = CallerRole::Admin {
             username: "admin".to_string(),
         };
         let markup = render_test_page(&role, None, "http://localhost:8080").into_string();
         assert!(markup.contains("id=\"test-runner-container\""));
+        assert!(markup.contains("id=\"btn-start\""));
         assert!(markup.contains("id=\"btn-stop\""));
+        assert!(markup.contains("hx-get=\"/_test/runner\""));
         assert!(markup.contains("hx-get=\"/_test/stopped\""));
-        assert!(markup.contains("id=\"test-runner\""));
+        assert!(markup.contains("id=\"test-runner-idle\""));
+        assert!(!markup.contains("id=\"test-runner\""));
+        assert!(!markup.contains("hx-trigger=\"every 25ms\""));
     }
 }

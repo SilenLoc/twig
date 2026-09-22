@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://fig.silenlocatelli.ch/assets/fig.schema.json",
+  "title": "Fig repository configuration",
+  "description": "Schema for the .fig.toml file at the root of a Fig repository.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "ignore_for_view": {
+      "type": "array",
+      "description": "Files or folders to ignore in the file browser view. A trailing slash matches a folder; a bare name matches any path component.",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "tabs": {
+      "type": "array",
+      "description": "Tabs to display. If empty or not present, all tabs are shown.",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "deleteable": {
+      "type": "boolean",
+      "description": "Whether the repository can be deleted from the UI.",
+      "default": false
+    },
+    "private": {
+      "type": "boolean",
+      "description": "Whether the repository is private (read operations require authentication).",
+      "default": false
+    },
+    "present": {
+      "type": "object",
+      "description": "Presentation configuration. Any additional string key becomes a template variable.",
+      "additionalProperties": { "type": "string" },
+      "properties": {
+        "files": {
+          "type": "array",
+          "description": "Markdown files to include in the presentation view.",
+          "items": { "type": "string" },
+          "default": []
+        }
+      }
+    }
+  }
+}

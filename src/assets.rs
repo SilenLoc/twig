@@ -6,6 +6,7 @@ const TCSS: &str = include_str!("../assets/t.css");
 const FIGCSS: &str = include_str!("../assets/fig.css");
 const HTMX: &str = include_str!("../assets/h.js");
 const FIG_SVG: &str = include_str!("../assets/fig.svg");
+const FIG_SCHEMA: &str = include_str!("../assets/fig.schema.json");
 
 #[get("/assets/{filename:.*}")]
 pub async fn assets(req: HttpRequest, config: web::Data<config::Server>) -> impl Responder {
@@ -28,6 +29,10 @@ pub async fn assets(req: HttpRequest, config: web::Data<config::Server>) -> impl
             .content_type("image/svg+xml")
             .insert_header((CACHE_CONTROL, config.cache_control().clone()))
             .body(FIG_SVG),
+        "fig.schema.json" => HttpResponse::Ok()
+            .content_type("application/schema+json; charset=utf-8")
+            .insert_header((CACHE_CONTROL, config.cache_control().clone()))
+            .body(FIG_SCHEMA),
         _ => HttpResponse::NotFound().body("Not found"),
     }
 }
@@ -77,6 +82,28 @@ mod tests {
         assert!(!FIGCSS.is_empty(), "fig.css should not be empty");
         assert!(!HTMX.is_empty(), "h.js should not be empty");
         assert!(!FIG_SVG.is_empty(), "fig.svg should not be empty");
+        assert!(
+            !FIG_SCHEMA.is_empty(),
+            "fig.schema.json should not be empty"
+        );
+    }
+
+    #[test]
+    fn test_fig_schema_lists_every_config_key() {
+        let schema: serde_json::Value =
+            serde_json::from_str(FIG_SCHEMA).expect("fig.schema.json must be valid JSON");
+        let properties = schema["properties"]
+            .as_object()
+            .expect("schema must define top-level properties");
+        for key in [
+            "ignore_for_view",
+            "tabs",
+            "deleteable",
+            "private",
+            "present",
+        ] {
+            assert!(properties.contains_key(key), "schema missing {key}");
+        }
     }
 
     #[test]
@@ -208,6 +235,7 @@ mod tests {
             ("/assets/fig.css", "text/css"),
             ("/assets/h.js", "application/javascript"),
             ("/assets/fig.svg", "image/svg+xml"),
+            ("/assets/fig.schema.json", "application/schema+json"),
         ] {
             let req = aw_test::TestRequest::get().uri(path).to_request();
             let resp = aw_test::call_service(&app, req).await;
