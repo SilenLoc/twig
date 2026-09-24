@@ -31,8 +31,6 @@ struct MoveRepoForm {
 /// Renders the settings page body shared by the full-page and HTMX responses.
 fn render_settings(
     user: &crate::auth::User,
-    movable_repos: &[(String, Vec<git::bare::RepoInfo>)],
-    owned_namespaces: &[String],
     repos_by_namespace: &[(String, Vec<git::bare::RepoInfo>)],
     deletable_namespaces: &[String],
 ) -> maud::Markup {
@@ -48,76 +46,8 @@ fn render_settings(
 
         div class="fig-bento" {
             (render_profile_panel(user))
-            (render_repo_move_panel(movable_repos, owned_namespaces))
             (render_repo_deletion_panel(repos_by_namespace))
             (render_namespace_deletion_panel(deletable_namespaces))
-        }
-    }
-}
-
-/// Repositories in owned namespaces that can be moved to another owned namespace.
-fn render_repo_move_panel(
-    repos_by_namespace: &[(String, Vec<git::bare::RepoInfo>)],
-    owned_namespaces: &[String],
-) -> maud::Markup {
-    let has_move = repos_by_namespace.iter().any(|(source, repos)| {
-        !repos.is_empty() && owned_namespaces.iter().any(|target| target != source)
-    });
-
-    maud::html! {
-        section class="fig-panel" aria-labelledby="settings-move-repo-heading" {
-            header class="fig-panel-head" {
-                h2 class="fig-eyebrow" id="settings-move-repo-heading" { "Move Repository" }
-            }
-
-            @if !has_move {
-                div class="fig-empty" {
-                    p class="fig-eyebrow" { "NO MOVES AVAILABLE" }
-                    p class="fig-empty-body" { "You need a repository and another namespace you own before you can move one." }
-                }
-            } @else {
-                div class="fig-panel-body fig-stack fig-stack--tight" {
-                    p class="fig-body-sm fig-ink-secondary" {
-                        "Moving a repository changes its web and Git URLs. Its history and configuration are preserved."
-                    }
-                    div id="move-repo-result" aria-live="polite" {}
-                }
-
-                div class="fig-list" {
-                    @for (source, repos) in repos_by_namespace {
-                        @for repo in repos {
-                            @if owned_namespaces.iter().any(|target| target != source) {
-                                form
-                                    class="fig-row fig-row--form"
-                                    hx-post="/settings/move-repo"
-                                    hx-target="#move-repo-result"
-                                    "hx-status:4xx"="swap:innerHTML target:#move-repo-result"
-                                    "hx-status:5xx"="swap:innerHTML target:#move-repo-result"
-                                    hx-swap="innerHTML"
-                                {
-                                    input type="hidden" name="source_namespace" value=(source);
-                                    input type="hidden" name="repo_name" value=(repo.name);
-                                    span class="fig-row-id" { (source) "/" (repo.name) }
-                                    label class="fig-label" for=(format!("move-{}-{}", source, repo.name)) { "Move to" }
-                                    select
-                                        class="fig-input fig-input--mono"
-                                        id=(format!("move-{}-{}", source, repo.name))
-                                        name="target_namespace"
-                                        required
-                                    {
-                                        @for target in owned_namespaces {
-                                            @if target != source {
-                                                option value=(target) { (target) }
-                                            }
-                                        }
-                                    }
-                                    button class="fig-btn fig-btn--ghost" type="submit" { "Move" }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 }
@@ -301,33 +231,14 @@ pub async fn settings_page(
         }
     };
 
-    let mut movable_repos: Vec<(String, Vec<git::bare::RepoInfo>)> = Vec::new();
-    let mut owned_namespaces: Vec<String> = Vec::new();
     let mut repos_by_namespace: Vec<(String, Vec<git::bare::RepoInfo>)> = Vec::new();
     let mut deletable_namespaces: Vec<String> = Vec::new();
     for ns in &namespaces {
         let has_repos = git::bare::namespace::has_any_repository(server.project_root(), &ns.name);
-        if ns.owner_id == user_id {
-            owned_namespaces.push(ns.name.clone());
-            if !has_repos {
-                deletable_namespaces.push(ns.name.clone());
-            }
+        if ns.owner_id == user_id && !has_repos {
+            deletable_namespaces.push(ns.name.clone());
         }
         let repos = git::bare::get_repos_with_info(server.project_root(), &ns.name);
-        if ns.owner_id == user_id {
-            let repos_to_move: Vec<_> = repos
-                .iter()
-                .filter(|repo| git::reserved::validate_repo_name(&repo.name).is_ok())
-                .map(|repo| git::bare::RepoInfo {
-                    name: repo.name.clone(),
-                    last_commit_date: repo.last_commit_date,
-                    is_private: repo.is_private,
-                })
-                .collect();
-            if !repos_to_move.is_empty() {
-                movable_repos.push((ns.name.clone(), repos_to_move));
-            }
-        }
         let deletable_repos: Vec<_> = repos
             .into_iter()
             .filter(|repo| {
@@ -341,13 +252,7 @@ pub async fn settings_page(
         }
     }
 
-    let content = render_settings(
-        &user,
-        &movable_repos,
-        &owned_namespaces,
-        &repos_by_namespace,
-        &deletable_namespaces,
-    );
+    let content = render_settings(&user, &repos_by_namespace, &deletable_namespaces);
 
     let content = maud::html! {
         (super::tree::render_tree_hub(
@@ -681,15 +586,13 @@ mod tests {
         render_settings(
             &user_fixture(Some("silen@example.com")),
             &[("acme".to_string(), vec![repo_fixture("fig")])],
-            &["acme".to_string(), "solo".to_string()],
-            &[("acme".to_string(), vec![repo_fixture("fig")])],
             &["solo".to_string()],
         )
         .into_string()
     }
 
     fn empty_html() -> String {
-        render_settings(&user_fixture(None), &[], &[], &[], &[]).into_string()
+        render_settings(&user_fixture(None), &[], &[]).into_string()
     }
 
     fn classes_in(html: &str) -> Vec<String> {
@@ -735,7 +638,7 @@ mod tests {
     }
 
     #[test]
-    fn test_settings_panels_are_a_four_cell_bento_with_head_and_body() {
+    fn test_settings_panels_render_profile_and_deletion_controls() {
         let html = populated_html();
         assert_eq!(
             html.matches("class=\"fig-bento\"").count(),
@@ -744,22 +647,21 @@ mod tests {
         );
         assert_eq!(
             html.matches("<section class=\"fig-panel").count(),
-            4,
-            "Profile, Move Repository, Delete Repository and Delete Namespace panels: {html}"
+            3,
+            "Profile, Delete Repository and Delete Namespace panels: {html}"
         );
         assert_eq!(
             html.matches("class=\"fig-panel-head\"").count(),
-            4,
+            3,
             "every panel declares a head: {html}"
         );
         assert_eq!(
             html.matches("<h2 class=\"fig-eyebrow\"").count(),
-            4,
+            3,
             "panel headings are h2 eyebrows under the page h1: {html}"
         );
         for (heading_id, heading_text) in [
             ("settings-profile-heading", "Profile Information"),
-            ("settings-move-repo-heading", "Move Repository"),
             ("settings-delete-repo-heading", "Delete Repository"),
             ("settings-delete-namespace-heading", "Delete Namespace"),
         ] {
@@ -781,27 +683,10 @@ mod tests {
     }
 
     #[test]
-    fn test_settings_move_repo_rows_offer_other_owned_namespaces() {
+    fn test_settings_does_not_render_repository_moves() {
         let html = populated_html();
-        for attribute in [
-            "hx-post=\"/settings/move-repo\"",
-            "hx-target=\"#move-repo-result\"",
-            "hx-status:4xx=\"swap:innerHTML target:#move-repo-result\"",
-            "hx-status:5xx=\"swap:innerHTML target:#move-repo-result\"",
-        ] {
-            assert!(html.contains(attribute), "missing {attribute}: {html}");
-        }
-        for payload in [
-            "<input type=\"hidden\" name=\"source_namespace\" value=\"acme\">",
-            "<input type=\"hidden\" name=\"repo_name\" value=\"fig\">",
-            "<option value=\"solo\">solo</option>",
-        ] {
-            assert!(html.contains(payload), "missing {payload}: {html}");
-        }
-        assert!(
-            !html.contains("<option value=\"acme\">"),
-            "the source namespace is not a destination: {html}"
-        );
+        assert!(!html.contains("/settings/move-repo"), "{html}");
+        assert!(!html.contains("Move Repository"), "{html}");
     }
 
     #[test]
@@ -930,7 +815,6 @@ mod tests {
         let html = populated_html();
         for target in [
             "settings-result",
-            "move-repo-result",
             "delete-repo-result",
             "delete-namespace-result",
         ] {
@@ -970,14 +854,10 @@ mod tests {
         let html = empty_html();
         assert_eq!(
             html.matches("<div class=\"fig-empty\">").count(),
-            3,
-            "move and deletion panels degrade to empty states: {html}"
+            2,
+            "deletion panels degrade to empty states: {html}"
         );
         for (eyebrow, body) in [
-            (
-                ">NO MOVES AVAILABLE<",
-                "You need a repository and another namespace you own before you can move one.",
-            ),
             (
                 ">NO REPOSITORIES<",
                 "You don't have any repositories to delete.",

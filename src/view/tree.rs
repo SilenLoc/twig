@@ -1,7 +1,7 @@
 use actix_web::{HttpRequest, HttpResponse, get, web};
 use serde::Deserialize;
 
-use crate::{auth::FigContext, config, db::data::TablePage};
+use crate::{auth::FigContext, config, db::data::TablePage, git};
 
 #[derive(Debug, Deserialize)]
 pub struct DataQuery {
@@ -24,11 +24,79 @@ pub(crate) fn render_tree_hub(
     maud::html! {
         nav class="fig-tabs" aria-label="Tree sections" {
             a class="fig-tab" aria-current=[(active == Some("settings")).then_some("page")] href="/settings" { "Settings" }
+            a class="fig-tab" aria-current=[(active == Some("namespaces")).then_some("page")] href="/tree/namespaces" { "Namespace" }
             @if test_enabled {
                 a class="fig-tab" aria-current=[(active == Some("test")).then_some("page")] href="/_test" { "Test" }
             }
             @if data_enabled {
                 a class="fig-tab" aria-current=[(active == Some("data")).then_some("page")] href="/tree/data" { "Data" }
+            }
+        }
+    }
+}
+
+fn render_namespaces_page(
+    repos_by_namespace: &[(String, Vec<git::bare::RepoInfo>)],
+    owned_namespaces: &[String],
+) -> maud::Markup {
+    let has_repositories = repos_by_namespace
+        .iter()
+        .any(|(_, repos)| !repos.is_empty());
+
+    maud::html! {
+        section class="fig-panel" aria-labelledby="namespace-repos-heading" {
+            header class="fig-panel-head" {
+                h1 class="fig-eyebrow" id="namespace-repos-heading" { "Repositories" }
+                p class="fig-row-meta" { "Choose a namespace to move each repository." }
+            }
+            @if !has_repositories {
+                div class="fig-empty" {
+                    p class="fig-eyebrow" { "NO REPOSITORIES" }
+                    p class="fig-empty-body" { "You don't have any repositories in your namespaces." }
+                }
+            } @else {
+                div class="fig-panel-body fig-stack fig-stack--tight" {
+                    p class="fig-body-sm fig-ink-secondary" {
+                        "Moving a repository changes its web and Git URLs. Its history and configuration are preserved."
+                    }
+                    div id="move-repo-result" aria-live="polite" {}
+                }
+                @if !repos_by_namespace.iter().any(|(source, repos)| {
+                    !repos.is_empty() && owned_namespaces.iter().any(|target| target != source)
+                }) {
+                    p class="fig-empty-body" { "Create another namespace you own to move repositories." }
+                }
+                div class="fig-list" {
+                    @for (source, repos) in repos_by_namespace {
+                        @for repo in repos {
+                            div class="fig-row" {
+                                div class="fig-stack fig-stack--tight" {
+                                    span class="fig-row-id" { (source) "/" (repo.name) }
+                                    span class="fig-label" { "Move to namespace" }
+                                }
+                                div class="fig-form-actions" aria-label=(format!("Move {}/{} to namespace", source, repo.name)) {
+                                    @for target in owned_namespaces {
+                                        @if target != source {
+                                            form
+                                                hx-post="/settings/move-repo"
+                                                hx-target="#move-repo-result"
+                                                hx-swap="innerHTML"
+                                                "hx-status:4xx"="swap:innerHTML target:#move-repo-result"
+                                                "hx-status:5xx"="swap:innerHTML target:#move-repo-result"
+                                                hx-confirm=(format!("Move '{}/{}' to the '{}' namespace? Its URL will change.", source, repo.name, target))
+                                            {
+                                                input type="hidden" name="source_namespace" value=(source);
+                                                input type="hidden" name="repo_name" value=(repo.name);
+                                                input type="hidden" name="target_namespace" value=(target);
+                                                button class="fig-btn fig-btn--ghost" type="submit" { (target) }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -151,6 +219,69 @@ pub async fn tree_page(req: HttpRequest, auth_state: web::Data<FigContext>) -> H
         .finish()
 }
 
+#[get("/tree/namespaces")]
+pub async fn namespaces_page(
+    req: HttpRequest,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<FigContext>,
+) -> HttpResponse {
+    let Some(user_id) = auth_state.user_id_from_request(&req).await else {
+        return HttpResponse::Found()
+            .insert_header(("Location", "/auth/login"))
+            .finish();
+    };
+    let db = auth_state.db();
+    let Some(user) = (match db.get_user_by_id(&user_id).await {
+        Ok(user) => user,
+        Err(error) => {
+            log::error!("Failed to load user for namespace tree: {error}");
+            return HttpResponse::InternalServerError().finish();
+        }
+    }) else {
+        return HttpResponse::Unauthorized()
+            .insert_header(("Location", "/auth/login"))
+            .finish();
+    };
+    let namespaces = match db.get_namespaces_for_user(&user_id).await {
+        Ok(namespaces) => namespaces,
+        Err(error) => {
+            log::error!("Failed to load namespaces for namespace tree: {error}");
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+    let owned_namespaces: Vec<String> = namespaces
+        .iter()
+        .filter(|namespace| namespace.owner_id == user_id)
+        .map(|namespace| namespace.name.clone())
+        .collect();
+    let repos_by_namespace: Vec<(String, Vec<git::bare::RepoInfo>)> = owned_namespaces
+        .iter()
+        .filter_map(|namespace| {
+            let repos: Vec<_> = git::bare::get_repos_with_info(server.project_root(), namespace)
+                .into_iter()
+                .filter(|repo| git::reserved::validate_repo_name(&repo.name).is_ok())
+                .collect();
+            (!repos.is_empty()).then(|| (namespace.clone(), repos))
+        })
+        .collect();
+    let content = maud::html! {
+        (render_tree_hub(
+            server.is_test_user_enabled(),
+            server.is_configured_admin(&user.username),
+            Some("namespaces"),
+        ))
+        (render_namespaces_page(&repos_by_namespace, &owned_namespaces))
+    };
+    let content = if req.headers().get("HX-Request").is_some() {
+        content
+    } else {
+        super::render_layout(&content, Some(&user.username), Some("Namespaces"))
+    };
+    HttpResponse::Ok()
+        .content_type("text/html")
+        .body(content.into_string())
+}
+
 #[get("/tree/data")]
 pub async fn data_page(
     req: HttpRequest,
@@ -237,13 +368,41 @@ mod tests {
     fn tree_hub_only_renders_enabled_sections() {
         let minimal = render_tree_hub(false, false, None).into_string();
         assert!(minimal.contains("Settings"));
+        assert!(minimal.contains("href=\"/tree/namespaces\""));
         assert!(!minimal.contains(">Test</a>"));
         assert!(!minimal.contains(">Data</a>"));
 
         let enabled = render_tree_hub(true, true, Some("data")).into_string();
         assert!(enabled.contains("href=\"/_test\""));
+        assert!(enabled.contains("href=\"/tree/namespaces\""));
         assert!(enabled.contains("href=\"/tree/data\""));
         assert!(enabled.contains("aria-current=\"page\" href=\"/tree/data\""));
+    }
+
+    #[test]
+    fn namespace_page_lists_repositories_with_confirmed_namespace_buttons() {
+        let html = render_namespaces_page(
+            &[(
+                "acme".to_string(),
+                vec![git::bare::RepoInfo {
+                    name: "fig".to_string(),
+                    last_commit_date: None,
+                    is_private: false,
+                }],
+            )],
+            &["acme".to_string(), "solo".to_string()],
+        )
+        .into_string();
+
+        assert!(html.contains("<span class=\"fig-row-id\">acme/fig</span>"));
+        assert!(html.contains(
+            "hx-confirm=\"Move 'acme/fig' to the 'solo' namespace? Its URL will change.\""
+        ));
+        assert!(
+            html.contains("<button class=\"fig-btn fig-btn--ghost\" type=\"submit\">solo</button>")
+        );
+        assert!(html.contains("name=\"target_namespace\" value=\"solo\""));
+        assert!(!html.contains("<select"));
     }
 
     #[test]

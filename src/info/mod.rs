@@ -53,6 +53,15 @@ Git usage, web UI details, and server configuration.",
 /// perfectly ordered by hand).
 const DOCS_PAGES: &[DocPage] = &[
     DocPage {
+        slug: "api",
+        page: Page {
+            title: "API",
+            order: 10,
+            section: None,
+            content: include_str!("../../docs/api.md"),
+        },
+    },
+    DocPage {
         slug: "git-backend",
         page: Page {
             title: "Git Backend",
