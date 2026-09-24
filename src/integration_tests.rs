@@ -30,7 +30,7 @@ mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(config_data)
-                .app_data(auth_state)
+                .app_data(auth_state.clone())
                 .app_data(web::PayloadConfig::new(1 << 29))
                 .service(health::health)
                 .service(health::up),
@@ -82,12 +82,18 @@ mod tests {
         auth_state.set_initialized();
 
         let config_data = web::Data::new(config);
+        let session_db = auth_state.db().clone();
 
         test::init_service(
             App::new()
                 .app_data(config_data)
                 .app_data(auth_state)
                 .app_data(web::PayloadConfig::new(1 << 29))
+                .wrap(actix_identity::IdentityMiddleware::default())
+                .wrap(crate::auth::session_store::middleware(
+                    session_db,
+                    actix_web::cookie::Key::generate(),
+                ))
                 .configure(crate::configure_routes),
         )
         .await
@@ -231,6 +237,127 @@ mod tests {
     }
 
     #[actix_web::test]
+    async fn test_tree_hub_and_admin_data_view_are_gated_and_paginated() {
+        let db_path = format!("/tmp/test_fig_admin_data_{}.db", uuid::Uuid::new_v4());
+        let server = config::Server::new(
+            ("127.0.0.1".to_string(), 8080),
+            "debug".to_string(),
+            "/tmp/test_git".to_string(),
+            db_path.clone(),
+            "secure".to_string(),
+            false,
+            1.0,
+        )
+        .with_admin_user(Some("dbadmin".to_string()))
+        .with_test_user(Some("testadmin".to_string()));
+        let db = Database::new(&db_path);
+        db.init_tables().await.expect("initialize tables");
+        let auth_state = web::Data::new(auth::FigContext::new(db.clone(), "secure".to_string()));
+
+        let admin = auth::create_user(
+            "dbadmin".to_string(),
+            "dbadmin@example.com".to_string(),
+            "password123",
+        )
+        .unwrap();
+        db.create_user(&admin).await.unwrap();
+        let admin_token = auth_state.create_session(admin.id).await.unwrap();
+        let other = auth::create_user(
+            "ordinary".to_string(),
+            "ordinary@example.com".to_string(),
+            "password123",
+        )
+        .unwrap();
+        db.create_user(&other).await.unwrap();
+        let other_token = auth_state.create_session(other.id).await.unwrap();
+
+        db.conn()
+            .await
+            .unwrap()
+            .execute("CREATE TABLE scroll_fixture (id INTEGER)", ())
+            .await
+            .unwrap();
+        for id in 0..51 {
+            db.conn()
+                .await
+                .unwrap()
+                .execute(
+                    "INSERT INTO scroll_fixture (id) VALUES (?1)",
+                    turso::params![id],
+                )
+                .await
+                .unwrap();
+        }
+
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(server))
+                .app_data(auth_state)
+                .wrap(actix_identity::IdentityMiddleware::default())
+                .wrap(crate::auth::session_store::middleware(
+                    db.clone(),
+                    actix_web::cookie::Key::generate(),
+                ))
+                .configure(crate::configure_routes),
+        )
+        .await;
+
+        let response = test::call_service(
+            &app,
+            test::TestRequest::get()
+                .uri("/tree")
+                .cookie(actix_web::cookie::Cookie::new("session", &admin_token))
+                .to_request(),
+        )
+        .await;
+        let body = test::read_body(response).await;
+        let html = String::from_utf8(body.to_vec()).unwrap();
+        assert!(html.contains("href=\"/settings\""));
+        assert!(html.contains("href=\"/_test\""));
+        assert!(html.contains("href=\"/tree/data\""));
+
+        let response = test::call_service(
+            &app,
+            test::TestRequest::get()
+                .uri("/tree/data?table=scroll_fixture")
+                .cookie(actix_web::cookie::Cookie::new("session", &other_token))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+        let response = test::call_service(
+            &app,
+            test::TestRequest::get()
+                .uri("/tree/data?table=scroll_fixture")
+                .cookie(actix_web::cookie::Cookie::new("session", &admin_token))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = test::read_body(response).await;
+        let html = String::from_utf8(body.to_vec()).unwrap();
+        assert!(html.contains("scroll_fixture"));
+        assert!(html.contains(">49</td>"));
+        assert!(!html.contains(">50</td>"));
+        assert!(html.contains("hx-trigger=\"revealed\""));
+
+        let response = test::call_service(
+            &app,
+            test::TestRequest::get()
+                .uri("/tree/data/rows?table=scroll_fixture&offset=50")
+                .cookie(actix_web::cookie::Cookie::new("session", &admin_token))
+                .to_request(),
+        )
+        .await;
+        let body = test::read_body(response).await;
+        let html = String::from_utf8(body.to_vec()).unwrap();
+        assert!(html.contains(">50</td>"));
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
+    #[actix_web::test]
     async fn test_settings_page_without_login_is_an_htmx_recovery_fragment() {
         let app = create_test_service().await;
         let req = test::TestRequest::get()
@@ -302,7 +429,7 @@ mod tests {
             .to_string()
     }
 
-    /// Signs a user up and logs them in, returning the session cookie.
+    /// Signs a user up and logs them in, returning the identity session cookie.
     async fn signup_and_login<S>(app: &S, username: &str) -> actix_web::cookie::Cookie<'static>
     where
         S: actix_web::dev::Service<
@@ -345,8 +472,8 @@ mod tests {
 
         resp.response()
             .cookies()
-            .find(|c| c.name() == "session")
-            .expect("login should set a session cookie")
+            .find(|c| c.name() == "id")
+            .expect("login should set an identity cookie")
             .into_owned()
     }
 
@@ -932,11 +1059,17 @@ mod tests {
         auth_state.set_initialized();
 
         let config_data = web::Data::new(config);
+        let session_db = auth_state.db().clone();
         let app = test::init_service(
             App::new()
                 .app_data(config_data)
                 .app_data(auth_state.clone())
                 .app_data(web::PayloadConfig::new(1 << 29))
+                .wrap(actix_identity::IdentityMiddleware::default())
+                .wrap(crate::auth::session_store::middleware(
+                    session_db,
+                    actix_web::cookie::Key::generate(),
+                ))
                 .configure(crate::configure_routes),
         )
         .await;

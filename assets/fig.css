@@ -445,6 +445,38 @@ body.fig-shell {
     font-variant-numeric: tabular-nums;
 }
 
+.fig-table-scroll {
+    max-inline-size: 100%;
+    overflow-x: auto;
+}
+
+.fig-table {
+    inline-size: 100%;
+    border-collapse: collapse;
+    text-align: start;
+}
+
+.fig-table th,
+.fig-table td {
+    padding: var(--fig-space-3) var(--fig-space-4);
+    border-block-end: 1px solid var(--fig-rule);
+    text-align: start;
+    vertical-align: top;
+}
+
+.fig-table th {
+    color: var(--fig-ink-tertiary);
+    font-size: var(--fig-t-eyebrow);
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.fig-table td {
+    max-inline-size: 32rem;
+    overflow-wrap: anywhere;
+}
+
 .fig-data {
     font-size: var(--fig-t-data);
     font-weight: 400;

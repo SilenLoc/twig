@@ -16,12 +16,7 @@ async fn user_has_namespace_access(
     auth_state: &web::Data<FigContext>,
     namespace: &str,
 ) -> bool {
-    let Some(cookie) = req.cookie("session") else {
-        return false;
-    };
-    let token = cookie.value().to_string();
-
-    let Some(user_id) = auth_state.validate_token(&token).await else {
+    let Some(user_id) = auth_state.user_id_from_request(req).await else {
         return false;
     };
 
@@ -290,15 +285,13 @@ pub async fn create_repo_handler(
     let namespace = &params.namespace;
 
     // Authenticate user via session cookie
-    let Some(cookie) = req.cookie("session") else {
-        return HttpResponse::Unauthorized()
-            .body(render_error("Not logged in. Please log in first.").into_string());
-    };
-    let token = cookie.value().to_string();
-
-    let Some(user_id) = auth_state.validate_token(&token).await else {
-        return HttpResponse::Unauthorized()
-            .body(render_error("Session expired. Please log in again.").into_string());
+    let Some(user_id) = auth_state.user_id_from_request(&req).await else {
+        let message = if req.cookie("session").is_some() {
+            "Session expired. Please log in again."
+        } else {
+            "Not logged in. Please log in first."
+        };
+        return HttpResponse::Unauthorized().body(render_error(message).into_string());
     };
 
     let db = auth_state.db();

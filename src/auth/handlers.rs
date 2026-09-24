@@ -1,4 +1,5 @@
-use actix_web::{HttpRequest, HttpResponse, Responder, post, web};
+use actix_identity::{Identity, IdentityExt};
+use actix_web::{HttpMessage, HttpRequest, HttpResponse, Responder, post, web};
 use log::info;
 use serde::Deserialize;
 
@@ -39,18 +40,17 @@ pub async fn logout_ui_handler(
     req: HttpRequest,
     auth_state: web::Data<FigContext>,
 ) -> impl Responder {
-    // Extract token from session cookie
-    let token = match req.cookie("session") {
-        Some(cookie) => cookie.value().to_string(),
-        None => {
-            return HttpResponse::Unauthorized().body("Not logged in");
-        }
-    };
-
-    // Invalidate token
-    if let Err(e) = auth_state.invalidate_token(&token).await {
+    if let Some(cookie) = req.cookie("session")
+        && let Err(e) = auth_state.invalidate_token(cookie.value()).await
+    {
         log::error!("Failed to invalidate token: {e}");
         return HttpResponse::InternalServerError().body("Failed to logout");
+    }
+
+    if req.cookie("id").is_some()
+        && let Ok(identity) = req.get_identity()
+    {
+        identity.logout();
     }
 
     // Clear session cookie and redirect
@@ -200,7 +200,7 @@ pub async fn signup_ui_handler(
 
 #[post("/auth/login")]
 pub async fn login_ui_handler(
-    _req: HttpRequest,
+    req: HttpRequest,
     auth_state: web::Data<FigContext>,
     form: web::Form<LoginForm>,
 ) -> impl Responder {
@@ -234,15 +234,11 @@ pub async fn login_ui_handler(
         }
     }
 
-    // Create session token
-    let token = match auth_state.create_session(user.id.clone()).await {
-        Ok(token) => token,
-        Err(e) => {
-            log::error!("Failed to create session: {e}");
-            return HttpResponse::InternalServerError()
-                .body(render_error("Failed to create session").into_string());
-        }
-    };
+    if let Err(e) = Identity::login(&req.extensions(), user.id.clone()) {
+        log::error!("Failed to create identity session: {e}");
+        return HttpResponse::InternalServerError()
+            .body(render_error("Failed to create session").into_string());
+    }
 
     info!("User logged in via UI: {}", form.username);
 
@@ -259,13 +255,6 @@ pub async fn login_ui_handler(
         // Redirect to home page if user already has namespaces
         HttpResponse::Ok()
             .insert_header(("HX-Redirect", "/"))
-            .cookie(
-                actix_web::cookie::Cookie::build("session", token)
-                    .path("/")
-                    .http_only(true)
-                    .same_site(actix_web::cookie::SameSite::Strict)
-                    .finish(),
-            )
             .body("")
     } else {
         // Show create namespace page if user has no namespaces
@@ -273,13 +262,6 @@ pub async fn login_ui_handler(
             .content_type("text/html")
             .insert_header(("HX-Retarget", "#auth-content"))
             .insert_header(("HX-Reswap", "innerHTML"))
-            .cookie(
-                actix_web::cookie::Cookie::build("session", token)
-                    .path("/")
-                    .http_only(true)
-                    .same_site(actix_web::cookie::SameSite::Strict)
-                    .finish(),
-            )
             .body(render_login_success(&user.username).into_string())
     }
 }
@@ -317,17 +299,13 @@ pub async fn create_namespace_ui_handler(
     }
 
     // Authenticate user via session cookie
-    let token = match req.cookie("session") {
-        Some(cookie) => cookie.value().to_string(),
-        None => {
-            return HttpResponse::Unauthorized()
-                .body(render_error("Not logged in. Please log in first.").into_string());
-        }
-    };
-
-    let Some(user_id) = auth_state.validate_token(&token).await else {
-        return HttpResponse::Unauthorized()
-            .body(render_error("Session expired. Please log in again.").into_string());
+    let Some(user_id) = auth_state.user_id_from_request(&req).await else {
+        let message = if req.cookie("session").is_some() {
+            "Session expired. Please log in again."
+        } else {
+            "Not logged in. Please log in first."
+        };
+        return HttpResponse::Unauthorized().body(render_error(message).into_string());
     };
 
     // Create namespace

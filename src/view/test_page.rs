@@ -363,8 +363,10 @@ pub fn render_test_page(
     role: &CallerRole,
     active_pin: Option<&str>,
     base_url: &str,
+    data_enabled: bool,
 ) -> maud::Markup {
     maud::html! {
+        (super::tree::render_tree_hub(true, data_enabled, Some("test")))
         (render_pagehead(role))
         (render_pin_panel(role.is_admin(), active_pin, base_url))
         div id="test-runner-container" {
@@ -470,7 +472,7 @@ async fn authenticate_caller(
     let username = get_username_from_request(req, auth_state).await;
     if username
         .as_deref()
-        .is_some_and(|name| server.is_admin_user(name))
+        .is_some_and(|name| server.is_test_user(name))
     {
         return Ok(CallerRole::Admin {
             username: admin_user.to_string(),
@@ -527,7 +529,7 @@ async fn verify_admin_only(
     let username = get_username_from_request(req, auth_state).await;
     if !username
         .as_deref()
-        .is_some_and(|name| server.is_admin_user(name))
+        .is_some_and(|name| server.is_test_user(name))
     {
         return Err(HttpResponse::Forbidden().body(
             super::render_error("Forbidden: Only the admin user can manage session PINs.")
@@ -555,7 +557,10 @@ async fn handle_test_page(
 
     let active_pin = auth_state.get_test_pin().await;
     let base_url = get_base_url(&req, &server);
-    let content = render_test_page(&role, active_pin.as_deref(), &base_url);
+    let data_enabled = role
+        .username()
+        .is_some_and(|username| server.is_configured_admin(username));
+    let content = render_test_page(&role, active_pin.as_deref(), &base_url, data_enabled);
 
     let mut builder = HttpResponse::Ok();
 
@@ -731,7 +736,7 @@ mod tests {
         let role = CallerRole::Admin {
             username: "admin".to_string(),
         };
-        let markup = render_test_page(&role, None, "http://localhost:8080").into_string();
+        let markup = render_test_page(&role, None, "http://localhost:8080", false).into_string();
         assert!(markup.contains("id=\"test-runner-container\""));
         assert!(markup.contains("id=\"btn-start\""));
         assert!(markup.contains("id=\"btn-stop\""));

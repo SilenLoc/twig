@@ -277,19 +277,13 @@ pub async fn settings_page(
     auth_state: web::Data<FigContext>,
 ) -> AwResult<maud::Markup> {
     // Get user from session
-    let Some(cookie) = req.cookie("session") else {
-        return Ok(render_settings_auth_error(
-            &req,
-            "Not logged in. Please log in first.",
-        ));
-    };
-    let token = cookie.value().to_string();
-
-    let Some(user_id) = auth_state.validate_token(&token).await else {
-        return Ok(render_settings_auth_error(
-            &req,
-            "Session expired. Please log in again.",
-        ));
+    let Some(user_id) = auth_state.user_id_from_request(&req).await else {
+        let message = if req.cookie("session").is_some() {
+            "Session expired. Please log in again."
+        } else {
+            "Not logged in. Please log in first."
+        };
+        return Ok(render_settings_auth_error(&req, message));
     };
 
     let db = auth_state.db();
@@ -355,6 +349,15 @@ pub async fn settings_page(
         &deletable_namespaces,
     );
 
+    let content = maud::html! {
+        (super::tree::render_tree_hub(
+            server.is_test_user_enabled(),
+            server.is_configured_admin(&user.username),
+            Some("settings"),
+        ))
+        (content)
+    };
+
     if req.headers().get("HX-Request").is_some() {
         Ok(content)
     } else {
@@ -389,15 +392,9 @@ pub async fn update_email(
     }
 
     // Get user from session
-    let Some(cookie) = req.cookie("session") else {
+    let Some(user_id) = auth_state.user_id_from_request(&req).await else {
         return HttpResponse::Unauthorized()
             .body(render_error("Not logged in. Please log in first.").into_string());
-    };
-    let token = cookie.value().to_string();
-
-    let Some(user_id) = auth_state.validate_token(&token).await else {
-        return HttpResponse::Unauthorized()
-            .body(render_error("Session expired. Please log in again.").into_string());
     };
 
     let db = auth_state.db();
@@ -426,15 +423,9 @@ pub async fn delete_repo(
     form: web::Form<DeleteRepoForm>,
 ) -> impl Responder {
     // Get user from session
-    let Some(cookie) = req.cookie("session") else {
+    let Some(user_id) = auth_state.user_id_from_request(&req).await else {
         return HttpResponse::Unauthorized()
             .body(render_error("Not logged in. Please log in first.").into_string());
-    };
-    let token = cookie.value().to_string();
-
-    let Some(user_id) = auth_state.validate_token(&token).await else {
-        return HttpResponse::Unauthorized()
-            .body(render_error("Session expired. Please log in again.").into_string());
     };
 
     let db = auth_state.db();
@@ -523,13 +514,9 @@ pub async fn move_repo(
             .body(render_error("Choose a different destination namespace").into_string());
     }
 
-    let Some(cookie) = req.cookie("session") else {
+    let Some(user_id) = auth_state.user_id_from_request(&req).await else {
         return HttpResponse::Unauthorized()
             .body(render_error("Not logged in. Please log in first.").into_string());
-    };
-    let Some(user_id) = auth_state.validate_token(cookie.value()).await else {
-        return HttpResponse::Unauthorized()
-            .body(render_error("Session expired. Please log in again.").into_string());
     };
 
     let db = auth_state.db();
@@ -613,15 +600,9 @@ pub async fn delete_namespace(
     auth_state: web::Data<FigContext>,
     form: web::Form<NamespaceForm>,
 ) -> impl Responder {
-    let Some(cookie) = req.cookie("session") else {
+    let Some(user_id) = auth_state.user_id_from_request(&req).await else {
         return HttpResponse::Unauthorized()
             .body(render_error("Not logged in. Please log in first.").into_string());
-    };
-    let token = cookie.value().to_string();
-
-    let Some(user_id) = auth_state.validate_token(&token).await else {
-        return HttpResponse::Unauthorized()
-            .body(render_error("Session expired. Please log in again.").into_string());
     };
 
     let db = auth_state.db();

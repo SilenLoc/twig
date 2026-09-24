@@ -31,23 +31,6 @@ impl Database {
         }
     }
 
-    pub async fn get_username_by_token(&self, token: &str) -> Result<Option<String>, String> {
-        let mut rows = self
-            .conn().await?
-            .query(
-                "SELECT u.username FROM tokens t JOIN users u ON t.user_id = u.id WHERE t.token = ?1 AND t.created_at > datetime('now', '-30 days')",
-                turso::params![token],
-            )
-            .await
-            .map_err(|e| e.to_string())?;
-
-        if let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
-            Ok(Some(row.get(0).map_err(|e| e.to_string())?))
-        } else {
-            Ok(None)
-        }
-    }
-
     pub async fn delete_token(&self, token: &str) -> Result<(), String> {
         self.conn()
             .await?
@@ -104,25 +87,6 @@ mod tests {
 
         let retrieved = db.get_token_user(token).await.expect("get token user");
         assert_eq!(retrieved, Some(user_id));
-
-        // Cleanup
-        let _ = std::fs::remove_file(&db_path);
-    }
-
-    #[tokio::test]
-    async fn test_get_username_by_token() {
-        let (db, db_path, user_id) = setup_db_with_user().await;
-        let token = "test-token-456";
-
-        db.create_token(token, &user_id)
-            .await
-            .expect("create token");
-
-        let username = db
-            .get_username_by_token(token)
-            .await
-            .expect("get username by token");
-        assert_eq!(username, Some("tokenuser".to_string()));
 
         // Cleanup
         let _ = std::fs::remove_file(&db_path);

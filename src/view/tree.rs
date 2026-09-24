@@ -1,0 +1,286 @@
+use actix_web::{HttpRequest, HttpResponse, get, web};
+use serde::Deserialize;
+
+use crate::{auth::FigContext, config, db::data::TablePage};
+
+#[derive(Debug, Deserialize)]
+pub struct DataQuery {
+    table: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RowsQuery {
+    table: String,
+    offset: usize,
+}
+
+const DATA_PAGE_SIZE: usize = 50;
+
+pub(crate) fn render_tree_hub(
+    test_enabled: bool,
+    data_enabled: bool,
+    active: Option<&str>,
+) -> maud::Markup {
+    maud::html! {
+        nav class="fig-tabs" aria-label="Tree sections" {
+            a class="fig-tab" aria-current=[(active == Some("settings")).then_some("page")] href="/settings" { "Settings" }
+            @if test_enabled {
+                a class="fig-tab" aria-current=[(active == Some("test")).then_some("page")] href="/_test" { "Test" }
+            }
+            @if data_enabled {
+                a class="fig-tab" aria-current=[(active == Some("data")).then_some("page")] href="/tree/data" { "Data" }
+            }
+        }
+    }
+}
+
+fn render_data_page(
+    tables: &[String],
+    selected: &str,
+    page: Option<&TablePage>,
+    offset: usize,
+    test_enabled: bool,
+) -> maud::Markup {
+    maud::html! {
+        (render_tree_hub(test_enabled, true, Some("data")))
+        section class="fig-panel" {
+            header class="fig-panel-head" {
+                h1 class="fig-eyebrow" { "Database tables" }
+                p class="fig-row-meta" { "Read-only table data" }
+            }
+            div class="fig-panel-body" {
+                nav class="fig-tabs" aria-label="Database tables" {
+                    @for table in tables {
+                        a class="fig-tab" aria-current=[(table == selected).then_some("page")] href=(format!("/tree/data?table={table}")) { (table) }
+                    }
+                }
+                @if let Some(page) = page {
+                    @if page.rows.is_empty() && offset == 0 {
+                        p class="fig-empty-body" { "This table has no rows." }
+                    } @else {
+                        div class="fig-table-scroll" {
+                            table class="fig-table" {
+                                thead {
+                                    tr {
+                                        @for column in &page.columns {
+                                            th scope="col" { (column) }
+                                        }
+                                    }
+                                }
+                                tbody id="database-rows" {
+                                    @for row in &page.rows {
+                                        (render_data_row(row))
+                                    }
+                                    @if page.rows.len() == DATA_PAGE_SIZE {
+                                        (render_load_more(selected, offset + page.rows.len()))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn render_data_row(row: &[String]) -> maud::Markup {
+    maud::html! {
+        tr {
+            @for value in row {
+                td class="fig-data" { (value) }
+            }
+        }
+    }
+}
+
+fn render_load_more(table: &str, offset: usize) -> maud::Markup {
+    maud::html! {
+        tr
+            hx-get=(format!("/tree/data/rows?table={table}&offset={offset}"))
+            hx-trigger="revealed"
+            hx-swap="outerHTML"
+        {
+            td colspan="100" class="fig-row-meta" { "Loading more rows…" }
+        }
+    }
+}
+
+fn render_more_rows(table: &str, offset: usize, page: &TablePage) -> maud::Markup {
+    maud::html! {
+        @for row in &page.rows {
+            (render_data_row(row))
+        }
+        @if page.rows.len() == DATA_PAGE_SIZE {
+            (render_load_more(table, offset + page.rows.len()))
+        }
+    }
+}
+
+async fn require_admin(
+    req: &HttpRequest,
+    server: &config::Server,
+    auth_state: &web::Data<FigContext>,
+) -> Result<String, HttpResponse> {
+    let Some(admin_user) = server.admin_user() else {
+        return Err(HttpResponse::NotFound().finish());
+    };
+    let username = super::session_auth::get_username_from_request(req, auth_state).await;
+    if !username
+        .as_deref()
+        .is_some_and(|username| server.is_configured_admin(username))
+    {
+        return Err(HttpResponse::Forbidden().body("Forbidden"));
+    }
+    Ok(admin_user.to_string())
+}
+
+fn enabled_hub_for_server(
+    server: &config::Server,
+    username: Option<&str>,
+    active: Option<&str>,
+) -> maud::Markup {
+    render_tree_hub(
+        server.is_test_user_enabled(),
+        username.is_some_and(|name| server.is_configured_admin(name)),
+        active,
+    )
+}
+
+#[get("/tree")]
+pub async fn tree_page(
+    req: HttpRequest,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<FigContext>,
+) -> HttpResponse {
+    let username = super::session_auth::get_username_from_request(&req, &auth_state).await;
+    if username.is_none() {
+        return HttpResponse::Found()
+            .insert_header(("Location", "/auth/login"))
+            .finish();
+    }
+
+    let content = maud::html! {
+        h1 class="fig-title" { "Tree" }
+        (enabled_hub_for_server(&server, username.as_deref(), None))
+        section class="fig-panel" {
+            div class="fig-panel-body" {
+                p class="fig-empty-body" { "Choose a section to manage your account, run tests, or inspect database records." }
+            }
+        }
+    };
+    HttpResponse::Ok()
+        .content_type("text/html")
+        .body(super::render_layout(&content, username.as_deref(), Some("Tree")).into_string())
+}
+
+#[get("/tree/data")]
+pub async fn data_page(
+    req: HttpRequest,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<FigContext>,
+    query: web::Query<DataQuery>,
+) -> HttpResponse {
+    let username = match require_admin(&req, &server, &auth_state).await {
+        Ok(username) => username,
+        Err(response) => return response,
+    };
+    let db = auth_state.db();
+    let tables = match db.list_table_names().await {
+        Ok(tables) => tables,
+        Err(error) => {
+            log::error!("Failed to list database tables: {error}");
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+    let selected = query
+        .table
+        .as_deref()
+        .filter(|table| tables.iter().any(|name| name == table))
+        .or_else(|| tables.first().map(String::as_str));
+    let Some(selected) = selected else {
+        return HttpResponse::Ok().body("No database tables found");
+    };
+    let page = match db.read_table_page(selected, DATA_PAGE_SIZE, 0).await {
+        Ok(page) => page,
+        Err(error) => {
+            log::error!("Failed to read database table '{selected}': {error}");
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+    let content = render_data_page(
+        &tables,
+        selected,
+        page.as_ref(),
+        0,
+        server.is_test_user_enabled(),
+    );
+    let content = if req.headers().get("HX-Request").is_some() {
+        content
+    } else {
+        super::render_layout(&content, Some(&username), Some("Database Data"))
+    };
+    HttpResponse::Ok()
+        .content_type("text/html")
+        .body(content.into_string())
+}
+
+#[get("/tree/data/rows")]
+pub async fn data_rows(
+    req: HttpRequest,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<FigContext>,
+    query: web::Query<RowsQuery>,
+) -> HttpResponse {
+    if let Err(response) = require_admin(&req, &server, &auth_state).await {
+        return response;
+    }
+    let page = match auth_state
+        .db()
+        .read_table_page(&query.table, DATA_PAGE_SIZE, query.offset)
+        .await
+    {
+        Ok(Some(page)) => page,
+        Ok(None) => return HttpResponse::NotFound().finish(),
+        Err(error) => {
+            log::error!("Failed to read database table '{}': {error}", query.table);
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+    HttpResponse::Ok()
+        .content_type("text/html")
+        .body(render_more_rows(&query.table, query.offset, &page).into_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tree_hub_only_renders_enabled_sections() {
+        let minimal = render_tree_hub(false, false, None).into_string();
+        assert!(minimal.contains("Settings"));
+        assert!(!minimal.contains(">Test</a>"));
+        assert!(!minimal.contains(">Data</a>"));
+
+        let enabled = render_tree_hub(true, true, Some("data")).into_string();
+        assert!(enabled.contains("href=\"/_test\""));
+        assert!(enabled.contains("href=\"/tree/data\""));
+        assert!(enabled.contains("aria-current=\"page\" href=\"/tree/data\""));
+    }
+
+    #[test]
+    fn data_page_uses_the_infinite_scroll_placeholder() {
+        let page = TablePage {
+            columns: vec!["id".to_string()],
+            rows: (0..DATA_PAGE_SIZE)
+                .map(|index| vec![index.to_string()])
+                .collect(),
+        };
+        let html =
+            render_data_page(&["users".to_string()], "users", Some(&page), 0, false).into_string();
+        assert!(html.contains("hx-trigger=\"revealed\""));
+        assert!(html.contains("hx-swap=\"outerHTML\""));
+        assert!(html.contains("/tree/data/rows?table=users&amp;offset=50"));
+    }
+}

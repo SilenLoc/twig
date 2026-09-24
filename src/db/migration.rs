@@ -58,6 +58,18 @@ const MIGRATIONS: &[Migration] = &[
         );",
     },
     Migration {
+        name: "create_actix_sessions_table",
+        sql: r"CREATE TABLE IF NOT EXISTS actix_sessions (
+            session_key TEXT PRIMARY KEY,
+            state TEXT NOT NULL,
+            expires_at INTEGER NOT NULL
+        );",
+    },
+    Migration {
+        name: "create_actix_sessions_expiry_index",
+        sql: r"CREATE INDEX IF NOT EXISTS idx_actix_sessions_expires_at ON actix_sessions(expires_at);",
+    },
+    Migration {
         name: "create_namespaces_owner_index",
         sql: r"CREATE INDEX IF NOT EXISTS idx_namespaces_owner ON namespaces(owner_id);",
     },

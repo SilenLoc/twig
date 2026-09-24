@@ -11,8 +11,10 @@ pub struct Server {
     api_key: String,
     reset_db: bool,
     test_user: Option<String>,
+    admin_user: Option<String>,
     traces_sample_rate: f32,
     cache_control: HeaderValue,
+    session_key: actix_web::cookie::Key,
 }
 
 impl Server {
@@ -34,8 +36,10 @@ impl Server {
             api_key,
             reset_db,
             test_user: None,
+            admin_user: None,
             traces_sample_rate,
             cache_control: HeaderValue::from_static(DEFAULT_CACHE_CONTROL),
+            session_key: actix_web::cookie::Key::generate(),
         }
     }
 
@@ -47,6 +51,19 @@ impl Server {
     pub fn with_test_user(mut self, test_user: Option<String>) -> Self {
         self.test_user = test_user;
         self
+    }
+
+    pub fn with_admin_user(mut self, admin_user: Option<String>) -> Self {
+        self.admin_user = admin_user;
+        self
+    }
+
+    pub fn admin_user(&self) -> Option<&str> {
+        self.admin_user.as_deref()
+    }
+
+    pub fn is_configured_admin(&self, username: &str) -> bool {
+        self.admin_user.as_deref() == Some(username)
     }
 
     pub fn address(&self) -> (String, u16) {
@@ -80,8 +97,8 @@ impl Server {
         self.test_user.is_some()
     }
 
-    /// Returns whether the provided username matches the configured test admin user.
-    pub fn is_admin_user(&self, username: &str) -> bool {
+    /// Returns whether the provided username matches the configured test-page user.
+    pub fn is_test_user(&self, username: &str) -> bool {
         self.test_user.as_deref() == Some(username)
     }
 
@@ -114,6 +131,15 @@ impl Server {
         &self.cache_control
     }
 
+    pub fn session_key(&self) -> actix_web::cookie::Key {
+        self.session_key.clone()
+    }
+
+    fn with_session_key(mut self, session_key: actix_web::cookie::Key) -> Self {
+        self.session_key = session_key;
+        self
+    }
+
     /// Returns the API key, generating a random one if not provided.
     /// Logs a warning when generating a random key.
     pub fn effective_api_key(&self) -> String {
@@ -142,12 +168,26 @@ pub fn from_env() -> Server {
     let project_root = std::env::var("PROJECT_ROOT").unwrap_or_else(|_| "/srv/git".to_string());
     let db_path = std::env::var("DB_PATH").unwrap_or_else(|_| "fig.db".to_string());
     let api_key = std::env::var("API_KEY").unwrap_or_default();
+    let session_key = std::env::var("SESSION_KEY")
+        .ok()
+        .filter(|key| !key.is_empty())
+        .map_or_else(
+            || {
+                log::warn!("SESSION_KEY is unset; identity sessions will not survive a restart");
+                actix_web::cookie::Key::generate()
+            },
+            |key| actix_web::cookie::Key::derive_from(key.as_bytes()),
+        );
     let reset_db = std::env::var("RESET_DB").unwrap_or_default() == "true";
     let test_user = std::env::var("TEST_USER")
         .ok()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .map(|s| if s == "true" { "admin".to_string() } else { s });
+    let admin_user = std::env::var("ADMIN_USER")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
     let traces_sample_rate = std::env::var("SENTRY_TRACES_SAMPLE_RATE")
         .ok()
         .and_then(|s| s.parse::<f32>().ok())
@@ -170,7 +210,9 @@ pub fn from_env() -> Server {
         traces_sample_rate,
     )
     .with_cache_control(cache_control)
+    .with_session_key(session_key)
     .with_test_user(test_user)
+    .with_admin_user(admin_user)
 }
 
 fn ascii(server: &Server) -> String {
@@ -328,12 +370,47 @@ mod tests {
         );
         assert_eq!(server.test_user(), None);
         assert!(!server.is_test_user_enabled());
-        assert!(!server.is_admin_user("admin"));
+        assert!(!server.is_test_user("admin"));
 
         let server_with_admin = server.with_test_user(Some("admin".to_string()));
         assert_eq!(server_with_admin.test_user(), Some("admin"));
         assert!(server_with_admin.is_test_user_enabled());
-        assert!(server_with_admin.is_admin_user("admin"));
-        assert!(!server_with_admin.is_admin_user("alice"));
+        assert!(server_with_admin.is_test_user("admin"));
+        assert!(!server_with_admin.is_test_user("alice"));
+    }
+
+    #[test]
+    fn test_server_admin_user_is_independent_from_test_user() {
+        let server = Server::new(
+            ("0.0.0.0".to_string(), 8080),
+            "info".to_string(),
+            "/srv/git".to_string(),
+            "fig.db".to_string(),
+            "key".to_string(),
+            false,
+            1.0,
+        )
+        .with_admin_user(Some("root-user".to_string()));
+
+        assert_eq!(server.admin_user(), Some("root-user"));
+        assert!(server.is_configured_admin("root-user"));
+        assert!(!server.is_configured_admin("admin"));
+        assert!(!server.is_test_user_enabled());
+    }
+
+    #[test]
+    fn test_blank_admin_user_is_not_configured() {
+        let server = Server::new(
+            ("0.0.0.0".to_string(), 8080),
+            "info".to_string(),
+            "/srv/git".to_string(),
+            "fig.db".to_string(),
+            "key".to_string(),
+            false,
+            1.0,
+        )
+        .with_admin_user(None);
+
+        assert_eq!(server.admin_user(), None);
     }
 }

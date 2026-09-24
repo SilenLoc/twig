@@ -8,6 +8,7 @@ pub mod repo;
 pub mod session_auth;
 pub mod settings;
 pub mod test_page;
+pub mod tree;
 
 pub fn render_layout(
     main_content: &maud::Markup,
@@ -50,7 +51,18 @@ pub fn render_layout(
                                 Some(name) => {
                                     span class="fig-nav-user" { (name) }
                                     a class="fig-btn fig-btn--quiet" href="/_info" { "Information" }
-                                    a class="fig-btn fig-btn--quiet" href="/settings" { "Settings" }
+                                    a class="fig-btn fig-btn--quiet" href="/tree" aria-label="Tree" title="Tree" {
+                                        svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" {
+                                            path d="M5 3v18";
+                                            path d="M5 6h8a3 3 0 0 1 3 3v0";
+                                            path d="M5 12h5a3 3 0 0 1 3 3v0";
+                                            circle cx="5" cy="3" r="2";
+                                            circle cx="16" cy="9" r="2";
+                                            circle cx="13" cy="15" r="2";
+                                            circle cx="5" cy="21" r="2";
+                                        }
+                                        "Tree"
+                                    }
                                     form method="POST" action="/auth/logout" {
                                         button class="fig-btn fig-btn--quiet" type="submit" { "Logout" }
                                     }
@@ -258,9 +270,13 @@ mod tests {
     fn test_layout_authenticated_nav_exposes_user_actions() {
         let html = layout_html(Some("testuser"));
         assert!(html.contains("testuser"), "{html}");
-        for target in ["/_info", "/settings"] {
+        for target in ["/_info", "/tree"] {
             assert!(html.contains(target), "missing nav target {target}: {html}");
         }
+        assert!(
+            !html.contains("href=\"/settings\""),
+            "settings should live under Tree: {html}"
+        );
         assert!(
             html.contains("method=\"POST\" action=\"/auth/logout\""),
             "logout stays a real POST form: {html}"

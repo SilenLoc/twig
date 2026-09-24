@@ -12,7 +12,11 @@
 # Note: cache mounts are local to the BuildKit daemon. A cold machine (fresh
 # CI runner) pays one full dependency build; every build after that is warm.
 
+
+
 FROM rust:slim-bookworm AS builder
+
+LABEL remote="silenloc/fig"
 
 WORKDIR /app
 

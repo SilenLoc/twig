@@ -1,3 +1,4 @@
+use actix_identity::IdentityMiddleware;
 use actix_web::{
     App, HttpServer,
     dev::Service,
@@ -137,6 +138,9 @@ pub(crate) fn configure_routes(cfg: &mut web::ServiceConfig) {
         .service(auth::handlers::logout_ui_handler)
         // Web UI endpoints (MUST come before git routes to avoid pattern conflicts)
         .service(view::overview::index)
+        .service(view::tree::tree_page)
+        .service(view::tree::data_page)
+        .service(view::tree::data_rows)
         // Test suite endpoints (gated by TEST_USER and admin auth)
         .service(view::test_page::test_page_alias)
         .service(view::test_page::test_runner)
@@ -202,22 +206,30 @@ fn main() -> std::io::Result<()> {
         );
 
         let bind_address = config.address();
+        let session_key = config.session_key();
 
         HttpServer::new(move || {
             let reset_db = config.reset_db();
             let dev_session_for_mw = dev_session_token.clone();
+            let session_key = session_key.clone();
 
             App::new()
                 .app_data(config.clone())
                 .app_data(auth_state.clone())
                 // Increase payload limit to 512MB for large git pushes
                 .app_data(web::PayloadConfig::new(1 << 29))
+                .wrap(IdentityMiddleware::default())
+                .wrap(auth::session_store::middleware(
+                    auth_state.db().clone(),
+                    session_key,
+                ))
                 // Dev convenience: when RESET_DB is true, auto-attach the seeded
                 // admin session cookie to any request that doesn't already carry
                 // one, so local browsing never requires a manual login.
                 .wrap_fn(move |mut req, srv| {
                     if reset_db
                         && req.cookie("session").is_none()
+                        && req.cookie("id").is_none()
                         && let Some(token) = dev_session_for_mw.get()
                     {
                         let cookie_header = format!("session={token}");

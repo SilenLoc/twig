@@ -21,6 +21,6 @@ Fig is a Git server and web UI: Rust, Actix-web, maud templates, turso/libSQL ov
 
 ## Config and auth
 
-Env vars are read in `src/config.rs`: `PORT` (80), `LOG_LEVEL` (info), `PROJECT_ROOT` (/srv/git), `DB_PATH` (fig.db), `API_KEY` (random when unset), `RESET_DB`, `CACHE_CONTROL`, `SENTRY_TRACES_SAMPLE_RATE`; `SENTRY_DSN` is read in `main.rs`. `mise.toml` overrides them for local dev.
+Env vars are read in `src/config.rs`: `PORT` (80), `LOG_LEVEL` (info), `PROJECT_ROOT` (/srv/git), `DB_PATH` (fig.db), `API_KEY` (random when unset), `SESSION_KEY` (random when unset), `ADMIN_USER` (database viewer user), `RESET_DB`, `CACHE_CONTROL`, `SENTRY_TRACES_SAMPLE_RATE`; `SENTRY_DSN` is read in `main.rs`. `mise.toml` overrides them for local dev.
 
 Git reads are public; pushes and `POST /init` need Basic Auth. The web UI uses a `session` cookie holding a 64-hex token valid 30 days from `created_at`. `POST /auth/invite` requires `api_key` as a form field, and signup consumes a single-use invite.

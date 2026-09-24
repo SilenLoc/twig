@@ -1,5 +1,6 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use actix_identity::IdentityExt;
 use actix_web::HttpRequest;
 use argon2::password_hash::{SaltString, rand_core::RngCore};
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
@@ -9,6 +10,7 @@ use uuid::Uuid;
 use crate::db::Database;
 
 pub mod handlers;
+pub mod session_store;
 
 #[derive(Debug, Clone)]
 pub struct User {
@@ -167,6 +169,27 @@ impl FigContext {
     pub async fn invalidate_token(&self, token: &str) -> Result<(), String> {
         let db = self.db();
         db.delete_token(token).await
+    }
+
+    pub async fn user_id_from_request(&self, req: &HttpRequest) -> Option<String> {
+        if req.cookie("id").is_some() {
+            if let Ok(identity) = req.get_identity()
+                && let Ok(user_id) = identity.id()
+                && self
+                    .db
+                    .get_user_by_id(&user_id)
+                    .await
+                    .ok()
+                    .flatten()
+                    .is_some()
+            {
+                return Some(user_id);
+            }
+            return None;
+        }
+
+        let token = req.cookie("session")?;
+        self.validate_token(token.value()).await
     }
 
     pub async fn get_test_pin(&self) -> Option<String> {

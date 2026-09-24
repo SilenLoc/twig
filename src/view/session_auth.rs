@@ -1,5 +1,4 @@
-use actix_web::HttpRequest;
-use actix_web::web;
+use actix_web::{HttpRequest, web};
 
 use crate::auth::FigContext;
 
@@ -7,9 +6,13 @@ pub async fn get_username_from_request(
     req: &HttpRequest,
     auth_state: &web::Data<FigContext>,
 ) -> Option<String> {
-    let token = req.cookie("session")?;
     let db = auth_state.db();
-    db.get_username_by_token(token.value()).await.ok().flatten()
+    let user_id = auth_state.user_id_from_request(req).await?;
+    db.get_user_by_id(&user_id)
+        .await
+        .ok()
+        .flatten()
+        .map(|user| user.username)
 }
 
 #[cfg(test)]
