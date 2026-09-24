@@ -310,11 +310,21 @@ mod tests {
                 .to_request(),
         )
         .await;
+        assert_eq!(response.status(), StatusCode::FOUND);
+        assert_eq!(response.headers().get("Location").unwrap(), "/settings");
+
+        let response = test::call_service(
+            &app,
+            test::TestRequest::get()
+                .uri("/settings")
+                .cookie(actix_web::cookie::Cookie::new("session", &admin_token))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
         let body = test::read_body(response).await;
         let html = String::from_utf8(body.to_vec()).unwrap();
-        assert!(html.contains("href=\"/settings\""));
-        assert!(html.contains("href=\"/_test\""));
-        assert!(html.contains("href=\"/tree/data\""));
+        assert!(html.contains("aria-current=\"page\" href=\"/settings\""));
 
         let response = test::call_service(
             &app,

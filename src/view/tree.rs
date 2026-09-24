@@ -135,43 +135,20 @@ async fn require_admin(
     Ok(admin_user.to_string())
 }
 
-fn enabled_hub_for_server(
-    server: &config::Server,
-    username: Option<&str>,
-    active: Option<&str>,
-) -> maud::Markup {
-    render_tree_hub(
-        server.is_test_user_enabled(),
-        username.is_some_and(|name| server.is_configured_admin(name)),
-        active,
-    )
-}
-
 #[get("/tree")]
-pub async fn tree_page(
-    req: HttpRequest,
-    server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
-) -> HttpResponse {
-    let username = super::session_auth::get_username_from_request(&req, &auth_state).await;
-    if username.is_none() {
+pub async fn tree_page(req: HttpRequest, auth_state: web::Data<FigContext>) -> HttpResponse {
+    if super::session_auth::get_username_from_request(&req, &auth_state)
+        .await
+        .is_none()
+    {
         return HttpResponse::Found()
             .insert_header(("Location", "/auth/login"))
             .finish();
     }
 
-    let content = maud::html! {
-        h1 class="fig-title" { "Tree" }
-        (enabled_hub_for_server(&server, username.as_deref(), None))
-        section class="fig-panel" {
-            div class="fig-panel-body" {
-                p class="fig-empty-body" { "Choose a section to manage your account, run tests, or inspect database records." }
-            }
-        }
-    };
-    HttpResponse::Ok()
-        .content_type("text/html")
-        .body(super::render_layout(&content, username.as_deref(), Some("Tree")).into_string())
+    HttpResponse::Found()
+        .insert_header(("Location", "/settings"))
+        .finish()
 }
 
 #[get("/tree/data")]
