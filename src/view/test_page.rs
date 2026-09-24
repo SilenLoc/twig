@@ -89,7 +89,7 @@ fn core_system_endpoints() -> Vec<TestEndpoint> {
             id: "tree",
             category: "API",
             method: "GET",
-            url: "/api/v1/tree".to_string(),
+            url: "/api/tree".to_string(),
         },
     ]
 }
@@ -118,19 +118,19 @@ fn docs_endpoints() -> Vec<TestEndpoint> {
             id: "info-git",
             category: "Docs",
             method: "GET",
-            url: "/_info?tab=docs&doc=git-backend".to_string(),
+            url: "/_info?tab=docs&page=git-backend".to_string(),
         },
         TestEndpoint {
             id: "info-ui",
             category: "Docs",
             method: "GET",
-            url: "/_info?tab=docs&doc=ui".to_string(),
+            url: "/_info?tab=docs&page=ui".to_string(),
         },
         TestEndpoint {
             id: "info-env",
             category: "Docs",
             method: "GET",
-            url: "/_info?tab=docs&doc=environment-variables".to_string(),
+            url: "/_info?tab=docs&page=environment-variables".to_string(),
         },
     ]
 }
@@ -745,5 +745,23 @@ mod tests {
         assert!(markup.contains("id=\"test-runner-idle\""));
         assert!(!markup.contains("id=\"test-runner\""));
         assert!(!markup.contains("hx-trigger=\"every 25ms\""));
+    }
+
+    #[test]
+    fn test_endpoint_catalog_uses_current_api_and_info_routes() {
+        let endpoints = list_test_endpoints();
+        let urls: Vec<_> = endpoints
+            .iter()
+            .map(|endpoint| endpoint.url.as_str())
+            .collect();
+        assert!(urls.contains(&"/api/tree"));
+        assert!(urls.contains(&"/_info?tab=docs&page=git-backend"));
+        assert!(urls.contains(&"/_info?tab=docs&page=ui"));
+        assert!(urls.contains(&"/_info?tab=docs&page=environment-variables"));
+        assert!(
+            !urls
+                .iter()
+                .any(|url| url.contains("/api/v1/") || url.contains("doc="))
+        );
     }
 }

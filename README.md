@@ -1,90 +1,79 @@
 # Fig
 
-Fig serves Git repositories over HTTP and provides a web interface for browsing repositories.
-
-## What This Is
-
-Fig is a self-hosted Git backend that provides:
-
-- **Git HTTP Backend**: Host Git repositories over HTTP with support for clone, fetch, and push operations
-- **Web UI**: Browse namespaces, repositories, commits, and README files through a clean web interface
+Fig is a self-hosted Git server with a web interface for browsing and managing
+repositories. It is a single Rust/Actix-web application backed by a local
+SQLite-compatible database (Turso/libSQL) and Git's smart-HTTP backend.
 
 ## Features
 
-### Git Backend
-- Clone and fetch repositories (public read access)
-- Push to repositories (authenticated write access)
-- Per-namespace access control
+- Public namespace and repository browsing, with search, Markdown rendering,
+  file browsing, commit history, license display, and optional slide
+  presentations configured in `.fig.toml`.
+- Git clone/fetch over HTTP; pushes use HTTP Basic Auth. Repositories can be
+  made private in `.fig.toml`.
+- Account signup by one-time invite, session-based web login, owned namespaces,
+  and repository creation from the UI or Git push.
+- Settings for updating email, moving repositories between your namespaces, and
+  deleting repositories/namespaces.
+- Optional endpoint test runner (`TEST_USER`) and read-only database browser
+  (`ADMIN_USER`).
+- A MessagePack namespace/repository tree at `GET /api/tree`.
 
-[Git Backend Documentation](docs/git-backend.md)
+## Quick start
 
-### Web UI
-- Browse all namespaces with search
-- View repositories within a namespace with last commit info
-- View repository details including commit history and rendered README
-- Create repositories through web forms
-- User authentication with session-based login
+Run locally with [mise](https://mise.jdx.dev/):
 
-[UI Documentation](docs/ui.md)
-
-### Tickets
-- Per-namespace issue tracker stored as TOML in a reserved `ticket` git repo
-- Markdown bodies and comments, statuses, labels, assignees, `@mentions`
-- Editable from the web UI *and* from a plain `git clone` — concurrent writes are
-  merged server-side, so a push is never rejected and a pull never conflicts
-- Image attachments stored outside git, content-addressed
-
-[Tickets Documentation](docs/tickets.md)
-
-## Quick Start
-
-Deploy with the [once project](https://github.com/basecamp/once).
-
-Be sure to set the following environment variables:
-
-```
-DB_PATH=/storage/<your_choice>
-PROJECT_ROOT=/storage/<your_choice>
-
-# Optional: Sentry instrumentation (errors, traces, logs)
-# SENTRY_DSN=https://<key>@o<orgId>.ingest.sentry.io/<projectId>
-# SENTRY_TRACES_SAMPLE_RATE=1.0
+```sh
+mise run run
 ```
 
-See [Environment Variables](docs/environment-variables.md) for the full reference,
-also available from the running instance itself under the Docs tab of `/_info`
-(grouped under its "Self-hosting" subheading).
+The development configuration sets `PROJECT_ROOT=tests/git/srv`,
+`RESET_DB=true`, `PORT=8080`, and `TEST_USER=admin`. With `RESET_DB=true`, Fig
+resets its local database and seeds an `admin` / `admin` account for local
+browsing. Do not use this mode for persistent data.
+
+The container listens on port 80. Persist both the Git root and database file
+when deploying, and set `SESSION_KEY` to a stable secret so browser sessions
+survive restarts. For example:
+
+```sh
+docker run --rm -p 8080:80 \
+  -e PROJECT_ROOT=/data/git \
+  -e DB_PATH=/data/fig.db \
+  -e SESSION_KEY='replace-with-a-long-random-secret' \
+  -e API_KEY='replace-with-a-secret' \
+  -v fig-data:/data \
+  silenloc/fig
+```
+
+See [Environment Variables](docs/environment-variables.md) for the complete
+configuration reference.
 
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
-| [Git Backend](docs/git-backend.md) | Git HTTP backend usage and workflows |
-| [UI Documentation](docs/ui.md) | Web interface guide and page descriptions |
-| [Tickets](docs/tickets.md) | Issue tracker: storage format, merge rules, CLI workflow |
-| [Ticket CLI](docs/ticket-cli.md) | `fig-ticket` command-line helper scripts |
-| [Environment Variables](docs/environment-variables.md) | Configuration options reference |
+| [Git Backend](docs/git-backend.md) | Clone, fetch, push, authentication, and repository creation |
+| [Web UI](docs/ui.md) | Pages, account access, settings, and optional admin tools |
+| [Environment Variables](docs/environment-variables.md) | Runtime configuration |
 
-## Authentication Overview
+These Markdown files are also embedded in the application and shown under
+Information → Docs at `/_info`.
 
-Fig uses multiple authentication methods depending on the action:
+## Authentication overview
 
-| Action | Authentication Method |
-|--------|----------------------|
-| Generate signup invite | API Key (admin only) |
-| Create account | Single-use invite |
-| Log in (UI) | Form submission → sets session cookie |
-| Create namespace | session cookie (UI) |
-| Create repository | Basic Auth |
-| Git clone/fetch | None (public read) |
-| Git push | Basic Auth via git |
-| Log out |session cookie |
+| Action | Authentication |
+|--------|----------------|
+| Browse public namespaces/repositories | None |
+| Read a private repository | HTTP Basic Auth for Git; web login for the UI |
+| Generate a signup invite | `API_KEY` entered on the invite page |
+| Sign up | Unused one-time invite |
+| Create namespace/repository in the UI | Web session; repository creation also requires an email on the account |
+| Push over Git HTTP | HTTP Basic Auth and access to the namespace |
+| Read database tables | Logged-in user named by `ADMIN_USER` |
+| Use the endpoint test page | Logged-in user named by `TEST_USER`, or a valid session PIN |
 
-### Registration Flow
-
-1. **Admin** generates a signup invite using the API Key
-2. **User** creates an account with the invite (single-use, consumed on signup)
-3. **User** logs in
-4. **User** can now create namespaces and repositories
-
-See the individual documentation files for detailed authentication flows.
+Git reads are public for public repositories. An authenticated push can create
+a missing namespace and repository; the new namespace belongs to the pushing
+user. Namespaces and repositories created in the web UI belong to the logged-in
+user.

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Fig is a Git server and web UI: Rust, Actix-web, maud templates, turso/libSQL over a local SQLite file.
+Fig is a Git server and web UI: Rust, Actix-web, maud templates, Turso/libSQL over a local SQLite-compatible file. The shipped app includes namespace/repository browsing and management, Git smart HTTP, auth, admin database inspection, an optional endpoint test page, and a MessagePack tree endpoint. There is no ticket UI or `fig-ticket` CLI in this repository.
 
 ## Commands
 
@@ -10,7 +10,7 @@ Fig is a Git server and web UI: Rust, Actix-web, maud templates, turso/libSQL ov
 
 ## Layout
 
-`src/main.rs` wires all routes. `src/view/*` holds the maud pages (overview `/`, namespace, repo, settings, auth, info `/_info`); `src/auth/*` sessions and Argon2 hashing; `src/db/*` a turso wrapper plus a hand-rolled `MIGRATIONS` array in `migration.rs`; `src/git/*` and `src/git_backend.rs` repo operations and smart-HTTP; `src/info/` the Information section, which compiles `docs/*.md` in via `include_str!` — so editing those files changes the running UI.
+`src/main.rs` wires routes. `src/view/*` holds maud pages (overview `/`, namespace, repo, settings, auth, info `/_info`, Tree/Data, optional Test); `src/auth/*` handles sessions and Argon2 hashing; `src/db/*` is the Turso/libSQL wrapper plus a hand-rolled `MIGRATIONS` array in `migration.rs`; `src/git/*` and `src/git_backend.rs` implement repo operations and smart HTTP; `src/api.rs` serves `GET /api/tree` as MessagePack. `src/info/` compiles the registered Markdown docs via `include_str!` into Information → Docs — when adding a doc file, register it there too.
 
 ## Rules
 
@@ -21,6 +21,6 @@ Fig is a Git server and web UI: Rust, Actix-web, maud templates, turso/libSQL ov
 
 ## Config and auth
 
-Env vars are read in `src/config.rs`: `PORT` (80), `LOG_LEVEL` (info), `PROJECT_ROOT` (/srv/git), `DB_PATH` (fig.db), `API_KEY` (random when unset), `SESSION_KEY` (random when unset), `ADMIN_USER` (database viewer user), `RESET_DB`, `CACHE_CONTROL`, `SENTRY_TRACES_SAMPLE_RATE`; `SENTRY_DSN` is read in `main.rs`. `mise.toml` overrides them for local dev.
+Env vars are read in `src/config.rs`: `PORT` (80), `LOG_LEVEL` (info), `PROJECT_ROOT` (/srv/git), `DB_PATH` (fig.db), `API_KEY` (random and logged when unset), `SESSION_KEY` (random per process; sessions do not survive restart unless set), `TEST_USER` (optional test-page user; `true` maps to `admin`), `ADMIN_USER` (optional database viewer), `RESET_DB`, `CACHE_CONTROL`, `SENTRY_TRACES_SAMPLE_RATE`; `SENTRY_DSN` is read in `main.rs`. `mise.toml` overrides them for local development; with `RESET_DB=true` it resets the database and seeds/logs in the development `admin`/`admin` user.
 
-Git reads are public; pushes and `POST /init` need Basic Auth. The web UI uses a `session` cookie holding a 64-hex token valid 30 days from `created_at`. `POST /auth/invite` requires `api_key` as a form field, and signup consumes a single-use invite.
+Public Git reads need no credentials; private Git reads and all pushes need Basic Auth, and writes require namespace ownership. A push can create a missing namespace and repository. `POST /init` creates a repo only in an existing namespace the authenticated user owns. The web UI uses a signed/encrypted Actix session cookie backed by the database with a 30-day lifetime (not a raw 64-hex token cookie). UI repo creation requires a session, namespace ownership, and an account email. `POST /auth/invite` requires `api_key` as a form field, and signup consumes a single-use invite.

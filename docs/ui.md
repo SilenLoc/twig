@@ -1,136 +1,108 @@
-# UI Documentation
+# Web UI
 
-Fig provides a web interface for browsing namespaces, repositories, and managing your account.
+Fig provides a web interface for browsing namespaces and repositories,
+managing your account, and (when enabled) using admin tools.
 
-## Authentication in the UI
+## Authentication
 
-The UI uses **session cookies** for authentication. After logging in, the server sets a `session` cookie that is used for all subsequent authenticated requests.
+The UI uses an encrypted, server-side session cookie for authentication. After
+logging in, the browser sends the cookie with subsequent requests. Sessions
+last 30 days; configure `SESSION_KEY` to keep them valid across restarts.
 
-### Authentication by Action
+| Action | Access |
+|--------|--------|
+| Browse public namespaces/repositories | Public |
+| View a private repository | Logged in |
+| Create namespace | Logged in; the new namespace belongs to you |
+| Create repository | Logged in as namespace owner; account must have an email |
+| Generate signup invite | Enter `API_KEY` on the invite page |
+| Sign up | Unused one-time invite; username, email, and password |
+| Inspect database data | Logged-in user named by `ADMIN_USER` |
+| Use endpoint test suite | `TEST_USER` account or a valid session PIN |
 
-| Action | Auth Required | How It Works |
-|--------|--------------|--------------|
-| View namespaces | No | Public read access |
-| View repositories | No | Public read access |
-| View commits/README | No | Public read access |
-| Create namespace | Yes | logged in |
-| Create repository | Yes | logged in |
-| Generate signup invite | Yes | API key (admin only) |
-| Signup | Yes | Valid invite (one-time use) |
-| Login | Yes | Username/password form |
-| Logout | Yes | Clears session |
+### Account flow
 
-### Authentication Flow
-
-1. **Get Signup Invite** (`/auth/invite`) - Admin enters API key to generate an invite
-2. **Create Account** (`/auth/signup`) - User enters invite, username, and password
-3. **Log In** (`/auth/login`) - User enters credentials, session cookie is set
-4. **Create Namespace** (`/auth/namespace`) - Cookie is sent automatically by browser
-5. **Create Repository** (`/{namespace}`) - Cookie is sent with form submission
+1. Generate an invite at `/auth/invite` using the server's `API_KEY`.
+2. Create an account at `/auth/signup` with the invite, username, email, and
+   password.
+3. Log in at `/auth/login`.
+4. Create a namespace at `/auth/namespace`.
+5. Set or update an email in Settings before creating repositories in the UI.
 
 ## Pages
 
 ### Home (`/`)
 
-Displays a list of all namespaces with their owners.
+Lists public namespaces and their owners.
 
-**Features:**
-- Search namespaces by name
-- Create new namespace button (when logged in)
-- Links to each namespace page
+- Search namespaces by name.
+- Signed-in users can create namespaces.
+- Select a namespace to view its repositories.
 
-### Namespace Page (`/{namespace}`)
+### Namespace (`/{namespace}`)
 
-Displays all repositories within a namespace.
+Lists public repositories in a namespace. Signed-in users can also see private
+repositories; only the namespace owner can create repositories.
 
-**Features:**
-- Breadcrumb navigation
-- Search repositories by name
-- "Create repo" button (visible only if you have access)
-- Repository list showing last commit time
-- Links to each repository
+- Search repositories by name.
+- Repository rows show the last commit time.
+- The owner can create a repository with a selected default branch.
 
-### Create Repository Form (`/{namespace}/create-repo-form`)
+### Repository (`/{namespace}/{repo}`)
 
-HTMX-loaded form for creating a new repository.
+The repository page offers tabs according to available content and `.fig.toml`
+configuration:
 
-**Fields:**
-- Repository Name (required)
-- Default Branch (defaults to "main")
+- **Documentation** — rendered Markdown, including README files and links
+  between repository Markdown files.
+- **Content** — browse files and folders; open file content.
+- **Commits** — recent commit history with short hash, author, date, and message.
+- **Config** — view `.fig.toml` when present.
+- **Present** — navigate configured Markdown slides when `[present].files` is
+  set.
+- **License** — display the repository license or fallback license content.
 
-### Repository Page (`/{namespace}/{repo}`)
+The config can choose which tabs to display and which repository files to omit
+from the browser. Repositories with `private = true` require a logged-in user
+for the web UI.
 
-Displays repository details.
+### Settings (`/settings`)
 
-**Features:**
-- Breadcrumb navigation
-- Rendered Markdown (if present)
-- Commit history with:
-  - Short commit hash
-  - Author name
-  - Commit date
-  - Commit message
+Available to signed-in users:
 
-### Ticket Pages
+- Update the account email.
+- Move an owned repository to another namespace you own.
+- Delete repositories explicitly marked `deleteable = true` in `.fig.toml`.
+- Delete an owned namespace only after its repositories have been removed.
 
-The issue tracker. Storage format, merge rules and the command-line workflow are
-covered in [Tickets](tickets.md); this section lists only the pages.
+### Tree and admin tools
 
-#### Ticket List (`/{namespace}/tickets`)
+`/tree` redirects signed-in users to Settings. The Tree navigation can also
+show the following optional tools:
 
-Lists every ticket in the namespace, newest first.
+#### Database data (`/tree/data`)
 
-**Features:**
-- Status filter tabs (All / Open / In progress / Blocked / Closed), swapped in
-  via htmx and reflected in the URL
-- Per-row status badge, author, comment count and labels
-- "New ticket" button that loads the creation form inline
-- Empty state showing the `git clone` snippet for the ticket repository
+Enabled only when `ADMIN_USER` names a Fig account. It shows read-only database
+tables and their rows in pages of 50.
 
-#### Ticket Detail (`/{namespace}/tickets/{number}`)
+#### Endpoint test suite (`/_test`)
 
-**Features:**
-- Title, status badge, author and timestamps
-- Labels, assignees and linked repositories
-- Rendered Markdown body; embedded HTML is escaped, `@mentions` are highlighted
-- Comment thread and comment form, posted via htmx without a page reload
-- Status control that updates the ticket in place
+Enabled only when `TEST_USER` is configured. The configured user can run the
+endpoint checks and create/remove a six-digit session PIN so other users can
+join. Set `TEST_USER=true` to use the username `admin`.
 
-#### Attachments (`/{namespace}/ticket/attachment`)
+### Information (`/_info`)
 
-`POST` accepts one image (PNG, JPEG, GIF or WebP, up to 5 MB) and returns the
-Markdown snippet that embeds it. `GET /{namespace}/ticket/attachment/{sha256}`
-serves it. Login and namespace access are required to upload.
+Contains the About and Docs tabs. The Docs tab embeds the Markdown pages from
+the repository's `docs/` directory into the running application.
 
-### Authentication Pages
+## Authentication pages
 
-#### Invite Page (`/auth/invite`)
-- Form to generate a signup invite
-- Requires API key
-
-#### Signup Page (`/auth/signup`)
-- Form to create a new account
-- Requires valid, unused invite
-
-#### Login Page (`/auth/login`)
-- Form to log in
-- Sets session cookie on success
-- Redirects to namespace creation if user has no namespaces
-
-#### Namespace Creation Page (`/auth/namespace`)
-- Form to create a new namespace
-- Requires session cookie
-
-## Authentication State
-
-The UI shows different content based on authentication state:
-
-**Logged Out:**
-- "Login" and "Signup" links in navigation
-- Can browse namespaces and repositories
-- Cannot create namespaces or repositories
-
-**Logged In:**
-- Username display and "Logout" link in navigation
-- Can create namespaces
-- Can create repositories in namespaces you own
+- **Invite** (`/auth/invite`) — generate a one-time signup invite using `API_KEY`.
+- **Signup** (`/auth/signup`) — create an account; usernames need at least 3
+  characters and passwords at least 8.
+- **Login** (`/auth/login`) — sign in with username and password. Users with no
+  namespaces are shown the namespace creation form after login.
+- **Create namespace** (`/auth/namespace`) — create a namespace owned by the
+  signed-in user.
+- **Logout** (`POST /auth/logout`) — end the browser session.

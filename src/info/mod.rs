@@ -39,16 +39,13 @@ pub const ABOUT_PAGE: Page = Page {
     title: "About",
     order: 0,
     section: None,
-    content: r"Fig exists because small teams and solo maintainers deserve a self-hosted git
-forge that doesn't come with an enterprise budget attached. It bundles a git
-HTTP backend, a web UI, and a lightweight ticket tracker into a single small
-binary, so running your own forge is one `docker run` away instead of a
-fleet of services to operate.
+    content: r"Fig is a self-hosted Git server and web interface for browsing and
+managing repositories. It combines Git smart HTTP, account and namespace
+management, and repository browsing in a single small application.
 
-The ticket tracker in particular is an experiment in a different idea: that
-concurrent writes to plain text don't have to mean merge conflicts, if the
-server understands the shape of the data it's merging. See the Docs tab for
-details.",
+The web interface includes Markdown documentation, a file browser, commit
+history, and optional repository slide presentations. See the Docs tab for
+Git usage, web UI details, and server configuration.",
 };
 
 /// All doc pages, in a fixed order (already sorted by `order`, but see
@@ -111,7 +108,7 @@ mod tests {
     #[test]
     fn test_about_page_has_content() {
         assert_eq!(ABOUT_PAGE.title, "About");
-        assert!(ABOUT_PAGE.content.contains("Fig exists"));
+        assert!(ABOUT_PAGE.content.contains("self-hosted Git server"));
     }
 
     #[test]

@@ -289,7 +289,7 @@ mod tests {
     #[test]
     fn test_render_about_tab_contains_about_content() {
         let html = render_about_tab().into_string();
-        assert!(html.contains("Fig exists"));
+        assert!(html.contains("self-hosted Git server"));
         assert!(
             html.contains("<h2 class=\"fig-title\">About</h2>"),
             "{html}"

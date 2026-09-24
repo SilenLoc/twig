@@ -1,83 +1,81 @@
-# Git Backend Documentation
+# Git Backend
 
-Fig provides a Git HTTP backend that allows you to host Git repositories and interact with them using standard Git commands.
+Fig serves repositories over Git smart HTTP and works with standard Git
+commands. The web UI and Git endpoints use the same namespace/repository paths.
 
 ## Authentication
 
-Git operations use **HTTP Basic Authentication** with your username and password.
+Git writes use **HTTP Basic Authentication** with your Fig username and
+password. Reads of public repositories do not require credentials; repositories
+marked `private = true` in `.fig.toml` require credentials for reads as well.
 
-| Operation | Authentication |
-|-----------|---------------|
-| Clone | None (public read) |
-| Fetch | None (public read) |
-| Push | Basic Auth required |
+| Operation | Public repository | Private repository |
+|-----------|-------------------|-------------------|
+| Clone/fetch | No credentials | Basic Auth; user must own the namespace |
+| Push | Basic Auth; user must own the namespace | Basic Auth; user must own the namespace |
 
-## Clone a Repository
+## Clone and fetch
 
-```bash
-git clone http://your-fig-server/namespace/repo.git
-```
-
-or 
-
-```bash
+```sh
 git clone http://your-fig-server/namespace/repo
-```
-
-## Fetch Updates
-
-```bash
+cd repo
 git fetch origin
 ```
 
-## Push Changes
+The `.git` suffix is also accepted. If Git needs credentials, it will prompt;
+you can use a credential helper to store them.
 
-```bash
-# Push with credential prompt
-git push origin main
+## Push
 
-# Or include credentials in the URL
-git push http://username:password@your-fig-server/namespace/repo.git main
+```sh
+git remote add origin http://your-fig-server/namespace/repo
+git push -u origin main
 ```
 
-**Note:** Using credentials in the URL is convenient but not secure. Use credential helpers instead.
+Avoid putting passwords in remote URLs, where they may be saved in shell history
+or Git configuration. Only the namespace owner can push. A push can create a
+missing namespace (owned by the pushing user) and repository.
 
-### 1. Create Account
+## Account and repository setup
 
-1. Get a signup invite from your Fig administrator
-2. Sign up at `http://your-fig-server/auth/signup`
-3. Remember your username and password
+1. Get a one-time signup invite from the Fig administrator using the invite
+   page.
+2. Sign up at `http://your-fig-server/auth/signup` with the invite, username,
+   email address, and password.
+3. Log in and create a namespace at `http://your-fig-server/auth/namespace`,
+   or let your first authenticated push create it.
+4. Create a repository in the web UI at `http://your-fig-server/namespace`
+   (the account needs an email), or push to a new repository path in your
+   namespace.
 
-### 2. Create Namespace
+For scripts and integrations, `POST /init` also creates a repository in an
+existing namespace the authenticated user owns. Submit `namespace`, `repo`,
+and optionally `branch` as form fields; the branch defaults to `main`.
 
-1. Log in at `http://your-fig-server/auth/login`
-2. Create a namespace at `http://your-fig-server/auth/namespace`
+## Repository configuration
 
-### 3. Create Repository
-
-Via web UI:
-1. Go to `http://your-fig-server/namespace`
-2. Click "Create Repository"
+Fig reads `.fig.toml` from the repository's current commit. Set `private = true`
+to require authenticated access for reads. Other options control which files
+appear in the browser, which repository tabs are shown, whether the repository
+can be deleted from Settings, and which Markdown files appear in the
+presentation view. New UI-created repositories include a commented
+configuration template. The schema is available at
+`/assets/fig.schema.json`.
 
 ## Troubleshooting
 
-### "Authentication failed" on push
+### Authentication failed
 
-1. Verify your username and password
-2. Check that you have access to the namespace
-3. Try clearing credential cache: `git credential-cache exit`
+Check your Fig username and password. For pushes, confirm that you own the
+namespace. If Git has cached old credentials, clear or update them using your
+credential helper.
 
-### "Access denied to namespace"
+### Access denied to namespace
 
-You don't have permission to push to this namespace. You must be the namespace owner.
+Only the namespace owner can push or read private repositories.
 
-### "Repository not found"
+### Repository not found
 
-The repository doesn't exist. Initialize it first via the web UI or `/init` endpoint.
-
-### Credentials not being saved
-
-Check your credential helper:
-```bash
-git config --list | grep credential
-```
+Check the namespace/repository path. A push can create a repository only when
+the authenticated user owns that namespace, or when the namespace does not yet
+exist.
