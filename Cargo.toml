@@ -94,7 +94,7 @@ pedantic = { level = "warn", priority = -1 }
 [package]
 edition = "2024"
 name = "fig"
-version = "0.1.106"
+version = "0.1.107"
 
 [profile.dev]
 debug = "line-tables-only"

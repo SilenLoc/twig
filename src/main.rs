@@ -24,25 +24,35 @@ mod md;
 mod view;
 
 /// Initialises Sentry before the async runtime starts, as the SDK requires.
-/// The DSN is read from `SENTRY_DSN`; when it is unset `sentry::init` is a
-/// no-op and the application runs uninstrumented.
+/// The DSN is read from `SENTRY_DSN`; when it is unset the application runs
+/// without sending telemetry.
 fn init_sentry(config: &config::Server) -> sentry::ClientInitGuard {
-    sentry::init(
-        sentry::ClientOptions::new()
-            .maybe_release(sentry::release_name!())
-            .send_default_pii(true)
-            .max_request_body_size(sentry::MaxRequestBodySize::Always)
-            // Capture all traces/spans; lower this in production if needed.
-            .traces_sample_rate(config.traces_sample_rate())
-            .enable_logs(true)
-            // errors and warns become events + logs; everything else is a breadcrumb + log
-            .before_send_log(|log| {
-                if log.level == sentry::protocol::LogLevel::Trace {
-                    return None;
-                }
-                Some(log)
-            }),
-    )
+    let dsn = std::env::var("SENTRY_DSN")
+        .ok()
+        .filter(|dsn| !dsn.trim().is_empty());
+    sentry::init(sentry_options(config, dsn.as_deref()))
+}
+
+fn sentry_options(config: &config::Server, dsn: Option<&str>) -> sentry::ClientOptions {
+    let options = sentry::ClientOptions::new()
+        .maybe_release(sentry::release_name!())
+        .send_default_pii(true)
+        .max_request_body_size(sentry::MaxRequestBodySize::Always)
+        // Capture all request transactions; lower this in production if needed.
+        .traces_sample_rate(config.traces_sample_rate())
+        .enable_logs(true)
+        // errors and warns become events + logs; everything else is a breadcrumb + log
+        .before_send_log(|log| {
+            if log.level == sentry::protocol::LogLevel::Trace {
+                return None;
+            }
+            Some(log)
+        });
+
+    match dsn {
+        Some(dsn) => options.dsn(dsn),
+        None => options,
+    }
 }
 
 /// Wraps `env_logger` with `SentryLogger` so every `log::*` call reaches both
@@ -275,6 +285,41 @@ pub(crate) fn is_git() -> impl guard::Guard {
 mod tests {
     use super::*;
     use actix_web::{HttpResponse, test as aw_test, web};
+
+    #[test]
+    fn sentry_options_use_configured_dsn() {
+        let config = config::Server::new(
+            ("127.0.0.1".to_string(), 8080),
+            "info".to_string(),
+            "/srv/git".to_string(),
+            "fig.db".to_string(),
+            "key".to_string(),
+            false,
+            0.25,
+        );
+
+        let options = sentry_options(&config, Some("https://public:@example.com/1"));
+
+        assert_eq!(
+            options.dsn.unwrap().to_string(),
+            "https://public:@example.com/1"
+        );
+    }
+
+    #[test]
+    fn sentry_options_leave_dsn_unset_when_not_configured() {
+        let config = config::Server::new(
+            ("127.0.0.1".to_string(), 8080),
+            "info".to_string(),
+            "/srv/git".to_string(),
+            "fig.db".to_string(),
+            "key".to_string(),
+            false,
+            1.0,
+        );
+
+        assert!(sentry_options(&config, None).dsn.is_none());
+    }
 
     #[actix_web::test]
     async fn test_is_git_guard_matches_git_user_agent() {
