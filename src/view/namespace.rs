@@ -374,9 +374,9 @@ pub async fn create_repo_handler(
 fn missing_email_response() -> HttpResponse {
     HttpResponse::BadRequest().body(
         render_error_with_action(
-            "Please set your email in settings before creating a repository.",
+            "Please set your email in your account before creating a repository.",
             "/settings",
-            "Go to Settings",
+            "Go to Account",
         )
         .into_string(),
     )
@@ -752,7 +752,7 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn test_missing_email_response_is_a_bad_request_fragment_with_settings_link() {
+    async fn test_missing_email_response_is_a_bad_request_fragment_with_account_link() {
         let response = missing_email_response();
         assert_eq!(response.status(), actix_web::http::StatusCode::BAD_REQUEST);
 
@@ -763,7 +763,7 @@ mod tests {
         assert!(!html.contains("<!DOCTYPE html>"), "{html}");
         assert!(
             html.contains(
-                "<a class=\"fig-btn fig-btn--ghost\" href=\"/settings\">Go to Settings</a>"
+                "<a class=\"fig-btn fig-btn--ghost\" href=\"/settings\">Go to Account</a>"
             ),
             "{html}"
         );

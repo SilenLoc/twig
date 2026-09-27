@@ -23,7 +23,8 @@ pub(crate) fn render_tree_hub(
 ) -> maud::Markup {
     maud::html! {
         nav class="fig-tabs" aria-label="Tree sections" {
-            a class="fig-tab" aria-current=[(active == Some("settings")).then_some("page")] href="/settings" { "Settings" }
+            a class="fig-tab" aria-current=[(active == Some("account")).then_some("page")] href="/settings" { "Account" }
+            a class="fig-tab" aria-current=[(active == Some("repositories")).then_some("page")] href="/tree/repositories" { "Repository" }
             a class="fig-tab" aria-current=[(active == Some("namespaces")).then_some("page")] href="/tree/namespaces" { "Namespace" }
             @if test_enabled {
                 a class="fig-tab" aria-current=[(active == Some("test")).then_some("page")] href="/_test" { "Test" }
@@ -38,6 +39,7 @@ pub(crate) fn render_tree_hub(
 fn render_namespaces_page(
     repos_by_namespace: &[(String, Vec<git::bare::RepoInfo>)],
     owned_namespaces: &[String],
+    deletable_namespaces: &[String],
 ) -> maud::Markup {
     let has_repositories = repos_by_namespace
         .iter()
@@ -94,6 +96,52 @@ fn render_namespaces_page(
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+            }
+        }
+        (render_namespace_deletion_panel(deletable_namespaces))
+    }
+}
+
+/// Namespaces the user owns that hold no repositories, and so can be deleted.
+fn render_namespace_deletion_panel(deletable_namespaces: &[String]) -> maud::Markup {
+    maud::html! {
+        section
+            class="fig-panel fig-panel--danger"
+            aria-labelledby="namespace-delete-heading"
+        {
+            header class="fig-panel-head" {
+                h2 class="fig-eyebrow" id="namespace-delete-heading" { "Delete Namespace" }
+            }
+
+            @if deletable_namespaces.is_empty() {
+                div class="fig-empty" {
+                    p class="fig-eyebrow" { "NO NAMESPACES" }
+                    p class="fig-empty-body" { "No namespaces available for deletion. You can only delete namespaces you own that have no repositories." }
+                }
+            } @else {
+                div class="fig-panel-body" {
+                    div class="fig-notice fig-notice--warning" role="alert" {
+                        p class="fig-eyebrow" { "CAUTION" }
+                        p class="fig-notice-body" { "Select a namespace to permanently delete it. This action cannot be undone." }
+                    }
+                    div id="delete-namespace-result" aria-live="polite" {}
+                }
+
+                div class="fig-list" {
+                    @for ns_name in deletable_namespaces {
+                        form
+                            class="fig-row fig-row--form"
+                            hx-post="/settings/delete-namespace/"
+                            hx-target="#delete-namespace-result"
+                            hx-swap="innerHTML"
+                            hx-confirm=(format!("Are you sure you want to permanently delete the namespace '{}'? This cannot be undone.", ns_name))
+                        {
+                            input type="hidden" name="namespace" value=(ns_name);
+                            span class="fig-row-id" { (ns_name) }
+                            button class="fig-btn fig-btn--danger" type="submit" { "Delete" }
                         }
                     }
                 }
@@ -254,6 +302,13 @@ pub async fn namespaces_page(
         .filter(|namespace| namespace.owner_id == user_id)
         .map(|namespace| namespace.name.clone())
         .collect();
+    let deletable_namespaces: Vec<String> = owned_namespaces
+        .iter()
+        .filter(|namespace| {
+            !git::bare::namespace::has_any_repository(server.project_root(), namespace)
+        })
+        .cloned()
+        .collect();
     let repos_by_namespace: Vec<(String, Vec<git::bare::RepoInfo>)> = owned_namespaces
         .iter()
         .filter_map(|namespace| {
@@ -270,12 +325,81 @@ pub async fn namespaces_page(
             server.is_configured_admin(&user.username),
             Some("namespaces"),
         ))
-        (render_namespaces_page(&repos_by_namespace, &owned_namespaces))
+        (render_namespaces_page(
+            &repos_by_namespace,
+            &owned_namespaces,
+            &deletable_namespaces,
+        ))
     };
     let content = if req.headers().get("HX-Request").is_some() {
         content
     } else {
         super::render_layout(&content, Some(&user.username), Some("Namespaces"))
+    };
+    HttpResponse::Ok()
+        .content_type("text/html")
+        .body(content.into_string())
+}
+
+#[get("/tree/repositories")]
+pub async fn repositories_page(
+    req: HttpRequest,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<FigContext>,
+) -> HttpResponse {
+    let Some(user_id) = auth_state.user_id_from_request(&req).await else {
+        return HttpResponse::Found()
+            .insert_header(("Location", "/auth/login"))
+            .finish();
+    };
+    let db = auth_state.db();
+    let Some(user) = (match db.get_user_by_id(&user_id).await {
+        Ok(user) => user,
+        Err(error) => {
+            log::error!("Failed to load user for repository tree: {error}");
+            return HttpResponse::InternalServerError().finish();
+        }
+    }) else {
+        return HttpResponse::Unauthorized()
+            .insert_header(("Location", "/auth/login"))
+            .finish();
+    };
+    let namespaces = match db.get_namespaces_for_user(&user_id).await {
+        Ok(namespaces) => namespaces,
+        Err(error) => {
+            log::error!("Failed to load namespaces for repository tree: {error}");
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+    let mut repos_by_namespace: Vec<(String, Vec<git::bare::RepoInfo>)> = Vec::new();
+    for namespace in namespaces {
+        let deletable_repos: Vec<_> =
+            git::bare::get_repos_with_info(server.project_root(), &namespace.name)
+                .into_iter()
+                .filter(|repo| {
+                    git::bare::FigConfig::load(server.project_root(), &namespace.name, &repo.name)
+                        .deleteable
+                })
+                .collect();
+        if !deletable_repos.is_empty() {
+            repos_by_namespace.push((namespace.name, deletable_repos));
+        }
+    }
+
+    let content = maud::html! {
+        (render_tree_hub(
+            server.is_test_user_enabled(),
+            server.is_configured_admin(&user.username),
+            Some("repositories"),
+        ))
+        div class="fig-bento" {
+            (super::settings::render_repo_deletion_panel(&repos_by_namespace))
+        }
+    };
+    let content = if req.headers().get("HX-Request").is_some() {
+        content
+    } else {
+        super::render_layout(&content, Some(&user.username), Some("Repository"))
     };
     HttpResponse::Ok()
         .content_type("text/html")
@@ -367,7 +491,8 @@ mod tests {
     #[test]
     fn tree_hub_only_renders_enabled_sections() {
         let minimal = render_tree_hub(false, false, None).into_string();
-        assert!(minimal.contains("Settings"));
+        assert!(minimal.contains(">Account</a>"));
+        assert!(minimal.contains("href=\"/tree/repositories\">Repository</a>"));
         assert!(minimal.contains("href=\"/tree/namespaces\""));
         assert!(!minimal.contains(">Test</a>"));
         assert!(!minimal.contains(">Data</a>"));
@@ -375,8 +500,16 @@ mod tests {
         let enabled = render_tree_hub(true, true, Some("data")).into_string();
         assert!(enabled.contains("href=\"/_test\""));
         assert!(enabled.contains("href=\"/tree/namespaces\""));
+        assert!(
+            !enabled.contains("aria-current=\"page\" href=\"/tree/repositories\">Repository</a>")
+        );
         assert!(enabled.contains("href=\"/tree/data\""));
         assert!(enabled.contains("aria-current=\"page\" href=\"/tree/data\""));
+        let repository_active = render_tree_hub(false, false, Some("repositories")).into_string();
+        assert!(
+            repository_active
+                .contains("aria-current=\"page\" href=\"/tree/repositories\">Repository</a>")
+        );
     }
 
     #[test]
@@ -391,6 +524,7 @@ mod tests {
                 }],
             )],
             &["acme".to_string(), "solo".to_string()],
+            &["solo".to_string()],
         )
         .into_string();
 
@@ -403,6 +537,24 @@ mod tests {
         );
         assert!(html.contains("name=\"target_namespace\" value=\"solo\""));
         assert!(!html.contains("<select"));
+        assert!(html.contains("Delete Namespace"));
+        assert!(!html.contains("NO NAMESPACES"));
+        assert!(html.contains("hx-post=\"/settings/delete-namespace/\""));
+        assert!(html.contains("hx-confirm=\"Are you sure you want to permanently delete the namespace 'solo'? This cannot be undone.\""));
+        assert!(html.contains("<span class=\"fig-row-id\">solo</span>"));
+    }
+
+    #[test]
+    fn namespace_page_explains_when_no_namespace_can_be_deleted() {
+        let html = render_namespaces_page(&[], &[], &[]).into_string();
+
+        assert!(html.contains("Delete Namespace"));
+        assert!(html.contains(">NO NAMESPACES<"));
+        assert!(html.contains(
+            "No namespaces available for deletion. You can only delete namespaces you own that have no repositories."
+        ));
+        assert!(!html.contains("hx-confirm"));
+        assert!(!html.contains("fig-btn--danger"));
     }
 
     #[test]

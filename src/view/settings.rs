@@ -29,16 +29,12 @@ struct MoveRepoForm {
 }
 
 /// Renders the settings page body shared by the full-page and HTMX responses.
-fn render_settings(
-    user: &crate::auth::User,
-    repos_by_namespace: &[(String, Vec<git::bare::RepoInfo>)],
-    deletable_namespaces: &[String],
-) -> maud::Markup {
+fn render_settings(user: &crate::auth::User) -> maud::Markup {
     maud::html! {
         nav class="fig-crumbs fig-crumbs--page" aria-label="Breadcrumb" {
             a href="/" { "Namespaces" }
             span class="fig-crumb-sep" aria-hidden="true" { "/" }
-            span aria-current="page" { "Settings" }
+            span aria-current="page" { "Account" }
         }
 
         section class="fig-pagehead" {
@@ -46,8 +42,6 @@ fn render_settings(
 
         div class="fig-bento" {
             (render_profile_panel(user))
-            (render_repo_deletion_panel(repos_by_namespace))
-            (render_namespace_deletion_panel(deletable_namespaces))
         }
     }
 }
@@ -57,7 +51,7 @@ fn render_profile_panel(user: &crate::auth::User) -> maud::Markup {
     maud::html! {
         section class="fig-panel" aria-labelledby="settings-profile-heading" {
             header class="fig-panel-head" {
-                h2 class="fig-eyebrow" id="settings-profile-heading" { "Profile Information" }
+                h2 class="fig-eyebrow" id="settings-profile-heading" { "Account" }
             }
             div class="fig-panel-body fig-stack" {
                 div class="fig-field" {
@@ -106,7 +100,7 @@ fn render_profile_panel(user: &crate::auth::User) -> maud::Markup {
 }
 
 /// Repositories the user may delete, one technical form row each.
-fn render_repo_deletion_panel(
+pub(crate) fn render_repo_deletion_panel(
     repos_by_namespace: &[(String, Vec<git::bare::RepoInfo>)],
 ) -> maud::Markup {
     maud::html! {
@@ -155,51 +149,6 @@ fn render_repo_deletion_panel(
     }
 }
 
-/// Namespaces the user owns that hold no repositories, and so can be deleted.
-fn render_namespace_deletion_panel(deletable_namespaces: &[String]) -> maud::Markup {
-    maud::html! {
-        section
-            class="fig-panel fig-panel--danger"
-            aria-labelledby="settings-delete-namespace-heading"
-        {
-            header class="fig-panel-head" {
-                h2 class="fig-eyebrow" id="settings-delete-namespace-heading" { "Delete Namespace" }
-            }
-
-            @if deletable_namespaces.is_empty() {
-                div class="fig-empty" {
-                    p class="fig-eyebrow" { "NO NAMESPACES" }
-                    p class="fig-empty-body" { "No namespaces available for deletion. You can only delete namespaces you own that have no repositories." }
-                }
-            } @else {
-                div class="fig-panel-body" {
-                    div class="fig-notice fig-notice--warning" role="alert" {
-                        p class="fig-eyebrow" { "CAUTION" }
-                        p class="fig-notice-body" { "Select a namespace to permanently delete it. This action cannot be undone." }
-                    }
-                    div id="delete-namespace-result" aria-live="polite" {}
-                }
-
-                div class="fig-list" {
-                    @for ns_name in deletable_namespaces {
-                        form
-                            class="fig-row fig-row--form"
-                            hx-post="/settings/delete-namespace/"
-                            hx-target="#delete-namespace-result"
-                            hx-swap="innerHTML"
-                            hx-confirm=(format!("Are you sure you want to permanently delete the namespace '{}'? This cannot be undone.", ns_name))
-                        {
-                            input type="hidden" name="namespace" value=(ns_name);
-                            span class="fig-row-id" { (ns_name) }
-                            button class="fig-btn fig-btn--danger" type="submit" { "Delete" }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 #[get("/settings")]
 pub async fn settings_page(
     req: HttpRequest,
@@ -222,43 +171,13 @@ pub async fn settings_page(
         return Ok(render_error("Failed to load user."));
     };
 
-    // Load namespaces and repos the user has access to
-    let namespaces = match db.get_namespaces_for_user(&user_id).await {
-        Ok(n) => n,
-        Err(e) => {
-            log::error!("Failed to get namespaces: {e}");
-            Vec::new()
-        }
-    };
-
-    let mut repos_by_namespace: Vec<(String, Vec<git::bare::RepoInfo>)> = Vec::new();
-    let mut deletable_namespaces: Vec<String> = Vec::new();
-    for ns in &namespaces {
-        let has_repos = git::bare::namespace::has_any_repository(server.project_root(), &ns.name);
-        if ns.owner_id == user_id && !has_repos {
-            deletable_namespaces.push(ns.name.clone());
-        }
-        let repos = git::bare::get_repos_with_info(server.project_root(), &ns.name);
-        let deletable_repos: Vec<_> = repos
-            .into_iter()
-            .filter(|repo| {
-                let config =
-                    git::bare::FigConfig::load(server.project_root(), &ns.name, &repo.name);
-                config.deleteable
-            })
-            .collect();
-        if !deletable_repos.is_empty() {
-            repos_by_namespace.push((ns.name.clone(), deletable_repos));
-        }
-    }
-
-    let content = render_settings(&user, &repos_by_namespace, &deletable_namespaces);
+    let content = render_settings(&user);
 
     let content = maud::html! {
         (super::tree::render_tree_hub(
             server.is_test_user_enabled(),
             server.is_configured_admin(&user.username),
-            Some("settings"),
+            Some("account"),
         ))
         (content)
     };
@@ -269,7 +188,7 @@ pub async fn settings_page(
         Ok(crate::view::render_layout(
             &content,
             Some(&user.username),
-            Some("Settings"),
+            Some("Account"),
         ))
     }
 }
@@ -279,7 +198,7 @@ fn render_settings_auth_error(req: &HttpRequest, message: &str) -> maud::Markup 
     if req.headers().get("HX-Request").is_some() {
         content
     } else {
-        crate::view::render_layout(&content, None, Some("Settings"))
+        crate::view::render_layout(&content, None, Some("Account"))
     }
 }
 
@@ -583,16 +502,19 @@ mod tests {
     }
 
     fn populated_html() -> String {
-        render_settings(
-            &user_fixture(Some("silen@example.com")),
-            &[("acme".to_string(), vec![repo_fixture("fig")])],
-            &["solo".to_string()],
-        )
-        .into_string()
+        render_settings(&user_fixture(Some("silen@example.com"))).into_string()
     }
 
     fn empty_html() -> String {
-        render_settings(&user_fixture(None), &[], &[]).into_string()
+        render_settings(&user_fixture(None)).into_string()
+    }
+
+    fn repo_panel_html() -> String {
+        render_repo_deletion_panel(&[("acme".to_string(), vec![repo_fixture("fig")])]).into_string()
+    }
+
+    fn empty_repo_panel_html() -> String {
+        render_repo_deletion_panel(&[]).into_string()
     }
 
     fn classes_in(html: &str) -> Vec<String> {
@@ -626,8 +548,8 @@ mod tests {
             "separators are decorative: {html}"
         );
         assert!(
-            html.contains("<span aria-current=\"page\">Settings</span>"),
-            "final crumb is a non-link current segment: {html}"
+            html.contains("<span aria-current=\"page\">Account</span>"),
+            "final crumb names the account page: {html}"
         );
         let crumbs = index_of(&html, "fig-crumbs");
         let head = index_of(&html, "<section class=\"fig-pagehead\">");
@@ -638,7 +560,7 @@ mod tests {
     }
 
     #[test]
-    fn test_settings_panels_render_profile_and_deletion_controls() {
+    fn test_account_page_renders_account_panel_only() {
         let html = populated_html();
         assert_eq!(
             html.matches("class=\"fig-bento\"").count(),
@@ -647,39 +569,35 @@ mod tests {
         );
         assert_eq!(
             html.matches("<section class=\"fig-panel").count(),
-            3,
-            "Profile, Delete Repository and Delete Namespace panels: {html}"
+            1,
+            "only the account panel appears here: {html}"
         );
         assert_eq!(
             html.matches("class=\"fig-panel-head\"").count(),
-            3,
+            1,
             "every panel declares a head: {html}"
         );
         assert_eq!(
             html.matches("<h2 class=\"fig-eyebrow\"").count(),
-            3,
+            1,
             "panel headings are h2 eyebrows under the page h1: {html}"
         );
-        for (heading_id, heading_text) in [
-            ("settings-profile-heading", "Profile Information"),
-            ("settings-delete-repo-heading", "Delete Repository"),
-            ("settings-delete-namespace-heading", "Delete Namespace"),
-        ] {
-            assert!(
-                html.contains(&format!("aria-labelledby=\"{heading_id}\"")),
-                "panel {heading_id} must be named by its heading: {html}"
-            );
-            assert!(
-                html.contains(&format!(
-                    "<h2 class=\"fig-eyebrow\" id=\"{heading_id}\">{heading_text}</h2>"
-                )),
-                "missing heading {heading_id}: {html}"
-            );
-        }
+        let heading_id = "settings-profile-heading";
+        assert!(
+            html.contains(&format!("aria-labelledby=\"{heading_id}\"")),
+            "panel {heading_id} must be named by its heading: {html}"
+        );
+        assert!(
+            html.contains(&format!(
+                "<h2 class=\"fig-eyebrow\" id=\"{heading_id}\">Account</h2>"
+            )),
+            "missing heading {heading_id}: {html}"
+        );
         assert!(
             !html.contains("<h4"),
             "panels never nest a fourth heading level: {html}"
         );
+        assert!(!html.contains("Delete Repository"), "{html}");
     }
 
     #[test]
@@ -687,25 +605,26 @@ mod tests {
         let html = populated_html();
         assert!(!html.contains("/settings/move-repo"), "{html}");
         assert!(!html.contains("Move Repository"), "{html}");
+        assert!(!html.contains("Delete Repository"), "{html}");
     }
 
     #[test]
     fn test_settings_deletion_panels_carry_danger_and_caution_affordances() {
-        let html = populated_html();
+        let html = repo_panel_html();
         assert_eq!(
             html.matches("fig-panel fig-panel--danger").count(),
-            2,
-            "both deletion panels take the danger variant: {html}"
+            1,
+            "the repository panel takes the danger variant: {html}"
         );
         assert_eq!(
             html.matches("<div class=\"fig-notice fig-notice--warning\" role=\"alert\">")
                 .count(),
-            2,
-            "each deletion panel warns before it lists targets: {html}"
+            1,
+            "the deletion panel warns before it lists targets: {html}"
         );
         assert_eq!(
             html.matches(">CAUTION<").count(),
-            2,
+            1,
             "the signal word carries the meaning, not the colour: {html}"
         );
         assert!(
@@ -714,25 +633,19 @@ mod tests {
             ),
             "{html}"
         );
-        assert!(
-            html.contains(
-                "Select a namespace to permanently delete it. This action cannot be undone."
-            ),
-            "{html}"
-        );
         assert_eq!(
             html.matches(
                 "<button class=\"fig-btn fig-btn--danger\" type=\"submit\">Delete</button>"
             )
             .count(),
-            2,
-            "destructive controls are full-height danger buttons: {html}"
+            1,
+            "repository deletion uses a full-height danger button: {html}"
         );
     }
 
     #[test]
     fn test_settings_delete_repo_rows_preserve_the_htmx_contract() {
-        let html = populated_html();
+        let html = repo_panel_html();
         for attribute in [
             "hx-post=\"/settings/delete-repo\"",
             "hx-target=\"#delete-repo-result\"",
@@ -761,22 +674,10 @@ mod tests {
     }
 
     #[test]
-    fn test_settings_delete_namespace_rows_preserve_the_htmx_contract() {
+    fn test_settings_does_not_render_namespace_deletion_controls() {
         let html = populated_html();
-        for attribute in [
-            "hx-post=\"/settings/delete-namespace/\"",
-            "hx-target=\"#delete-namespace-result\"",
-            "hx-confirm=\"Are you sure you want to permanently delete the namespace 'solo'? This cannot be undone.\"",
-        ] {
-            assert!(
-                html.contains(attribute),
-                "missing exact attribute {attribute}: {html}"
-            );
-        }
-        assert!(
-            html.contains("<span class=\"fig-row-id\">solo</span>"),
-            "{html}"
-        );
+        assert!(!html.contains("Delete Namespace"), "{html}");
+        assert!(!html.contains("delete-namespace"), "{html}");
     }
 
     #[test]
@@ -813,16 +714,10 @@ mod tests {
     #[test]
     fn test_settings_result_targets_announce_swaps() {
         let html = populated_html();
-        for target in [
-            "settings-result",
-            "delete-repo-result",
-            "delete-namespace-result",
-        ] {
-            assert!(
-                html.contains(&format!("<div id=\"{target}\" aria-live=\"polite\">")),
-                "swap target {target} must be a polite live region: {html}"
-            );
-        }
+        assert!(
+            html.contains("<div id=\"settings-result\" aria-live=\"polite\">"),
+            "the email swap target must be a polite live region: {html}"
+        );
     }
 
     #[test]
@@ -851,25 +746,17 @@ mod tests {
 
     #[test]
     fn test_settings_empty_states_name_their_condition_and_offer_no_targets() {
-        let html = empty_html();
+        let html = empty_repo_panel_html();
         assert_eq!(
             html.matches("<div class=\"fig-empty\">").count(),
-            2,
-            "deletion panels degrade to empty states: {html}"
+            1,
+            "repository tab degrades to an empty state: {html}"
         );
-        for (eyebrow, body) in [
-            (
-                ">NO REPOSITORIES<",
-                "You don't have any repositories to delete.",
-            ),
-            (
-                ">NO NAMESPACES<",
-                "No namespaces available for deletion. You can only delete namespaces you own that have no repositories.",
-            ),
-        ] {
-            assert!(html.contains(eyebrow), "missing {eyebrow}: {html}");
-            assert!(html.contains(body), "missing {body}: {html}");
-        }
+        assert!(html.contains(">NO REPOSITORIES<"), "{html}");
+        assert!(
+            html.contains("You don't have any repositories to delete."),
+            "{html}"
+        );
         assert!(
             !html.contains("hx-confirm"),
             "no deletion affordance without a deletable object: {html}"
@@ -882,7 +769,12 @@ mod tests {
 
     #[test]
     fn test_settings_uses_only_fig_design_system_classes() {
-        for html in [populated_html(), empty_html()] {
+        for html in [
+            populated_html(),
+            empty_html(),
+            repo_panel_html(),
+            empty_repo_panel_html(),
+        ] {
             let classes = classes_in(&html);
             assert!(!classes.is_empty(), "settings should carry classes: {html}");
             for class in classes {

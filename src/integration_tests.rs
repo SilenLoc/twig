@@ -329,6 +329,20 @@ mod tests {
         let response = test::call_service(
             &app,
             test::TestRequest::get()
+                .uri("/tree/repositories")
+                .cookie(actix_web::cookie::Cookie::new("session", &admin_token))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = test::read_body(response).await;
+        let html = String::from_utf8(body.to_vec()).unwrap();
+        assert!(html.contains("aria-current=\"page\" href=\"/tree/repositories\">Repository</a>"));
+        assert!(html.contains("You don't have any repositories to delete."));
+
+        let response = test::call_service(
+            &app,
+            test::TestRequest::get()
                 .uri("/tree/data?table=scroll_fixture")
                 .cookie(actix_web::cookie::Cookie::new("session", &other_token))
                 .to_request(),
@@ -395,7 +409,7 @@ mod tests {
         let body = test::read_body(resp).await;
         let body_str = String::from_utf8(body.to_vec()).unwrap();
         assert!(body_str.contains("<!DOCTYPE html>"));
-        assert!(body_str.contains("<title>Settings · Fig</title>"));
+        assert!(body_str.contains("<title>Account · Fig</title>"));
         assert!(body_str.contains("href=\"/auth/login\""));
         assert!(body_str.contains("Session expired"));
     }
@@ -410,7 +424,7 @@ mod tests {
         let body = test::read_body(resp).await;
         let body_str = String::from_utf8(body.to_vec()).unwrap();
         assert!(body_str.contains("<!DOCTYPE html>"));
-        assert!(body_str.contains("<title>Settings · Fig</title>"));
+        assert!(body_str.contains("<title>Account · Fig</title>"));
         assert!(body_str.contains("href=\"/auth/login\""));
         assert!(body_str.contains("Not logged in"));
     }

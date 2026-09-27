@@ -141,6 +141,7 @@ pub(crate) fn configure_routes(cfg: &mut web::ServiceConfig) {
         .service(view::overview::index)
         .service(view::tree::tree_page)
         .service(view::tree::namespaces_page)
+        .service(view::tree::repositories_page)
         .service(view::tree::data_page)
         .service(view::tree::data_rows)
         // Test suite endpoints (gated by TEST_USER and admin auth)
