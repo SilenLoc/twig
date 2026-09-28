@@ -1320,10 +1320,10 @@ fn render_slide_content(
                 span class="fig-present-count" aria-live="polite" {
                     (slide_counter(current_index, slide_count))
                 }
-                (super::render_theme_toggle())
                 button id="fullscreen-toggle" class="fig-btn fig-btn--quiet" type="button" {
                     "Fullscreen"
                 }
+                (super::render_theme_toggle())
             }
         }
 
