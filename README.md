@@ -7,8 +7,8 @@ SQLite-compatible database (Turso/libSQL) and Git's smart-HTTP backend.
 ## Features
 
 - Public namespace and repository browsing, with search, Markdown rendering,
-  file browsing, commit history, license display, and optional slide
-  presentations configured in `.fig.toml`.
+  file browsing, commit history, license display, optional slide presentations,
+  and an optional long-form Paper reader configured in `.fig.toml`.
 - Git clone/fetch over HTTP; pushes use HTTP Basic Auth. Repositories can be
   made private in `.fig.toml`.
 - Account signup by one-time invite, session-based web login, owned namespaces,

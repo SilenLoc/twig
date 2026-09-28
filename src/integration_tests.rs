@@ -682,6 +682,8 @@ mod tests {
                 .app_data(auth_state)
                 .service(view::repo::handler)
                 .service(view::repo::tab_handler)
+                .service(view::repo::content_tab_handler)
+                .service(view::repo::commits_tab_handler)
                 .service(view::repo::content_handler)
                 .service(view::repo::markdown_handler),
         )
@@ -708,7 +710,7 @@ mod tests {
         let fixture = setup_traversal_fixture();
         let app = create_traversal_service(&fixture).await;
 
-        let (status, body) = body_of(&app, "/public/repo/tab/content").await;
+        let (status, body) = body_of(&app, "/public/repo/content").await;
         assert_eq!(status, StatusCode::OK);
         // Positive control: repo's own file is listed
         assert!(
@@ -772,11 +774,11 @@ mod tests {
 
         for uri in [
             // namespace tries to climb out of the project root
-            "/..%2f..%2ftmp%2fnonsense/repo/tab/content",
-            "/public%2f..%2f..%2fsecret/repo/tab/content",
+            "/..%2f..%2ftmp%2fnonsense/repo/content",
+            "/public%2f..%2f..%2fsecret/repo/content",
             // repo name tries to climb out of the namespace dir
-            "/public/..%2f..%2fsecret/tab/content",
-            "/public/../secret/tab/content",
+            "/public/..%2f..%2fsecret/content",
+            "/public/../secret/content",
         ] {
             let (_status, body) = body_of(&app, uri).await;
             assert!(
@@ -872,6 +874,168 @@ mod tests {
             .unwrap();
     }
 
+    /// Builds a bare repository whose tree contains the given `.fig.toml` and,
+    /// when non-empty, a `paper/` directory holding the supplied pages.
+    fn init_repo_with_paper(repo_path: &std::path::Path, fig: &str, paper_pages: &[(&str, &str)]) {
+        use std::fmt::Write as _;
+
+        std::fs::create_dir_all(repo_path).unwrap();
+        crate::git::repo::bare_init(repo_path, "main", "Test", "test@example.com").unwrap();
+        let sh = xshell::Shell::new().unwrap();
+        let _p = sh.push_dir(repo_path);
+
+        let hash = |content: &str| -> String {
+            xshell::cmd!(sh, "git hash-object -w --stdin")
+                .stdin(content)
+                .read()
+                .unwrap()
+        };
+
+        let fig_blob = hash(fig);
+        let mut entries = format!("100644 blob {fig_blob}\t.fig.toml\n");
+
+        if !paper_pages.is_empty() {
+            let mut paper_entries = String::new();
+            for (name, content) in paper_pages {
+                let blob = hash(content);
+                writeln!(paper_entries, "100644 blob {blob}\t{name}").unwrap();
+            }
+            let paper_tree = xshell::cmd!(sh, "git mktree")
+                .stdin(paper_entries)
+                .read()
+                .unwrap();
+            writeln!(entries, "040000 tree {paper_tree}\tpaper").unwrap();
+        }
+
+        let tree = xshell::cmd!(sh, "git mktree")
+            .stdin(entries)
+            .read()
+            .unwrap();
+        let commit = xshell::cmd!(sh, "git commit-tree {tree} -m 'paper'")
+            .read()
+            .unwrap();
+        xshell::cmd!(sh, "git update-ref refs/heads/main {commit}")
+            .run()
+            .unwrap();
+    }
+
+    async fn get_body(
+        app: &impl actix_web::dev::Service<
+            Request,
+            Response = actix_web::dev::ServiceResponse,
+            Error = actix_web::Error,
+        >,
+        uri: &str,
+    ) -> String {
+        let req = test::TestRequest::get().uri(uri).to_request();
+        let resp = test::call_service(app, req).await;
+        String::from_utf8(test::read_body(resp).await.to_vec()).unwrap()
+    }
+
+    #[actix_web::test]
+    async fn test_paper_tab_renders_lazily_loaded_pages() {
+        let root = format!("/tmp/test_fig_paper_{}", uuid::Uuid::new_v4());
+        let app = create_test_service_in(&root).await;
+        init_repo_with_paper(
+            &std::path::Path::new(&root).join("pub/book"),
+            "[paper]\ndir = \"paper\"\n",
+            &[("01.md", "# First\n"), ("02.md", "# Second\n")],
+        );
+
+        let body = get_body(&app, "/pub/book").await;
+        assert!(body.contains(">Paper<"), "paper tab missing: {body}");
+        assert!(
+            body.contains("href=\"/pub/book/paper\""),
+            "the tab points at the paper view: {body}"
+        );
+
+        let body = get_body(&app, "/pub/book/paper").await;
+        assert!(body.contains("paper-container"), "{body}");
+        assert!(body.contains("data-fig-paper-font=\"sans\""), "{body}");
+        assert!(
+            body.contains(r#"hx-trigger="revealed""#),
+            "pages must lazy load on scroll: {body}"
+        );
+        assert!(
+            body.contains("/pub/book/paper/paper/01.md"),
+            "the page endpoint is wired: {body}"
+        );
+
+        let body = get_body(&app, "/pub/book/paper/paper/01.md").await;
+        assert!(body.contains("<h1>First</h1>"), "{body}");
+
+        let body = get_body(&app, "/pub/book/paper/.fig.toml").await;
+        assert!(
+            body.contains("Paper page not found."),
+            "files outside the paper dir are refused: {body}"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[actix_web::test]
+    async fn test_legacy_tab_url_redirects_to_the_tab_route() {
+        let root = format!("/tmp/test_fig_tab_redirect_{}", uuid::Uuid::new_v4());
+        let app = create_test_service_in(&root).await;
+        init_repo_with_paper(
+            &std::path::Path::new(&root).join("pub/book"),
+            "[paper]\ndir = \"paper\"\n",
+            &[("01.md", "# First\n")],
+        );
+
+        let response = test::call_service(
+            &app,
+            test::TestRequest::get()
+                .uri("/pub/book/tab/paper")
+                .to_request(),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::PERMANENT_REDIRECT);
+        assert_eq!(
+            response.headers().get("Location").unwrap(),
+            "/pub/book/paper",
+            "the legacy tab URL points at the tab's own route"
+        );
+
+        // An unknown tab name falls back to the repository home.
+        let response = test::call_service(
+            &app,
+            test::TestRequest::get()
+                .uri("/pub/book/tab/bogus")
+                .to_request(),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::PERMANENT_REDIRECT);
+        assert_eq!(response.headers().get("Location").unwrap(), "/pub/book");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[actix_web::test]
+    async fn test_invalid_fig_toml_shows_a_diagnostic() {
+        let root = format!("/tmp/test_fig_badconfig_{}", uuid::Uuid::new_v4());
+        let app = create_test_service_in(&root).await;
+        init_repo_with_paper(
+            &std::path::Path::new(&root).join("pub/broken"),
+            "this = = not valid\n",
+            &[],
+        );
+
+        let body = get_body(&app, "/pub/broken").await;
+        assert!(body.contains("CONFIG ERROR"), "{body}");
+        assert!(
+            body.contains("error: could not parse configuration"),
+            "the parse failure is surfaced, not swallowed: {body}"
+        );
+        assert!(body.contains("help: fix the syntax"), "{body}");
+        assert!(
+            body.contains(".fig.toml"),
+            "the offending file is named: {body}"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     fn basic_auth(username: &str, password: &str) -> String {
         use base64::Engine;
         let creds = format!("{username}:{password}");
@@ -935,7 +1099,7 @@ mod tests {
 
         // Anonymous tab access: auth error
         let req = test::TestRequest::get()
-            .uri("/privspace/secretrepo/tab/commits")
+            .uri("/privspace/secretrepo/commits")
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::OK);

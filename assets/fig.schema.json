@@ -40,6 +40,17 @@
           "default": []
         }
       }
+    },
+    "paper": {
+      "type": "object",
+      "description": "Paper (long-form reading) configuration. When present, a Paper tab renders the Markdown pages under dir as one continuous, lazily loaded document.",
+      "properties": {
+        "dir": {
+          "type": "string",
+          "description": "Directory whose Markdown pages form the Paper view, read in sorted order.",
+          "default": "paper"
+        }
+      }
     }
   }
 }

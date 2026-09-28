@@ -55,6 +55,9 @@ configuration:
 
 - **Documentation** — rendered Markdown, including README files and links
   between repository Markdown files.
+- **Paper** — read every Markdown page under `[paper].dir` as one continuous
+  document. Pages load as they scroll into view, and the toolbar offers the
+  same A−/A+ zoom as presentations plus a Sans/Serif/Mono reading font.
 - **Content** — browse files and folders; open file content.
 - **Commits** — recent commit history with short hash, author, date, and message.
 - **Config** — view `.fig.toml` when present.
@@ -65,6 +68,10 @@ configuration:
 The config can choose which tabs to display and which repository files to omit
 from the browser. Repositories with `private = true` require a logged-in user
 for the web UI.
+
+When `.fig.toml` cannot be parsed, the repository page shows a compiler-style
+diagnostic with the offending line instead of silently ignoring the file; the
+rest of the UI keeps working with default settings.
 
 ### Settings (`/settings`)
 

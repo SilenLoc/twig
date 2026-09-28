@@ -166,33 +166,14 @@ impl RepoHandle {
         get_non_commercial_license()
     }
 
-    /// Check if the repository has a license file
-    pub fn has_license(&self) -> bool {
-        self.read_file("LICENSE.md").ok().flatten().is_some()
-            || self.read_file("LICENSE").ok().flatten().is_some()
-            || self.read_file("Cargo.toml").ok().flatten().is_some()
-    }
-
     pub fn load_config_with_raw(&self) -> FigConfigWithRaw {
         if let Ok(Some(content)) = self.read_file(".fig.toml") {
-            return FigConfigWithRaw {
-                config: FigConfig::parse(&content),
-                raw: Some(content),
-                filename: Some(".fig.toml".to_string()),
-            };
+            return FigConfigWithRaw::from_source(&content, ".fig.toml");
         }
         if let Ok(Some(content)) = self.read_file(".fig") {
-            return FigConfigWithRaw {
-                config: FigConfig::parse(&content),
-                raw: Some(content),
-                filename: Some(".fig".to_string()),
-            };
+            return FigConfigWithRaw::from_source(&content, ".fig");
         }
-        FigConfigWithRaw {
-            config: FigConfig::default(),
-            raw: None,
-            filename: None,
-        }
+        FigConfigWithRaw::default()
     }
 
     pub fn list_files(&self, config: Option<&FigConfig>) -> Result<RepoFiles, git2::Error> {
@@ -257,6 +238,32 @@ impl RepoHandle {
         entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then_with(|| a.name.cmp(&b.name)));
         Ok(entries)
     }
+
+    /// List the Markdown pages under `dir` in HEAD, sorted for reading order.
+    /// An empty or missing directory yields no pages.
+    pub fn list_paper_pages(&self, dir: &str) -> Result<Vec<String>, git2::Error> {
+        let dir = dir.trim_matches('/');
+        let Some(commit) = self.head_commit()? else {
+            return Ok(Vec::new());
+        };
+
+        let mut tree = commit.tree()?;
+        if !dir.is_empty() {
+            let Ok(entry) = tree.get_path(Path::new(dir)) else {
+                return Ok(Vec::new());
+            };
+            let obj = entry.to_object(&self.repo)?;
+            let Ok(subtree) = obj.into_tree() else {
+                return Ok(Vec::new());
+            };
+            tree = subtree;
+        }
+
+        let mut pages = Vec::new();
+        collect_markdown_files(&self.repo, &tree, dir, &mut pages, None)?;
+        pages.sort();
+        Ok(pages)
+    }
 }
 
 /// Presentation configuration from `.fig.toml`
@@ -265,6 +272,28 @@ pub struct PresentConfig {
     pub files: Vec<String>,
     #[serde(flatten)]
     pub template_vars: HashMap<String, String>,
+}
+
+/// Paper (long-form reading) configuration from `.fig.toml`.
+///
+/// The section is optional; a repository only offers the Paper tab when
+/// `[paper]` is present and its directory holds at least one Markdown page.
+#[derive(Debug, Deserialize, Default, Clone)]
+pub struct PaperConfig {
+    /// Directory holding the paper's Markdown pages, read in sorted order.
+    #[serde(default = "default_paper_dir")]
+    pub dir: String,
+}
+
+impl PaperConfig {
+    /// Whether the configured directory is usable as a page source.
+    pub fn is_configured(&self) -> bool {
+        !self.dir.trim().trim_matches('/').is_empty()
+    }
+}
+
+fn default_paper_dir() -> String {
+    "paper".to_string()
 }
 
 /// Configuration from `.fig.toml` file in repository
@@ -284,12 +313,42 @@ pub struct FigConfig {
     /// Presentation configuration.
     #[serde(default)]
     pub present: PresentConfig,
+    /// Paper (long-form reading) configuration. Present only when `[paper]`
+    /// appears in the configuration file.
+    #[serde(default)]
+    pub paper: Option<PaperConfig>,
 }
 
+/// A repository's parsed configuration alongside its source.
+#[derive(Default)]
 pub struct FigConfigWithRaw {
     pub config: FigConfig,
     pub raw: Option<String>,
     pub filename: Option<String>,
+    /// The parse error, when `raw` is present but invalid. `config` then holds
+    /// defaults so the rest of the UI keeps working around the bad file.
+    pub error: Option<String>,
+}
+
+impl FigConfigWithRaw {
+    /// Parses `content` and records a human-readable error instead of silently
+    /// discarding it, so the UI can point at the offending line.
+    fn from_source(content: &str, filename: &str) -> Self {
+        match FigConfig::parse(content) {
+            Ok(config) => Self {
+                config,
+                raw: Some(content.to_string()),
+                filename: Some(filename.to_string()),
+                error: None,
+            },
+            Err(error) => Self {
+                config: FigConfig::default(),
+                raw: Some(content.to_string()),
+                filename: Some(filename.to_string()),
+                error: Some(error.to_string()),
+            },
+        }
+    }
 }
 
 impl FigConfig {
@@ -303,9 +362,10 @@ impl FigConfig {
         handle.load_config_with_raw().config
     }
 
-    /// Parse config from TOML content
-    fn parse(content: &str) -> Self {
-        toml::from_str(content).unwrap_or_default()
+    /// Parse config from TOML content. The error is returned rather than
+    /// swallowed so callers can surface it.
+    fn parse(content: &str) -> Result<Self, toml::de::Error> {
+        toml::from_str(content)
     }
 
     /// Check if a file path matches any of the ignore patterns
@@ -677,7 +737,7 @@ mod tests {
 ignore_for_view = ["skills/", "temp", "drafts/"]
 deleteable = true
 "#;
-        let config = FigConfig::parse(toml_content);
+        let config = FigConfig::parse(toml_content).expect("valid config");
         assert_eq!(config.ignore_for_view.len(), 3);
         assert!(config.ignore_for_view.contains(&"skills/".to_string()));
         assert!(config.ignore_for_view.contains(&"temp".to_string()));
@@ -692,7 +752,7 @@ deleteable = true
 files = ["slides/intro.md", "slides/conclusion.md"]
 author = "Jane Doe"
 "#;
-        let config = FigConfig::parse(toml_content);
+        let config = FigConfig::parse(toml_content).expect("valid config");
         assert_eq!(config.present.files.len(), 2);
         assert!(
             config
@@ -707,6 +767,51 @@ author = "Jane Doe"
     }
 
     #[test]
+    fn test_paper_config_parse() {
+        let config = FigConfig::parse("[paper]\ndir = \"manuscript\"\n").expect("valid config");
+        let paper = config.paper.expect("paper section should be present");
+        assert_eq!(paper.dir, "manuscript");
+        assert!(paper.is_configured());
+
+        // An empty section falls back to the default directory.
+        let config = FigConfig::parse("[paper]\n").expect("valid config");
+        assert_eq!(config.paper.expect("paper section").dir, "paper");
+
+        // Without the section the Paper tab stays off.
+        assert!(
+            FigConfig::parse("private = true")
+                .expect("valid config")
+                .paper
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn test_paper_config_empty_dir_is_not_configured() {
+        let config = FigConfig::parse("[paper]\ndir = \"  \"\n").expect("valid config");
+        assert!(!config.paper.expect("paper section").is_configured());
+    }
+
+    #[test]
+    fn test_config_parse_errors_are_reported_not_swallowed() {
+        let parsed = FigConfigWithRaw::from_source("not = = valid\n", ".fig.toml");
+        assert!(parsed.error.is_some(), "the parse error must be kept");
+        assert!(
+            parsed.config.paper.is_none() && !parsed.config.deleteable,
+            "a broken file falls back to defaults so the UI keeps rendering"
+        );
+        assert_eq!(parsed.filename.as_deref(), Some(".fig.toml"));
+        assert_eq!(parsed.raw.as_deref(), Some("not = = valid\n"));
+
+        let parsed = FigConfigWithRaw::from_source("private = true\n", ".fig.toml");
+        assert!(parsed.error.is_none());
+        assert!(parsed.config.private);
+
+        let parsed = FigConfigWithRaw::default();
+        assert!(parsed.error.is_none() && parsed.raw.is_none());
+    }
+
+    #[test]
     fn test_fig_config_should_ignore_folder() {
         let config = FigConfig {
             ignore_for_view: vec!["skills".to_string()],
@@ -714,6 +819,7 @@ author = "Jane Doe"
             deleteable: false,
             private: false,
             present: PresentConfig::default(),
+            paper: None,
         };
 
         // Should ignore files in the skills folder
@@ -735,6 +841,7 @@ author = "Jane Doe"
             deleteable: false,
             private: false,
             present: PresentConfig::default(),
+            paper: None,
         };
 
         // Should ignore files in the drafts folder
@@ -754,6 +861,7 @@ author = "Jane Doe"
             deleteable: false,
             private: false,
             present: PresentConfig::default(),
+            paper: None,
         };
 
         // Should ignore files in temp
@@ -774,6 +882,7 @@ author = "Jane Doe"
             deleteable: false,
             private: false,
             present: PresentConfig::default(),
+            paper: None,
         };
 
         assert!(!config.should_ignore("any/file.md"));
@@ -789,6 +898,7 @@ author = "Jane Doe"
             deleteable: false,
             private: false,
             present: PresentConfig::default(),
+            paper: None,
         };
 
         // The folder itself should be ignored
@@ -814,6 +924,7 @@ author = "Jane Doe"
             deleteable: false,
             private: false,
             present: PresentConfig::default(),
+            paper: None,
         };
 
         // Root level AGENTS.md should be ignored
@@ -834,7 +945,7 @@ author = "Jane Doe"
 # Fig Configuration File
 ignore_for_view = ["skills/", "AGENTS.md"]
 "#;
-        let config = FigConfig::parse(toml_content);
+        let config = FigConfig::parse(toml_content).expect("valid config");
         assert_eq!(config.ignore_for_view.len(), 2);
         assert!(config.ignore_for_view.contains(&"skills/".to_string()));
         assert!(config.ignore_for_view.contains(&"AGENTS.md".to_string()));
@@ -883,10 +994,10 @@ ignore_for_view = ["skills/", "AGENTS.md"]
         let toml_content = r"
 private = true
 ";
-        let config = FigConfig::parse(toml_content);
+        let config = FigConfig::parse(toml_content).expect("valid config");
         assert!(config.private);
 
-        let default_config = FigConfig::parse("");
+        let default_config = FigConfig::parse("").expect("empty config is valid");
         assert!(!default_config.private);
     }
 
@@ -1031,6 +1142,88 @@ private = true
 
         let missing = handle.list_dir("nope", None).unwrap();
         assert!(missing.is_empty());
+    }
+
+    #[test]
+    fn test_list_paper_pages_reads_sorted_markdown_under_dir() {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+
+        let temp = create_temp_dir("paper_pages");
+        let _cleanup = TempDir { path: &temp };
+
+        let repo_path = temp.join("pub").join("book");
+        std::fs::create_dir_all(&repo_path).unwrap();
+        init_bare_repo(&repo_path, "main");
+
+        let git_pipe = |args: &[&str], input: &str| -> String {
+            let mut child = Command::new("git")
+                .args(args)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .current_dir(&repo_path)
+                .spawn()
+                .unwrap();
+            child
+                .stdin
+                .as_mut()
+                .unwrap()
+                .write_all(input.as_bytes())
+                .unwrap();
+            let out = child.wait_with_output().unwrap();
+            assert!(out.status.success(), "{args:?}: {out:?}");
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+
+        let one = git_pipe(&["hash-object", "-w", "--stdin"], "# One\n");
+        let two = git_pipe(&["hash-object", "-w", "--stdin"], "# Two\n");
+        let three = git_pipe(&["hash-object", "-w", "--stdin"], "# Three\n");
+        let extra = git_pipe(&["mktree"], &format!("100644 blob {three}\t03.md\n"));
+        let paper = git_pipe(
+            &["mktree"],
+            &format!(
+                "100644 blob {one}\t01.md\n100644 blob {two}\t02.md\n040000 tree {extra}\textra\n"
+            ),
+        );
+        let root = git_pipe(
+            &["mktree"],
+            &format!("100644 blob {one}\tREADME.md\n040000 tree {paper}\tpaper\n"),
+        );
+
+        let commit = Command::new("git")
+            .args(["commit-tree", &root, "-m", "paper"])
+            .env("GIT_AUTHOR_NAME", "Test")
+            .env("GIT_AUTHOR_EMAIL", "t@example.com")
+            .env("GIT_COMMITTER_NAME", "Test")
+            .env("GIT_COMMITTER_EMAIL", "t@example.com")
+            .current_dir(&repo_path)
+            .output()
+            .unwrap();
+        assert!(commit.status.success(), "{commit:?}");
+        let commit_hash = String::from_utf8_lossy(&commit.stdout).trim().to_string();
+        Command::new("git")
+            .args(["update-ref", "refs/heads/main", &commit_hash])
+            .current_dir(&repo_path)
+            .output()
+            .unwrap();
+
+        let handle = RepoHandle::open(temp.to_str().unwrap(), "pub", "book").unwrap();
+        assert_eq!(
+            handle.list_paper_pages("paper").unwrap(),
+            vec![
+                "paper/01.md".to_string(),
+                "paper/02.md".to_string(),
+                "paper/extra/03.md".to_string(),
+            ]
+        );
+        assert!(handle.list_paper_pages("missing").unwrap().is_empty());
+        assert!(
+            handle
+                .list_paper_pages("")
+                .unwrap()
+                .contains(&"README.md".to_string()),
+            "an empty dir lists the whole repository"
+        );
     }
 
     #[test]

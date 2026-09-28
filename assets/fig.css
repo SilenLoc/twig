@@ -40,6 +40,7 @@
     --fig-mono:
         ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas,
         "Liberation Mono", "DejaVu Sans Mono", monospace;
+    --fig-serif: Georgia, Cambria, "Times New Roman", Times, serif;
 
     /* Type scale */
     --fig-t-h1: clamp(1.5rem, 1rem + 1.75vw, 2.25rem);
@@ -1532,16 +1533,18 @@ body.fig-shell {
     overflow-wrap: anywhere;
 }
 
-/* ---- 18. Presentation ---------------------------------------------------- */
+/* ---- 18. Presentation and paper ------------------------------------------ */
 
-.fig-present {
+.fig-present,
+.fig-paper {
     display: flex;
     flex-direction: column;
     gap: var(--fig-space-6);
     min-block-size: 50dvh;
 }
 
-.fig-present-bar {
+.fig-present-bar,
+.fig-paper-bar {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -1549,7 +1552,8 @@ body.fig-shell {
     gap: var(--fig-space-4);
 }
 
-.fig-present-tools {
+.fig-present-tools,
+.fig-paper-tools {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -1557,10 +1561,11 @@ body.fig-shell {
     gap: var(--fig-space-4);
 }
 
-/* Presentation viewers can enlarge the slide copy. The scale is expressed as
-   a multiplier on the type tokens and lives on the stage, so the surrounding
-   bar and navigation keep the base scale. */
-.fig-present-stage {
+/* Readers and presentation viewers can enlarge the copy. The scale is a
+   multiplier on the type tokens and lives on the framed body, so the toolbar
+   keeps the base scale. The presentation deck and the paper reader share it. */
+.fig-present-stage,
+.fig-paper-body {
     --fig-present-scale: 1;
     --fig-t-h1: calc(clamp(1.5rem, 1rem + 1.75vw, 2.25rem) * var(--fig-present-scale));
     --fig-t-h2: calc(clamp(1.25rem, 1.05rem + 0.6vw, 1.5rem) * var(--fig-present-scale));
@@ -1574,52 +1579,86 @@ body.fig-shell {
     --fig-t-eyebrow: calc(0.6875rem * var(--fig-present-scale));
 }
 
-.fig-present[data-fig-text-size="110"] .fig-present-stage {
+:is(.fig-present, .fig-paper)[data-fig-text-size="110"] :is(.fig-present-stage, .fig-paper-body) {
     --fig-present-scale: 1.1;
 }
 
-.fig-present[data-fig-text-size="120"] .fig-present-stage {
+:is(.fig-present, .fig-paper)[data-fig-text-size="120"] :is(.fig-present-stage, .fig-paper-body) {
     --fig-present-scale: 1.2;
 }
 
-.fig-present[data-fig-text-size="130"] .fig-present-stage {
+:is(.fig-present, .fig-paper)[data-fig-text-size="130"] :is(.fig-present-stage, .fig-paper-body) {
     --fig-present-scale: 1.3;
 }
 
-.fig-present[data-fig-text-size="140"] .fig-present-stage {
+:is(.fig-present, .fig-paper)[data-fig-text-size="140"] :is(.fig-present-stage, .fig-paper-body) {
     --fig-present-scale: 1.4;
 }
 
-.fig-present[data-fig-text-size="150"] .fig-present-stage {
+:is(.fig-present, .fig-paper)[data-fig-text-size="150"] :is(.fig-present-stage, .fig-paper-body) {
     --fig-present-scale: 1.5;
 }
 
-.fig-present[data-fig-text-size="160"] .fig-present-stage {
+:is(.fig-present, .fig-paper)[data-fig-text-size="160"] :is(.fig-present-stage, .fig-paper-body) {
     --fig-present-scale: 1.6;
 }
 
-.fig-present[data-fig-text-size="170"] .fig-present-stage {
+:is(.fig-present, .fig-paper)[data-fig-text-size="170"] :is(.fig-present-stage, .fig-paper-body) {
     --fig-present-scale: 1.7;
 }
 
-.fig-present[data-fig-text-size="180"] .fig-present-stage {
+:is(.fig-present, .fig-paper)[data-fig-text-size="180"] :is(.fig-present-stage, .fig-paper-body) {
     --fig-present-scale: 1.8;
 }
 
-.fig-present[data-fig-text-size="190"] .fig-present-stage {
+:is(.fig-present, .fig-paper)[data-fig-text-size="190"] :is(.fig-present-stage, .fig-paper-body) {
     --fig-present-scale: 1.9;
 }
 
-.fig-present[data-fig-text-size="200"] .fig-present-stage {
+:is(.fig-present, .fig-paper)[data-fig-text-size="200"] :is(.fig-present-stage, .fig-paper-body) {
     --fig-present-scale: 2;
 }
 
-.fig-present-count {
+.fig-present-count,
+.fig-paper-count {
     color: var(--fig-ink-tertiary);
     font-family: var(--fig-mono);
     font-size: var(--fig-t-data);
     letter-spacing: 0.01em;
     font-variant-numeric: tabular-nums;
+}
+
+/* The paper reader scrolls as one continuous column of lazily loaded pages. */
+.fig-paper-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--fig-space-16);
+    inline-size: 100%;
+    max-inline-size: var(--fig-measure-prose);
+    margin-inline: auto;
+    padding-block: var(--fig-space-8);
+    min-inline-size: 0;
+}
+
+.fig-paper-page {
+    min-inline-size: 0;
+}
+
+.fig-paper-page + .fig-paper-page {
+    padding-block-start: var(--fig-space-16);
+    border-block-start: 1px solid var(--fig-rule);
+}
+
+.fig-paper-pending {
+    min-block-size: 30dvh;
+}
+
+.fig-paper[data-fig-paper-font="serif"] .fig-paper-body {
+    font-family: var(--fig-serif);
+}
+
+.fig-paper[data-fig-paper-font="mono"] .fig-paper-body {
+    font-family: var(--fig-mono);
 }
 
 .fig-present-stage {

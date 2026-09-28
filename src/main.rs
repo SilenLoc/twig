@@ -174,9 +174,17 @@ pub(crate) fn configure_routes(cfg: &mut web::ServiceConfig) {
         .service(view::namespace::create_repo_handler)
         .service(view::repo::handler)
         .service(view::repo::tab_handler)
+        .service(view::repo::markdown_tab_handler)
+        .service(view::repo::content_tab_handler)
+        .service(view::repo::commits_tab_handler)
+        .service(view::repo::config_tab_handler)
+        .service(view::repo::present_tab_handler)
+        .service(view::repo::paper_tab_handler)
+        .service(view::repo::license_tab_handler)
         .service(view::repo::slide_handler)
         .service(view::repo::markdown_handler)
         .service(view::repo::content_handler)
+        .service(view::repo::paper_handler)
         // Git endpoints with auth
         .service(git::repo::init)
         .route(

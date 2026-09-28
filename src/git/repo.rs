@@ -189,6 +189,10 @@ pub fn bare_init(
 [present]
 # Markdown files to include in the presentation view.
 #files = []
+
+[paper]
+# Directory whose Markdown pages form the long-form Paper view.
+#dir = "paper"
 "#;
     let blob_hash = cmd!(sh, "git hash-object -w --stdin")
         .stdin(blob_content)

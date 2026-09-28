@@ -113,6 +113,7 @@ mod tests {
             "deleteable",
             "private",
             "present",
+            "paper",
         ] {
             assert!(properties.contains_key(key), "schema missing {key}");
         }

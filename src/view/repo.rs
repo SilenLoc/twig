@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use actix_web::Result as AwResult;
-use actix_web::{HttpRequest, get, web};
+use actix_web::http::header;
+use actix_web::{HttpRequest, HttpResponse, get, web};
 use maud::Markup;
 use pulldown_cmark::{Event, Options, Parser, html};
 use serde::Deserialize;
@@ -10,7 +11,8 @@ use crate::{
     auth::FigContext,
     config,
     git::bare::{
-        Commit, Depth, FigConfigWithRaw, PresentConfig, RepoHandle, TreeEntry, is_safe_repo_path,
+        Commit, Depth, FigConfig, FigConfigWithRaw, PresentConfig, RepoHandle, TreeEntry,
+        is_safe_repo_path,
     },
     md,
 };
@@ -47,41 +49,41 @@ c.addEventListener('htmx:after:swap',function(){c.focus({preventScroll:true});sy
 sync();
 })();";
 
-/// Presentation text sizes, in percent, from the default through to double
-/// size. The A−/A+ buttons step through them one entry at a time; the active
-/// size lives in `data-fig-text-size`, which the stylesheet turns into a
-/// larger type scale for the slide content only.
-const PRESENT_TEXT_SIZES: [u16; 11] = [100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200];
+/// Reading text sizes, in percent, from the default through to double size.
+/// The A−/A+ buttons step through them one entry at a time; the active size
+/// lives in `data-fig-text-size` on the owning container, which the stylesheet
+/// turns into a larger type scale for the framed content only. Shared by the
+/// presentation deck and the paper reader.
+const TEXT_SIZES: [u16; 11] = [100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200];
 const PRESENT_TEXT_SIZE_KEY: &str = "fig-present-text-size";
+const PAPER_TEXT_SIZE_KEY: &str = "fig-paper-text-size";
 
 /// Mirrors the active size back to the browser so it survives a reload.
-fn present_text_persist() -> String {
-    format!(
-        "try {{ localStorage.setItem('{PRESENT_TEXT_SIZE_KEY}', String(data.figTextSize)); }} catch (_) {{}}"
-    )
+fn text_size_persist(key: &str) -> String {
+    format!("try {{ localStorage.setItem('{key}', String(data.figTextSize)); }} catch (_) {{}}")
 }
 
-fn present_size_list() -> String {
-    PRESENT_TEXT_SIZES
+fn text_size_list() -> String {
+    TEXT_SIZES
         .iter()
         .map(|size| format!("'{size}'"))
         .collect::<Vec<_>>()
         .join(", ")
 }
 
-/// Restores a previously chosen size on load; expression runs against
-/// `#present-container`, where `data.figTextSize` is the shared state.
-fn present_size_restore() -> String {
+/// Restores a previously chosen size on load; the expression runs against the
+/// owning container, where `data.figTextSize` is the shared state.
+fn text_size_restore(key: &str) -> String {
     format!(
-        "try {{ let size = localStorage.getItem('{PRESENT_TEXT_SIZE_KEY}'); if ([{}].includes(size)) data.figTextSize = Number(size); }} catch (_) {{}}",
-        present_size_list()
+        "try {{ let size = localStorage.getItem('{key}'); if ([{}].includes(size)) data.figTextSize = Number(size); }} catch (_) {{}}",
+        text_size_list()
     )
 }
 
-fn present_size_step(increase: bool) -> String {
-    let first = PRESENT_TEXT_SIZES[0];
-    let last = PRESENT_TEXT_SIZES[PRESENT_TEXT_SIZES.len() - 1];
-    let step = PRESENT_TEXT_SIZES[1] - PRESENT_TEXT_SIZES[0];
+fn text_size_step(increase: bool, key: &str) -> String {
+    let first = TEXT_SIZES[0];
+    let last = TEXT_SIZES[TEXT_SIZES.len() - 1];
+    let step = TEXT_SIZES[1] - TEXT_SIZES[0];
     let (bound, operator, clamp) = if increase {
         (last, '+', "Math.min")
     } else {
@@ -89,9 +91,37 @@ fn present_size_step(increase: bool) -> String {
     };
     format!(
         "data.figTextSize = {clamp}({bound}, data.figTextSize {operator} {step}); {}",
-        present_text_persist()
+        text_size_persist(key)
     )
 }
+
+/// Paper font choices. The active choice lives on `#paper-container` as
+/// `data-fig-paper-font`; the stylesheet swaps the reading family from it.
+const PAPER_FONTS: [(&str, &str); 3] = [("sans", "Sans"), ("serif", "Serif"), ("mono", "Mono")];
+
+/// Paper toolbar wiring, scoped to `#paper-container`: restores the stored font
+/// and keeps the toggle buttons' pressed state in sync. No document-level
+/// listeners, matching the presentation contract.
+const PAPER_SCRIPT: &str = r"(function(){
+var c=document.getElementById('paper-container');
+if(!c||c.dataset.figPaper)return;
+c.dataset.figPaper='1';
+var fonts=['sans','serif','mono'];
+var apply=function(font){
+if(fonts.indexOf(font)<0)font='sans';
+c.dataset.figPaperFont=font;
+c.querySelectorAll('[data-fig-font]').forEach(function(b){
+b.setAttribute('aria-pressed',String(b.dataset.figFont===font));
+});
+};
+try{apply(localStorage.getItem('fig-paper-font')||'sans');}catch(_){apply('sans');}
+c.addEventListener('click',function(e){
+var b=e.target.closest?e.target.closest('[data-fig-font]'):null;
+if(!b||!c.contains(b))return;
+apply(b.dataset.figFont);
+try{localStorage.setItem('fig-paper-font',b.dataset.figFont);}catch(_){}
+});
+})();";
 
 #[derive(Deserialize)]
 struct Params {
@@ -127,6 +157,13 @@ struct ContentParams {
     path: String,
 }
 
+#[derive(Deserialize)]
+struct PaperParams {
+    namespace: String,
+    repo: String,
+    page: String,
+}
+
 fn render_for_request(
     req: &HttpRequest,
     content: Markup,
@@ -154,60 +191,259 @@ struct PresentSlide {
     html: String,
 }
 
-/// Context for rendering tab content to reduce parameter count
-struct TabContentContext<'a> {
+/// The opened repository plus everything a tab handler needs before loading its
+/// own data: the parsed configuration, the signed-in username, and the page
+/// title. Each handler borrows this to build only its own tab's body.
+struct RepoContext {
+    handle: RepoHandle,
+    fig_result: FigConfigWithRaw,
+    namespace: String,
+    repo: String,
+    username: Option<String>,
+    page_title: String,
+    paper_pages: Vec<String>,
+}
+
+/// The frame every tab shares: the breadcrumb, the tab bar, and the
+/// configuration-error banner. None of it depends on the active tab.
+struct TabFrame<'a> {
     namespace: &'a str,
     repo: &'a str,
-    tab: &'a str,
-    commits: &'a [Commit],
-    markdown_files: &'a [String],
-    selected_md_file: Option<&'a str>,
-    selected_content: Option<&'a str>,
-    fig_content: Option<&'a str>,
+    username: Option<&'a str>,
+    page_title: &'a str,
+    fig_error: Option<&'a str>,
     fig_filename: Option<&'a str>,
     tabs_config: &'a [String],
-    present_config: &'a PresentConfig,
-    present_slides: &'a [PresentSlide],
-    license_content: Option<&'a str>,
-    has_license: bool,
-    content_path: &'a str,
-    content_entries: &'a [TreeEntry],
-    content_file_bytes: Option<&'a [u8]>,
-}
-
-struct ContentHtmxContext<'a> {
-    namespace: &'a str,
-    repo: &'a str,
-    path: &'a str,
-    entries: &'a [TreeEntry],
-    file_bytes: Option<&'a [u8]>,
     has_config: bool,
-    tabs_config: &'a [String],
     has_present: bool,
+    has_paper: bool,
 }
 
+impl RepoContext {
+    fn frame(&self) -> TabFrame<'_> {
+        TabFrame {
+            namespace: &self.namespace,
+            repo: &self.repo,
+            username: self.username.as_deref(),
+            page_title: &self.page_title,
+            fig_error: self.fig_result.error.as_deref(),
+            fig_filename: self.fig_result.filename.as_deref(),
+            tabs_config: &self.fig_result.config.tabs,
+            has_config: self.fig_result.raw.is_some(),
+            has_present: !self.fig_result.config.present.files.is_empty(),
+            has_paper: !self.paper_pages.is_empty(),
+        }
+    }
+}
+
+/// Opens the repository, loads its configuration, and gates private reads on a
+/// session. On failure it returns the already-rendered response, so every tab
+/// handler shares one prologue.
+async fn open_repo(
+    req: &HttpRequest,
+    server: &config::Server,
+    auth_state: &web::Data<FigContext>,
+    namespace: &str,
+    repo: &str,
+) -> Result<RepoContext, Markup> {
+    let page_title = format!("{namespace}/{repo}");
+    let username = get_username_from_request(req, auth_state).await;
+
+    let handle = match RepoHandle::open(server.project_root(), namespace, repo) {
+        Ok(handle) => handle,
+        Err(e) => {
+            let content = render_git_error(&e);
+            return Err(render_for_request(
+                req,
+                content,
+                username.as_deref(),
+                &page_title,
+            ));
+        }
+    };
+
+    let fig_result = handle.load_config_with_raw();
+    if fig_result.config.private && username.is_none() {
+        return Err(render_repo_auth_error(req, &page_title));
+    }
+
+    let paper_pages = load_paper_pages(&handle, &fig_result.config);
+
+    Ok(RepoContext {
+        handle,
+        fig_result,
+        namespace: namespace.to_string(),
+        repo: repo.to_string(),
+        username,
+        page_title,
+        paper_pages,
+    })
+}
+
+fn markdown_files(ctx: &RepoContext) -> Vec<String> {
+    ctx.handle
+        .list_files(Some(&ctx.fig_result.config))
+        .unwrap_or_default()
+        .markdown_files
+}
+
+/// The Documentation tab: the default Markdown file, README preferred.
+fn markdown_body(ctx: &RepoContext) -> Markup {
+    markdown_body_from(ctx, &markdown_files(ctx))
+}
+
+fn markdown_body_from(ctx: &RepoContext, files: &[String]) -> Markup {
+    let file = get_default_markdown_file(files).unwrap_or("README.md");
+    let content = ctx.handle.read_file(file).ok().flatten();
+    render_markdown_view(&ctx.namespace, &ctx.repo, file, content.as_deref(), files)
+}
+
+/// The root of the Content tab.
+fn content_body(ctx: &RepoContext) -> Markup {
+    let entries = ctx
+        .handle
+        .list_dir("", Some(&ctx.fig_result.config))
+        .unwrap_or_default();
+    render_content_view(&ctx.namespace, &ctx.repo, "", &entries, None)
+}
+
+fn commits_body(ctx: &RepoContext) -> Result<Markup, git2::Error> {
+    let commits = ctx.handle.get_commits(&Depth::default())?;
+    Ok(render_commits_view(&commits))
+}
+
+fn config_body(ctx: &RepoContext) -> Markup {
+    render_config_view(
+        ctx.fig_result.raw.as_deref(),
+        ctx.fig_result.filename.as_deref(),
+    )
+}
+
+fn license_body(ctx: &RepoContext) -> Markup {
+    let content = ctx.handle.get_license_content();
+    render_license_view(Some(&content))
+}
+
+fn present_body(ctx: &RepoContext) -> Markup {
+    let slides = load_present_slides(
+        &ctx.handle,
+        &ctx.fig_result.config.present,
+        &ctx.namespace,
+        &ctx.repo,
+    );
+    render_present_view(&ctx.namespace, &ctx.repo, &slides)
+}
+
+fn paper_body(ctx: &RepoContext) -> Markup {
+    render_paper_view(&ctx.namespace, &ctx.repo, &ctx.paper_pages)
+}
+
+/// Renders a tab by name. Only the requested tab's data is loaded, so a Commits
+/// request never reads markdown, slides, or paper pages.
+fn tab_body(ctx: &RepoContext, tab: &str) -> Result<Markup, git2::Error> {
+    match tab {
+        "content" => Ok(content_body(ctx)),
+        "config" => Ok(config_body(ctx)),
+        "present" => Ok(present_body(ctx)),
+        "paper" => Ok(paper_body(ctx)),
+        "license" => Ok(license_body(ctx)),
+        "commits" => commits_body(ctx),
+        // Documentation, and the fallback for an unknown tab name.
+        _ => Ok(markdown_body(ctx)),
+    }
+}
+
+/// Shared shape of every per-tab handler: open, build the one body, respond.
+async fn respond_tab(
+    req: HttpRequest,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<FigContext>,
+    namespace: &str,
+    repo: &str,
+    tab: &str,
+) -> AwResult<Markup> {
+    let ctx = match open_repo(&req, &server, &auth_state, namespace, repo).await {
+        Ok(ctx) => ctx,
+        Err(rendered) => return Ok(rendered),
+    };
+    let body = match tab_body(&ctx, tab) {
+        Ok(body) => body,
+        Err(e) => {
+            let content = render_git_error(&e);
+            return Ok(render_for_request(
+                &req,
+                content,
+                ctx.username.as_deref(),
+                &ctx.page_title,
+            ));
+        }
+    };
+    Ok(render_tab_response(&req, &ctx.frame(), tab, &body))
+}
+
+fn tab_nav(frame: &TabFrame<'_>, active: &str) -> Markup {
+    render_tabs(
+        frame.namespace,
+        frame.repo,
+        active,
+        frame.has_config,
+        frame.tabs_config,
+        frame.has_present,
+        frame.has_paper,
+    )
+}
+
+/// The full tab page body, without the document layout.
+fn render_tab_shell(frame: &TabFrame<'_>, active: &str, body: &Markup) -> Markup {
+    maud::html! {
+        (render_repo_crumbs(frame.namespace, frame.repo))
+        (tab_nav(frame, active))
+        // A broken configuration is shown on every tab, outside #tab-content, so
+        // it survives htmx swaps until the file is fixed.
+        @if let Some(error) = frame.fig_error {
+            (render_config_error(frame.fig_filename.unwrap_or(".fig.toml"), error))
+        }
+        div id="tab-content" aria-live="polite" {
+            (body)
+        }
+    }
+}
+
+/// An htmx call gets the swapped tab bar plus the body; a direct navigation
+/// gets the full page. This is what keeps every tab URL refreshable.
 fn render_tab_response(
-    ctx: &TabContentContext<'_>,
-    is_htmx: bool,
-    has_config: bool,
-    has_present: bool,
+    req: &HttpRequest,
+    frame: &TabFrame<'_>,
+    active: &str,
+    body: &Markup,
 ) -> Markup {
-    if is_htmx {
-        let inner = render_tab_content_inner(ctx);
-        let tabs = render_tabs(
-            ctx.namespace,
-            ctx.repo,
-            ctx.tab,
-            has_config,
-            ctx.tabs_config,
-            has_present,
-        );
+    if req.headers().get("HX-Request").is_some() {
         maud::html! {
-            (tabs)
-            (inner)
+            (tab_nav(frame, active))
+            (body)
         }
     } else {
-        render_tab_content(ctx)
+        let content = render_tab_shell(frame, active, body);
+        super::render_layout(&content, frame.username, Some(frame.page_title))
+    }
+}
+
+/// Every tab a repository can show.
+const TAB_IDS: [&str; 7] = [
+    "markdown", "paper", "content", "commits", "config", "present", "license",
+];
+
+/// The tab the repository home shows: the first configured tab, else Markdown
+/// when the repository has markdown, else Commits. A configured name that is
+/// not a real tab falls back the same way.
+fn resolved_default_tab<'a>(tabs_config: &'a [String], markdown_files: &[String]) -> &'a str {
+    let tab = default_tab(tabs_config, markdown_files);
+    if TAB_IDS.contains(&tab) {
+        tab
+    } else if markdown_files.is_empty() {
+        "commits"
+    } else {
+        "markdown"
     }
 }
 
@@ -218,190 +454,172 @@ pub async fn handler(
     auth_state: web::Data<FigContext>,
     params: web::Path<Params>,
 ) -> AwResult<Markup> {
-    let namespace = &params.namespace;
-    let repo = &params.repo;
-    let page_title = format!("{namespace}/{repo}");
-    let username = get_username_from_request(&req, &auth_state).await;
-
-    let handle = match RepoHandle::open(server.project_root(), namespace, repo) {
-        Ok(h) => h,
-        Err(e) => {
-            let content = render_git_error(&e);
-            return Ok(render_for_request(
-                &req,
-                content,
-                username.as_deref(),
-                &page_title,
-            ));
-        }
+    let ctx = match open_repo(&req, &server, &auth_state, &params.namespace, &params.repo).await {
+        Ok(ctx) => ctx,
+        Err(rendered) => return Ok(rendered),
     };
 
-    let fig_result = handle.load_config_with_raw();
-    let fig_config = &fig_result.config;
-    let fig_content = fig_result.raw.as_deref();
-    let fig_filename = fig_result.filename.as_deref();
-
-    if fig_config.private && username.is_none() {
-        return Ok(render_repo_auth_error(&req, &page_title));
-    }
-
-    let commits_result = handle.get_commits(&Depth::default());
-    let files_result = handle.list_files(Some(fig_config));
-
-    let content = match commits_result {
-        Ok(commits) => {
-            let files = files_result.unwrap_or_default();
-            let markdown_files = files.markdown_files;
-            let default_file = get_default_markdown_file(&markdown_files);
-            let default_content = if let Some(file) = default_file {
-                handle.read_file(file).ok().flatten()
-            } else {
-                None
-            };
-
-            let present_slides = load_present_slides(&handle, &fig_config.present, namespace, repo);
-            let license_content = handle.get_license_content();
-            let has_license = handle.has_license();
-            let content_entries = handle.list_dir("", Some(fig_config)).unwrap_or_default();
-
-            let ctx = TabContentContext {
-                namespace,
-                repo,
-                tab: default_tab(&fig_config.tabs, &markdown_files),
-                commits: &commits,
-                markdown_files: &markdown_files,
-                selected_md_file: default_file,
-                selected_content: default_content.as_deref(),
-                fig_content,
-                fig_filename,
-                tabs_config: &fig_config.tabs,
-                present_config: &fig_config.present,
-                present_slides: &present_slides,
-                license_content: Some(&license_content),
-                has_license,
-                content_path: "",
-                content_entries: &content_entries,
-                content_file_bytes: None,
-            };
-            render_repo(&ctx)
-        }
-        Err(e) => render_git_error(&e),
-    };
-
-    if req.headers().get("HX-Request").is_some() {
-        Ok(content)
+    // The default tab needs the markdown list either way; reuse it when the
+    // default turns out to be Documentation.
+    let files = markdown_files(&ctx);
+    let tab = resolved_default_tab(&ctx.fig_result.config.tabs, &files);
+    let body = if tab == "markdown" {
+        markdown_body_from(&ctx, &files)
     } else {
-        Ok(super::render_layout(
-            &content,
-            username.as_deref(),
-            Some(&page_title),
-        ))
-    }
+        match tab_body(&ctx, tab) {
+            Ok(body) => body,
+            Err(e) => {
+                let content = render_git_error(&e);
+                return Ok(render_for_request(
+                    &req,
+                    content,
+                    ctx.username.as_deref(),
+                    &ctx.page_title,
+                ));
+            }
+        }
+    };
+    Ok(render_tab_response(&req, &ctx.frame(), tab, &body))
 }
 
-#[get("/{namespace}/{repo}/tab/{tab}")]
-pub async fn tab_handler(
+#[get("/{namespace}/{repo}/markdown")]
+pub async fn markdown_tab_handler(
     req: HttpRequest,
     server: web::Data<config::Server>,
     auth_state: web::Data<FigContext>,
-    params: web::Path<TabParams>,
+    params: web::Path<Params>,
 ) -> AwResult<Markup> {
-    let namespace = &params.namespace;
-    let repo = &params.repo;
-    let tab = &params.tab;
-    let page_title = format!("{namespace}/{repo}");
-    let username = get_username_from_request(&req, &auth_state).await;
+    respond_tab(
+        req,
+        server,
+        auth_state,
+        &params.namespace,
+        &params.repo,
+        "markdown",
+    )
+    .await
+}
 
-    let handle = match RepoHandle::open(server.project_root(), namespace, repo) {
-        Ok(h) => h,
-        Err(e) => {
-            let content = render_git_error(&e);
-            return Ok(render_for_request(
-                &req,
-                content,
-                username.as_deref(),
-                &page_title,
-            ));
-        }
+#[get("/{namespace}/{repo}/content")]
+pub async fn content_tab_handler(
+    req: HttpRequest,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<FigContext>,
+    params: web::Path<Params>,
+) -> AwResult<Markup> {
+    respond_tab(
+        req,
+        server,
+        auth_state,
+        &params.namespace,
+        &params.repo,
+        "content",
+    )
+    .await
+}
+
+#[get("/{namespace}/{repo}/commits")]
+pub async fn commits_tab_handler(
+    req: HttpRequest,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<FigContext>,
+    params: web::Path<Params>,
+) -> AwResult<Markup> {
+    respond_tab(
+        req,
+        server,
+        auth_state,
+        &params.namespace,
+        &params.repo,
+        "commits",
+    )
+    .await
+}
+
+#[get("/{namespace}/{repo}/config")]
+pub async fn config_tab_handler(
+    req: HttpRequest,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<FigContext>,
+    params: web::Path<Params>,
+) -> AwResult<Markup> {
+    respond_tab(
+        req,
+        server,
+        auth_state,
+        &params.namespace,
+        &params.repo,
+        "config",
+    )
+    .await
+}
+
+#[get("/{namespace}/{repo}/present")]
+pub async fn present_tab_handler(
+    req: HttpRequest,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<FigContext>,
+    params: web::Path<Params>,
+) -> AwResult<Markup> {
+    respond_tab(
+        req,
+        server,
+        auth_state,
+        &params.namespace,
+        &params.repo,
+        "present",
+    )
+    .await
+}
+
+#[get("/{namespace}/{repo}/paper")]
+pub async fn paper_tab_handler(
+    req: HttpRequest,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<FigContext>,
+    params: web::Path<Params>,
+) -> AwResult<Markup> {
+    respond_tab(
+        req,
+        server,
+        auth_state,
+        &params.namespace,
+        &params.repo,
+        "paper",
+    )
+    .await
+}
+
+#[get("/{namespace}/{repo}/license")]
+pub async fn license_tab_handler(
+    req: HttpRequest,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<FigContext>,
+    params: web::Path<Params>,
+) -> AwResult<Markup> {
+    respond_tab(
+        req,
+        server,
+        auth_state,
+        &params.namespace,
+        &params.repo,
+        "license",
+    )
+    .await
+}
+
+/// The URL tabs used before each got its own route. A permanent redirect keeps
+/// old links and refreshes landing on the tab's current address.
+#[get("/{namespace}/{repo}/tab/{tab}")]
+pub async fn tab_handler(params: web::Path<TabParams>) -> HttpResponse {
+    let target = if TAB_IDS.contains(&params.tab.as_str()) {
+        format!("/{}/{}/{}", params.namespace, params.repo, params.tab)
+    } else {
+        format!("/{}/{}", params.namespace, params.repo)
     };
-
-    let fig_result = handle.load_config_with_raw();
-    let fig_config = &fig_result.config;
-    let fig_content = fig_result.raw.as_deref();
-    let fig_filename = fig_result.filename.as_deref();
-
-    if fig_config.private && username.is_none() {
-        return Ok(render_repo_auth_error(&req, &page_title));
-    }
-
-    let commits_result = handle.get_commits(&Depth::default());
-    let files_result = handle.list_files(Some(fig_config));
-
-    match commits_result {
-        Ok(commits) => {
-            let files = files_result.unwrap_or_default();
-            let markdown_files = files.markdown_files;
-
-            let default_file = get_default_markdown_file(&markdown_files);
-            let default_content = if let Some(file) = default_file {
-                handle.read_file(file).ok().flatten()
-            } else {
-                None
-            };
-
-            let present_slides = load_present_slides(&handle, &fig_config.present, namespace, repo);
-            let license_content = handle.get_license_content();
-            let has_license = handle.has_license();
-            let (content_path, content_entries) = if tab == "content" {
-                let entries = handle.list_dir("", Some(fig_config)).unwrap_or_default();
-                ("", entries)
-            } else {
-                ("", Vec::new())
-            };
-
-            let ctx = TabContentContext {
-                namespace,
-                repo,
-                tab,
-                commits: &commits,
-                markdown_files: &markdown_files,
-                selected_md_file: default_file,
-                selected_content: default_content.as_deref(),
-                fig_content,
-                fig_filename,
-                tabs_config: &fig_config.tabs,
-                present_config: &fig_config.present,
-                present_slides: &present_slides,
-                license_content: Some(&license_content),
-                has_license,
-                content_path,
-                content_entries: &content_entries,
-                content_file_bytes: None,
-            };
-            let is_htmx = req.headers().get("HX-Request").is_some();
-            let content = render_tab_response(
-                &ctx,
-                is_htmx,
-                fig_content.is_some(),
-                !fig_config.present.files.is_empty(),
-            );
-            Ok(render_for_request(
-                &req,
-                content,
-                username.as_deref(),
-                &page_title,
-            ))
-        }
-        Err(e) => {
-            let content = render_git_error(&e);
-            Ok(render_for_request(
-                &req,
-                content,
-                username.as_deref(),
-                &page_title,
-            ))
-        }
-    }
+    HttpResponse::PermanentRedirect()
+        .insert_header((header::LOCATION, target))
+        .finish()
 }
 
 #[get("/{namespace}/{repo}/md/{file_path:.*}")]
@@ -411,152 +629,104 @@ pub async fn markdown_handler(
     auth_state: web::Data<FigContext>,
     params: web::Path<MarkdownParams>,
 ) -> AwResult<Markup> {
-    let namespace = &params.namespace;
-    let repo = &params.repo;
     let file_path = &params.file_path;
-    let page_title = format!("{namespace}/{repo}");
-    let username = get_username_from_request(&req, &auth_state).await;
+    let ctx = match open_repo(&req, &server, &auth_state, &params.namespace, &params.repo).await {
+        Ok(ctx) => ctx,
+        Err(rendered) => return Ok(rendered),
+    };
 
     if !is_safe_repo_path(file_path) {
         return Ok(render_not_found_for_request(
             &req,
-            username.as_deref(),
-            &page_title,
+            ctx.username.as_deref(),
+            &ctx.page_title,
         ));
     }
+
+    let blob = ctx.handle.read_file(file_path).ok().flatten();
+
+    // The rail swaps only #markdown-view; a direct visit renders the tab page.
+    if req.headers().get("HX-Request").is_some() {
+        return Ok(render_markdown_content_only(
+            &ctx.namespace,
+            &ctx.repo,
+            file_path,
+            blob.as_deref(),
+        ));
+    }
+
+    let files = markdown_files(&ctx);
+    let body = render_markdown_view(
+        &ctx.namespace,
+        &ctx.repo,
+        file_path,
+        blob.as_deref(),
+        &files,
+    );
+    Ok(render_tab_response(&req, &ctx.frame(), "markdown", &body))
+}
+
+/// Whether `page` sits inside `dir` (both repository-relative).
+fn page_in_dir(page: &str, dir: &str) -> bool {
+    !dir.is_empty()
+        && page
+            .strip_prefix(dir)
+            .is_some_and(|rest| rest.starts_with('/'))
+}
+
+/// Renders a single paper page. The Paper tab lazy-loads each page through this
+/// endpoint as it scrolls into view.
+#[get("/{namespace}/{repo}/paper/{page:.*}")]
+pub async fn paper_handler(
+    req: HttpRequest,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<FigContext>,
+    params: web::Path<PaperParams>,
+) -> AwResult<Markup> {
+    let namespace = &params.namespace;
+    let repo = &params.repo;
+    let page = &params.page;
+    let page_title = format!("{namespace}/{repo}");
+    let username = get_username_from_request(&req, &auth_state).await;
 
     let handle = match RepoHandle::open(server.project_root(), namespace, repo) {
         Ok(h) => h,
         Err(e) => {
             let content = render_git_error(&e);
-            return if req.headers().get("HX-Request").is_some() {
-                Ok(content)
-            } else {
-                Ok(super::render_layout(
-                    &content,
-                    username.as_deref(),
-                    Some(&page_title),
-                ))
-            };
+            return Ok(render_for_request(
+                &req,
+                content,
+                username.as_deref(),
+                &page_title,
+            ));
         }
     };
 
     let fig_result = handle.load_config_with_raw();
     let fig_config = &fig_result.config;
-    let fig_content = fig_result.raw.as_deref();
-    let fig_filename = fig_result.filename.as_deref();
 
     if fig_config.private && username.is_none() {
         return Ok(render_repo_auth_error(&req, &page_title));
     }
 
-    let commits_result = handle.get_commits(&Depth::default());
-    let files_result = handle.list_files(Some(fig_config));
-    let blob_result = handle.read_file(file_path);
-
-    match commits_result {
-        Ok(commits) => {
-            let files = files_result.unwrap_or_default();
-            let markdown_files = files.markdown_files;
-            let license_content = handle.get_license_content();
-            let has_license = handle.has_license();
-
-            let content = if req.headers().get("HX-Request").is_some() {
-                render_markdown_content_only(
-                    namespace,
-                    repo,
-                    file_path,
-                    blob_result.ok().flatten().as_deref(),
-                )
-            } else {
-                let selected_content = blob_result.ok().flatten();
-                let present_slides =
-                    load_present_slides(&handle, &fig_config.present, namespace, repo);
-                let empty_entries: Vec<TreeEntry> = Vec::new();
-                let ctx = TabContentContext {
-                    namespace,
-                    repo,
-                    tab: "markdown",
-                    commits: &commits,
-                    markdown_files: &markdown_files,
-                    selected_md_file: Some(file_path),
-                    selected_content: selected_content.as_deref(),
-                    fig_content,
-                    fig_filename,
-                    tabs_config: &fig_config.tabs,
-                    present_config: &fig_config.present,
-                    present_slides: &present_slides,
-                    license_content: Some(&license_content),
-                    has_license,
-                    content_path: "",
-                    content_entries: &empty_entries,
-                    content_file_bytes: None,
-                };
-                render_tab_content(&ctx)
-            };
-            Ok(render_for_request(
-                &req,
-                content,
-                username.as_deref(),
-                &page_title,
-            ))
+    let content = match fig_config.paper.as_ref() {
+        Some(paper)
+            if paper.is_configured()
+                && is_safe_repo_path(page)
+                && page_in_dir(page, paper.dir.trim_matches('/')) =>
+        {
+            let blob = handle.read_file(page).ok().flatten();
+            render_markdown_content_only(namespace, repo, page, blob.as_deref())
         }
-        Err(e) => {
-            let content = render_git_error(&e);
-            Ok(render_for_request(
-                &req,
-                content,
-                username.as_deref(),
-                &page_title,
-            ))
-        }
-    }
-}
-
-struct ContentFullContext<'a> {
-    handle: &'a RepoHandle,
-    fig_result: &'a FigConfigWithRaw,
-    namespace: &'a str,
-    repo: &'a str,
-    path: &'a str,
-    commits: &'a [Commit],
-    entries: &'a [TreeEntry],
-    file_bytes: Option<&'a [u8]>,
-}
-
-fn render_content_full(ctx: &ContentFullContext<'_>) -> Markup {
-    let files_result = ctx.handle.list_files(Some(&ctx.fig_result.config));
-    let markdown_files = files_result.unwrap_or_default().markdown_files;
-    let default_file = get_default_markdown_file(&markdown_files);
-    let default_content = default_file.and_then(|f| ctx.handle.read_file(f).ok().flatten());
-    let present_slides = load_present_slides(
-        ctx.handle,
-        &ctx.fig_result.config.present,
-        ctx.namespace,
-        ctx.repo,
-    );
-    let license_content = ctx.handle.get_license_content();
-
-    let tab_ctx = TabContentContext {
-        namespace: ctx.namespace,
-        repo: ctx.repo,
-        tab: "content",
-        commits: ctx.commits,
-        markdown_files: &markdown_files,
-        selected_md_file: default_file,
-        selected_content: default_content.as_deref(),
-        fig_content: ctx.fig_result.raw.as_deref(),
-        fig_filename: ctx.fig_result.filename.as_deref(),
-        tabs_config: &ctx.fig_result.config.tabs,
-        present_config: &ctx.fig_result.config.present,
-        present_slides: &present_slides,
-        license_content: Some(&license_content),
-        has_license: ctx.handle.has_license(),
-        content_path: ctx.path,
-        content_entries: ctx.entries,
-        content_file_bytes: ctx.file_bytes,
+        _ => render_empty("NOT FOUND", "Paper page not found."),
     };
-    render_repo(&tab_ctx)
+
+    Ok(render_for_request(
+        &req,
+        content,
+        username.as_deref(),
+        &page_title,
+    ))
 }
 
 #[get("/{namespace}/{repo}/content/{path:.*}")]
@@ -566,95 +736,38 @@ pub async fn content_handler(
     auth_state: web::Data<FigContext>,
     params: web::Path<ContentParams>,
 ) -> AwResult<Markup> {
-    let namespace = &params.namespace;
-    let repo = &params.repo;
     let path = params.path.trim_matches('/').to_string();
-    let page_title = format!("{namespace}/{repo}");
-    let username = get_username_from_request(&req, &auth_state).await;
+    let ctx = match open_repo(&req, &server, &auth_state, &params.namespace, &params.repo).await {
+        Ok(ctx) => ctx,
+        Err(rendered) => return Ok(rendered),
+    };
 
     if !is_safe_repo_path(&path) {
         return Ok(render_not_found_for_request(
             &req,
-            username.as_deref(),
-            &page_title,
+            ctx.username.as_deref(),
+            &ctx.page_title,
         ));
     }
 
-    let handle = match RepoHandle::open(server.project_root(), namespace, repo) {
-        Ok(h) => h,
-        Err(e) => {
-            let content = render_git_error(&e);
-            return if req.headers().get("HX-Request").is_some() {
-                Ok(content)
-            } else {
-                Ok(super::render_layout(
-                    &content,
-                    username.as_deref(),
-                    Some(&page_title),
-                ))
-            };
-        }
+    let entries = ctx
+        .handle
+        .list_dir(&path, Some(&ctx.fig_result.config))
+        .unwrap_or_default();
+    let file_bytes = if path.is_empty() || !entries.is_empty() {
+        None
+    } else {
+        ctx.handle.read_blob_bytes(&path).ok().flatten()
     };
 
-    let fig_result = handle.load_config_with_raw();
-    let fig_config = &fig_result.config;
-    let fig_content = fig_result.raw.as_deref();
-
-    if fig_config.private && username.is_none() {
-        return Ok(render_repo_auth_error(&req, &page_title));
-    }
-
-    let commits_result = handle.get_commits(&Depth::default());
-
-    match commits_result {
-        Ok(commits) => {
-            let entries = handle.list_dir(&path, Some(fig_config)).unwrap_or_default();
-            let file_bytes = if path.is_empty() || !entries.is_empty() {
-                None
-            } else {
-                handle.read_blob_bytes(&path).ok().flatten()
-            };
-
-            let content = if req.headers().get("HX-Request").is_some() {
-                render_content_htmx(&ContentHtmxContext {
-                    namespace,
-                    repo,
-                    path: &path,
-                    entries: &entries,
-                    file_bytes: file_bytes.as_deref(),
-                    has_config: fig_content.is_some(),
-                    tabs_config: &fig_config.tabs,
-                    has_present: !fig_config.present.files.is_empty(),
-                })
-            } else {
-                render_content_full(&ContentFullContext {
-                    handle: &handle,
-                    fig_result: &fig_result,
-                    namespace,
-                    repo,
-                    path: &path,
-                    commits: &commits,
-                    entries: &entries,
-                    file_bytes: file_bytes.as_deref(),
-                })
-            };
-            Ok(render_for_request(
-                &req,
-                content,
-                username.as_deref(),
-                &page_title,
-            ))
-        }
-        Err(e) => {
-            let content = render_git_error(&e);
-            Ok(render_for_request(
-                &req,
-                content,
-                username.as_deref(),
-                &page_title,
-            ))
-        }
-    }
+    let body = render_content_view(
+        &ctx.namespace,
+        &ctx.repo,
+        &path,
+        &entries,
+        file_bytes.as_deref(),
+    );
+    Ok(render_tab_response(&req, &ctx.frame(), "content", &body))
 }
 
 #[get("/{namespace}/{repo}/slide/{index}")]
@@ -909,28 +1022,6 @@ fn render_not_found_for_request(
     }
 }
 
-fn render_content_htmx(ctx: &ContentHtmxContext<'_>) -> Markup {
-    let inner = render_content_view(
-        ctx.namespace,
-        ctx.repo,
-        ctx.path,
-        ctx.entries,
-        ctx.file_bytes,
-    );
-    let tabs = render_tabs(
-        ctx.namespace,
-        ctx.repo,
-        "content",
-        ctx.has_config,
-        ctx.tabs_config,
-        ctx.has_present,
-    );
-    maud::html! {
-        (tabs)
-        (inner)
-    }
-}
-
 /// The page head: the trail is the whole heading zone, with the repository
 /// name as its highlighted final segment, so the tabs follow it directly.
 fn render_repo_crumbs(namespace: &str, repo: &str) -> Markup {
@@ -956,6 +1047,7 @@ fn render_tabs(
     has_config: bool,
     tabs_config: &[String],
     has_present: bool,
+    has_paper: bool,
 ) -> Markup {
     // Build the list of available tabs
     let mut all_tabs: Vec<(&str, &str)> = vec![];
@@ -964,6 +1056,9 @@ fn render_tabs(
     if tabs_config.is_empty() {
         // Show all available tabs
         all_tabs.push(("markdown", "Documentation"));
+        if has_paper {
+            all_tabs.push(("paper", "Paper"));
+        }
         all_tabs.push(("content", "Content"));
 
         all_tabs.push(("commits", "Commits"));
@@ -979,6 +1074,7 @@ fn render_tabs(
         for tab in tabs_config {
             match tab.as_str() {
                 "markdown" => all_tabs.push(("markdown", "Documentation")),
+                "paper" if has_paper => all_tabs.push(("paper", "Paper")),
                 "content" => all_tabs.push(("content", "Content")),
                 "commits" => all_tabs.push(("commits", "Commits")),
                 "config" if has_config => all_tabs.push(("config", "Config")),
@@ -992,14 +1088,14 @@ fn render_tabs(
     maud::html! {
         nav id="tab-nav" class="fig-tabs" aria-label="Repository views" hx-swap-oob="true" {
             @for (tab_id, tab_label) in all_tabs {
-                @let href = format!("/{namespace}/{repo}/tab/{tab_id}");
+                @let href = format!("/{namespace}/{repo}/{tab_id}");
                 a
                     class="fig-tab"
                     href=(href)
                     aria-current=[(tab_id == active_tab).then_some("page")]
                     hx-get=(href)
                     hx-target="#tab-content"
-                    hx-push-url=(format!("/{namespace}/{repo}"))
+                    hx-push-url=(href)
                 {
                     (tab_label)
                 }
@@ -1017,27 +1113,6 @@ fn default_tab<'a>(tabs_config: &'a [String], markdown_files: &[String]) -> &'a 
         "commits"
     } else {
         "markdown"
-    }
-}
-
-fn render_repo(ctx: &TabContentContext<'_>) -> Markup {
-    maud::html! {
-        (render_repo_crumbs(ctx.namespace, ctx.repo))
-        (render_tab_content(ctx))
-    }
-}
-
-fn render_tab_content(ctx: &TabContentContext<'_>) -> Markup {
-    let has_config = ctx.fig_content.is_some();
-    let has_present = !ctx.present_config.files.is_empty();
-    maud::html! {
-        // Tab navigation (update active state)
-        (render_tabs(ctx.namespace, ctx.repo, ctx.tab, has_config, ctx.tabs_config, has_present))
-
-        // Tab content container, announced on swap
-        div id="tab-content" aria-live="polite" {
-            (render_tab_content_inner(ctx))
-        }
     }
 }
 
@@ -1059,65 +1134,6 @@ fn get_default_markdown_file(markdown_files: &[String]) -> Option<&str> {
     }
     // Fall back to first file
     markdown_files.first().map(String::as_str)
-}
-
-fn render_tab_content_inner(ctx: &TabContentContext<'_>) -> Markup {
-    match ctx.tab {
-        "markdown" => {
-            // Use selected file or find default (README.md preferred)
-            let file_to_show = ctx
-                .selected_md_file
-                .or_else(|| get_default_markdown_file(ctx.markdown_files))
-                .unwrap_or("README.md");
-
-            render_markdown_view(
-                ctx.namespace,
-                ctx.repo,
-                file_to_show,
-                ctx.selected_content,
-                ctx.markdown_files,
-            )
-        }
-        "commits" => render_commits_view(ctx.commits),
-        "config" => render_config_view(ctx.fig_content, ctx.fig_filename),
-        "content" => render_content_view(
-            ctx.namespace,
-            ctx.repo,
-            ctx.content_path,
-            ctx.content_entries,
-            ctx.content_file_bytes,
-        ),
-        "present" => render_present_view(ctx.namespace, ctx.repo, ctx.present_slides),
-        "license" => render_license_view(ctx.license_content),
-        _ => {
-            // Unknown tab - show Markdown by default if available, then Commits
-            let new_tab = if ctx.markdown_files.is_empty() {
-                "commits"
-            } else {
-                "markdown"
-            };
-            let new_ctx = TabContentContext {
-                namespace: ctx.namespace,
-                repo: ctx.repo,
-                tab: new_tab,
-                commits: ctx.commits,
-                markdown_files: ctx.markdown_files,
-                selected_md_file: ctx.selected_md_file,
-                selected_content: ctx.selected_content,
-                fig_content: ctx.fig_content,
-                fig_filename: ctx.fig_filename,
-                tabs_config: ctx.tabs_config,
-                present_config: ctx.present_config,
-                present_slides: ctx.present_slides,
-                license_content: ctx.license_content,
-                has_license: ctx.has_license,
-                content_path: ctx.content_path,
-                content_entries: ctx.content_entries,
-                content_file_bytes: ctx.content_file_bytes,
-            };
-            render_tab_content_inner(&new_ctx)
-        }
-    }
 }
 
 fn render_commits_view(commits: &[Commit]) -> Markup {
@@ -1159,6 +1175,29 @@ fn render_config_view(fig_content: Option<&str>, fig_filename: Option<&str>) -> 
     }
 }
 
+/// A parse failure in `.fig.toml`, presented like a compiler diagnostic: the
+/// offending file, the TOML error with its line context, and a help hint.
+/// Reaching this is the exceptional path, so the extra formatting costs
+/// nothing on a healthy repository.
+fn render_config_error(filename: &str, error: &str) -> Markup {
+    let diagnostic = format!(
+        "error: could not parse configuration\n --> {filename}\n\n{error}\n\nhelp: fix the syntax shown above; default settings apply until it is valid"
+    );
+
+    maud::html! {
+        div class="fig-notice fig-notice--danger fig-config-error" role="alert" {
+            p class="fig-eyebrow" { "CONFIG ERROR" }
+            p class="fig-notice-body" {
+                code class="fig-mono" { (filename) }
+                " could not be parsed. Continuing with default settings."
+            }
+            pre class="fig-code" tabindex="0" aria-label=(format!("{filename} parse error")) {
+                code { (diagnostic) }
+            }
+        }
+    }
+}
+
 fn render_license_view(license_content: Option<&str>) -> Markup {
     maud::html! {
         div class="fig-stack" {
@@ -1175,13 +1214,12 @@ fn render_license_view(license_content: Option<&str>) -> Markup {
 
 /// Returns (href, push-url) pair for a path inside the content tab
 fn content_urls(namespace: &str, repo: &str, path: &str) -> (String, String) {
-    if path.is_empty() {
-        let href = format!("/{namespace}/{repo}/tab/content");
-        (href, format!("/{namespace}/{repo}"))
+    let href = if path.is_empty() {
+        format!("/{namespace}/{repo}/content")
     } else {
-        let href = format!("/{namespace}/{repo}/content/{path}");
-        (href.clone(), href)
-    }
+        format!("/{namespace}/{repo}/content/{path}")
+    };
+    (href.clone(), href)
 }
 
 fn parent_path(path: &str) -> &str {
@@ -1366,6 +1404,15 @@ fn load_present_slides(
         .collect()
 }
 
+/// The configured paper pages, sorted for reading. Empty when `[paper]` is
+/// absent, unconfigured, or its directory is missing from HEAD.
+fn load_paper_pages(handle: &RepoHandle, config: &FigConfig) -> Vec<String> {
+    let Some(paper) = config.paper.as_ref().filter(|paper| paper.is_configured()) else {
+        return Vec::new();
+    };
+    handle.list_paper_pages(&paper.dir).unwrap_or_default()
+}
+
 /// The slide counter, zero-padded to the width of the total so the mono column
 /// never reflows as the deck advances (DESIGN.md 5.17).
 fn slide_counter(current_index: usize, slide_count: usize) -> String {
@@ -1420,8 +1467,8 @@ fn render_slide_content(
                 }
                 button id="decrease-text-size" class="fig-btn fig-btn--quiet" type="button"
                     aria-label="Decrease presentation font size" title="Decrease font size"
-                    "hx-on:click"=(present_size_step(false))
-                    "hx-live:disabled"=(format!("data.figTextSize === {}", PRESENT_TEXT_SIZES[0]))
+                    "hx-on:click"=(text_size_step(false, PRESENT_TEXT_SIZE_KEY))
+                    "hx-live:disabled"=(format!("data.figTextSize === {}", TEXT_SIZES[0]))
                 {
                     "A−"
                 }
@@ -1429,10 +1476,10 @@ fn render_slide_content(
                     "hx-live:text"="data.figTextSize + '%'" { "100%" }
                 button id="increase-text-size" class="fig-btn fig-btn--quiet" type="button"
                     aria-label="Increase presentation font size" title="Increase font size"
-                    "hx-on:click"=(present_size_step(true))
+                    "hx-on:click"=(text_size_step(true, PRESENT_TEXT_SIZE_KEY))
                     "hx-live:disabled"=(format!(
                         "data.figTextSize === {}",
-                        PRESENT_TEXT_SIZES[PRESENT_TEXT_SIZES.len() - 1]
+                        TEXT_SIZES[TEXT_SIZES.len() - 1]
                     ))
                 {
                     "A+"
@@ -1482,8 +1529,8 @@ fn render_present_view(namespace: &str, repo: &str, slides: &[PresentSlide]) -> 
         section
             id="present-container"
             class="fig-present"
-            data-fig-text-size=(PRESENT_TEXT_SIZES[0])
-            hx-live=(present_size_restore())
+            data-fig-text-size=(TEXT_SIZES[0])
+            hx-live=(text_size_restore(PRESENT_TEXT_SIZE_KEY))
             tabindex="-1"
             aria-roledescription="carousel"
             aria-label="Presentation"
@@ -1491,6 +1538,100 @@ fn render_present_view(namespace: &str, repo: &str, slides: &[PresentSlide]) -> 
             (render_slide_content(namespace, repo, 0, slides))
         }
         script { (maud::PreEscaped(PRESENT_SCRIPT)) }
+    }
+}
+
+/// One lazily loaded paper page. htmx swaps in the rendered Markdown when the
+/// article scrolls into view, so a long paper only pays for the pages read.
+fn render_paper_page(namespace: &str, repo: &str, page: &str) -> Markup {
+    maud::html! {
+        article
+            class="fig-paper-page"
+            data-fig-paper-page=(page)
+            aria-label=(format!("Paper page: {page}"))
+            hx-get=(format!("/{namespace}/{repo}/paper/{page}"))
+            hx-trigger="revealed"
+            hx-swap="innerHTML"
+        {
+            p class="fig-hint fig-paper-pending" { "Loading…" }
+        }
+    }
+}
+
+/// The paper toolbar: page count, the shared A−/A+ zoom, and the reading font
+/// switch. The zoom state is the same `data-fig-text-size` contract the
+/// presentation uses, so both remember their own scale.
+fn render_paper_toolbar(page_count: usize) -> Markup {
+    maud::html! {
+        header class="fig-paper-bar" {
+            p class="fig-eyebrow" { "PAPER" }
+            div class="fig-paper-tools" {
+                span class="fig-paper-count" { (format!("{page_count} pages")) }
+                button id="paper-decrease-text-size" class="fig-btn fig-btn--quiet" type="button"
+                    aria-label="Decrease paper font size" title="Decrease font size"
+                    "hx-on:click"=(text_size_step(false, PAPER_TEXT_SIZE_KEY))
+                    "hx-live:disabled"=(format!("data.figTextSize === {}", TEXT_SIZES[0]))
+                {
+                    "A−"
+                }
+                span id="paper-text-size" class="fig-paper-count" aria-live="polite"
+                    "hx-live:text"="data.figTextSize + '%'" { "100%" }
+                button id="paper-increase-text-size" class="fig-btn fig-btn--quiet" type="button"
+                    aria-label="Increase paper font size" title="Increase font size"
+                    "hx-on:click"=(text_size_step(true, PAPER_TEXT_SIZE_KEY))
+                    "hx-live:disabled"=(format!(
+                        "data.figTextSize === {}",
+                        TEXT_SIZES[TEXT_SIZES.len() - 1]
+                    ))
+                {
+                    "A+"
+                }
+                div class="fig-paper-fonts" role="group" aria-label="Paper font" {
+                    @for (value, label) in PAPER_FONTS {
+                        button
+                            class="fig-btn fig-btn--quiet fig-paper-font"
+                            type="button"
+                            data-fig-font=(value)
+                            aria-pressed=(if value == "sans" { "true" } else { "false" })
+                        {
+                            (label)
+                        }
+                    }
+                }
+                (super::render_theme_toggle())
+            }
+        }
+    }
+}
+
+/// A paper is a directory of Markdown pages read as one continuous,
+/// scroll-driven document. Each page is a placeholder until it is revealed.
+fn render_paper_view(namespace: &str, repo: &str, pages: &[String]) -> Markup {
+    if pages.is_empty() {
+        return render_empty(
+            "NO PAGES",
+            "No paper pages found. Add a [paper] section with a dir to your .fig.toml and put Markdown files in it.",
+        );
+    }
+
+    maud::html! {
+        section
+            id="paper-container"
+            class="fig-paper"
+            data-fig-text-size=(TEXT_SIZES[0])
+            data-fig-paper-font="sans"
+            hx-live=(text_size_restore(PAPER_TEXT_SIZE_KEY))
+            tabindex="-1"
+            aria-label="Paper"
+        {
+            (render_paper_toolbar(pages.len()))
+            div id="paper-body" class="fig-paper-body" {
+                @for page in pages {
+                    (render_paper_page(namespace, repo, page))
+                }
+            }
+        }
+        script { (maud::PreEscaped(PAPER_SCRIPT)) }
     }
 }
 
@@ -1578,32 +1719,20 @@ fn render_commit(commit: &Commit) -> Markup {
 mod tests {
     use super::*;
 
-    fn empty_present_config() -> &'static PresentConfig {
-        static EMPTY: std::sync::OnceLock<PresentConfig> = std::sync::OnceLock::new();
-        EMPTY.get_or_init(PresentConfig::default)
-    }
-
-    /// A context with nothing configured. Tests override only the fields they
+    /// A tab frame with nothing configured. Tests override only the fields they
     /// exercise, which keeps each assertion pinned to one input.
-    fn base_ctx() -> TabContentContext<'static> {
-        TabContentContext {
+    fn base_frame() -> TabFrame<'static> {
+        TabFrame {
             namespace: "acme",
             repo: "my-project",
-            tab: "commits",
-            commits: &[],
-            markdown_files: &[],
-            selected_md_file: None,
-            selected_content: None,
-            fig_content: None,
+            username: None,
+            page_title: "acme/my-project",
+            fig_error: None,
             fig_filename: None,
             tabs_config: &[],
-            present_config: empty_present_config(),
-            present_slides: &[],
-            license_content: None,
-            has_license: false,
-            content_path: "",
-            content_entries: &[],
-            content_file_bytes: None,
+            has_config: false,
+            has_present: false,
+            has_paper: false,
         }
     }
 
@@ -1827,7 +1956,8 @@ mod tests {
 
     #[test]
     fn test_tabs_are_an_out_of_band_labelled_nav() {
-        let html = render_tabs("acme", "my-project", "commits", true, &[], true).into_string();
+        let html =
+            render_tabs("acme", "my-project", "commits", true, &[], true, true).into_string();
 
         assert!(
             html.contains(
@@ -1845,13 +1975,14 @@ mod tests {
 
     #[test]
     fn test_tabs_preserve_every_htmx_navigation_attribute() {
-        let html = render_tabs("acme", "my-project", "commits", true, &[], true).into_string();
+        let html =
+            render_tabs("acme", "my-project", "commits", true, &[], true, true).into_string();
         let tabs = [
-            "markdown", "content", "commits", "config", "present", "license",
+            "markdown", "paper", "content", "commits", "config", "present", "license",
         ];
 
         for tab in tabs {
-            let href = format!("/acme/my-project/tab/{tab}");
+            let href = format!("/acme/my-project/{tab}");
             assert!(
                 html.contains(&format!("href=\"{href}\"")),
                 "missing href for {tab}: {html}"
@@ -1860,24 +1991,25 @@ mod tests {
                 html.contains(&format!("hx-get=\"{href}\"")),
                 "missing hx-get for {tab}: {html}"
             );
+            assert!(
+                html.contains(&format!("hx-push-url=\"{href}\"")),
+                "each tab pushes its own address for {tab}: {html}"
+            );
         }
         assert_eq!(count_of(&html, "hx-target=\"#tab-content\""), tabs.len());
-        assert_eq!(
-            count_of(&html, "hx-push-url=\"/acme/my-project\""),
-            tabs.len()
-        );
     }
 
     #[test]
     fn test_tabs_mark_exactly_one_current_tab() {
-        let html = render_tabs("acme", "my-project", "commits", true, &[], true).into_string();
+        let html =
+            render_tabs("acme", "my-project", "commits", true, &[], true, true).into_string();
 
         assert_eq!(
             count_of(&html, "aria-current=\"page\""),
             1,
             "one current tab only: {html}"
         );
-        let href = index_of(&html, "href=\"/acme/my-project/tab/commits\"");
+        let href = index_of(&html, "href=\"/acme/my-project/commits\"");
         let current = index_of(&html, "aria-current=\"page\"");
         let label = index_of(&html, ">Commits<");
         assert!(
@@ -1888,11 +2020,20 @@ mod tests {
 
     #[test]
     fn test_tabs_render_only_available_views_in_order() {
-        let html = render_tabs("acme", "my-project", "markdown", false, &[], false).into_string();
+        let html =
+            render_tabs("acme", "my-project", "markdown", false, &[], false, false).into_string();
         assert_eq!(
             tab_labels(&html),
             vec!["Documentation", "Content", "Commits", "License"],
-            "unconfigured repositories hide Config and Present: {html}"
+            "unconfigured repositories hide Config, Present and Paper: {html}"
+        );
+
+        let html =
+            render_tabs("acme", "my-project", "paper", false, &[], false, true).into_string();
+        assert_eq!(
+            tab_labels(&html),
+            vec!["Documentation", "Paper", "Content", "Commits", "License"],
+            "a configured paper slots in after Documentation: {html}"
         );
 
         let configured = [
@@ -1900,20 +2041,45 @@ mod tests {
             "bogus".to_string(),
             "config".to_string(),
             "present".to_string(),
+            "paper".to_string(),
             "commits".to_string(),
         ];
-        let html =
-            render_tabs("acme", "my-project", "license", false, &configured, true).into_string();
+        let html = render_tabs(
+            "acme",
+            "my-project",
+            "license",
+            false,
+            &configured,
+            true,
+            true,
+        )
+        .into_string();
+        assert_eq!(
+            tab_labels(&html),
+            vec!["License", "Present", "Paper", "Commits"],
+            "configured order wins and unknown or unavailable tabs are dropped: {html}"
+        );
+
+        let html = render_tabs(
+            "acme",
+            "my-project",
+            "paper",
+            false,
+            &configured,
+            true,
+            false,
+        )
+        .into_string();
         assert_eq!(
             tab_labels(&html),
             vec!["License", "Present", "Commits"],
-            "configured order wins and unknown or unavailable tabs are dropped: {html}"
+            "a configured paper is hidden when no pages exist: {html}"
         );
     }
 
     #[test]
     fn test_repo_page_leads_with_a_breadcrumb_head_then_the_tabs() {
-        let html = render_repo(&base_ctx()).into_string();
+        let html = render_tab_shell(&base_frame(), "commits", &maud::html! {}).into_string();
 
         let crumbs = index_of(
             &html,
@@ -1934,11 +2100,46 @@ mod tests {
 
     #[test]
     fn test_repo_page_announces_its_tab_panel() {
-        let html = render_repo(&base_ctx()).into_string();
+        let html = render_tab_shell(&base_frame(), "commits", &maud::html! {}).into_string();
         assert!(
             html.contains(r#"<div id="tab-content" aria-live="polite">"#),
             "swapped tab content must be announced: {html}"
         );
+    }
+
+    #[test]
+    fn test_tab_response_differs_for_htmx_and_direct_navigation() {
+        let body = render_commits_view(&[]);
+        let frame = base_frame();
+
+        let direct_req = actix_web::test::TestRequest::default().to_http_request();
+        let direct = render_tab_response(&direct_req, &frame, "commits", &body).into_string();
+        assert!(
+            direct.contains("<!DOCTYPE html>"),
+            "a direct visit is a full document: {direct}"
+        );
+        assert!(
+            direct.contains(r#"<div id="tab-content" aria-live="polite">"#),
+            "the full page carries the swap target: {direct}"
+        );
+
+        let htmx_req = actix_web::test::TestRequest::default()
+            .insert_header(("HX-Request", "true"))
+            .to_http_request();
+        let fragment = render_tab_response(&htmx_req, &frame, "commits", &body).into_string();
+        assert!(
+            !fragment.contains("<!DOCTYPE html>"),
+            "an htmx call returns the fragment only: {fragment}"
+        );
+        assert!(
+            !fragment.contains(r#"<div id="tab-content""#),
+            "the fragment replaces the panel's contents, not the wrapper: {fragment}"
+        );
+        assert!(
+            fragment.contains(">Commits<"),
+            "the fragment re-sends the out-of-band tab bar: {fragment}"
+        );
+        assert!(fragment.contains("NO COMMITS"), "{fragment}");
     }
 
     #[test]
@@ -2021,7 +2222,7 @@ mod tests {
         let entries = vec![entry("main.rs", false)];
         let html = render_content_dir("acme", "my-project", "src", &entries).into_string();
         assert!(
-            html.contains(r##"href="/acme/my-project/tab/content" hx-get="/acme/my-project/tab/content" hx-target="#tab-content" hx-push-url="/acme/my-project""##),
+            html.contains(r##"href="/acme/my-project/content" hx-get="/acme/my-project/content" hx-target="#tab-content" hx-push-url="/acme/my-project/content""##),
             "the parent row climbs back to the tab route: {html}"
         );
         assert!(
@@ -2223,6 +2424,139 @@ mod tests {
     }
 
     #[test]
+    fn test_paper_view_lazy_loads_pages_with_zoom_and_font_controls() {
+        let pages = vec!["paper/01.md".to_string(), "paper/02.md".to_string()];
+        let html = render_paper_view("acme", "my-project", &pages).into_string();
+
+        assert!(
+            html.contains(
+                r#"<section id="paper-container" class="fig-paper" data-fig-text-size="100" data-fig-paper-font="sans""#
+            ),
+            "the paper keeps the shared zoom state: {html}"
+        );
+        assert!(
+            html.contains(r#"aria-label="Paper""#),
+            "the reader names itself: {html}"
+        );
+
+        for page in &pages {
+            let expected = format!(
+                r#"hx-get="/acme/my-project/paper/{page}" hx-trigger="revealed" hx-swap="innerHTML""#
+            );
+            assert!(
+                html.contains(&expected),
+                "each page is revealed on scroll: {page}: {html}"
+            );
+        }
+        assert_eq!(
+            count_of(&html, "hx-trigger=\"revealed\""),
+            pages.len(),
+            "one lazy trigger per page: {html}"
+        );
+
+        for control in [
+            r#"id="paper-decrease-text-size" class="fig-btn fig-btn--quiet" type="button" aria-label="Decrease paper font size" title="Decrease font size""#,
+            r#"id="paper-increase-text-size" class="fig-btn fig-btn--quiet" type="button" aria-label="Increase paper font size" title="Increase font size""#,
+        ] {
+            assert!(html.contains(control), "missing zoom control: {html}");
+        }
+        for font in ["sans", "serif", "mono"] {
+            assert!(
+                html.contains(&format!(r#"data-fig-font="{font}""#)),
+                "missing font choice {font}: {html}"
+            );
+        }
+        assert_eq!(
+            count_of(&html, r#"aria-pressed="true""#),
+            1,
+            "exactly one font is pressed by default: {html}"
+        );
+        assert!(
+            html.contains("c.addEventListener('click'"),
+            "the font switch is scoped to the container: {html}"
+        );
+        assert!(
+            !html.contains("document.addEventListener"),
+            "the paper never binds a document listener: {html}"
+        );
+    }
+
+    #[test]
+    fn test_paper_view_without_pages_states_the_condition() {
+        let html = render_paper_view("acme", "my-project", &[]).into_string();
+        assert!(html.contains(">NO PAGES<"), "{html}");
+        assert!(
+            html.contains("Add a [paper] section with a dir"),
+            "the empty state points at the config: {html}"
+        );
+        assert!(!html.contains("paper-container"), "{html}");
+    }
+
+    #[test]
+    fn test_page_in_dir_accepts_only_paths_below_the_paper_directory() {
+        assert!(page_in_dir("paper/01.md", "paper"));
+        assert!(page_in_dir("paper/nested/02.md", "paper"));
+        assert!(!page_in_dir("paper", "paper"));
+        assert!(!page_in_dir("paperback/01.md", "paper"));
+        assert!(!page_in_dir("README.md", "paper"));
+        assert!(!page_in_dir("paper/01.md", ""));
+    }
+
+    #[test]
+    fn test_config_error_is_a_diagnostic_with_a_help_hint() {
+        let error =
+            "TOML parse error at line 2, column 1\n  |\n2 | bad = = valid\n  | ^\ninvalid key";
+        let html = render_config_error(".fig.toml", error).into_string();
+
+        assert!(html.contains("role=\"alert\""), "{html}");
+        assert!(html.contains("fig-notice fig-notice--danger"), "{html}");
+        assert!(html.contains(">CONFIG ERROR<"), "{html}");
+        assert!(
+            html.contains(r#"<code class="fig-mono">.fig.toml</code>"#),
+            "the offending file is named: {html}"
+        );
+        assert!(
+            html.contains("error: could not parse configuration"),
+            "{html}"
+        );
+        assert!(
+            html.contains("--&gt; .fig.toml"),
+            "the pointer is escaped, not interpreted as markup: {html}"
+        );
+        assert!(html.contains("help: fix the syntax"), "{html}");
+        assert!(
+            html.contains("invalid key"),
+            "the parser's own explanation survives: {html}"
+        );
+        assert!(
+            html.contains(r#"tabindex="0" aria-label=".fig.toml parse error""#),
+            "the diagnostic stays keyboard-scrollable: {html}"
+        );
+    }
+
+    #[test]
+    fn test_tab_content_shows_a_config_error_on_every_tab() {
+        let frame = TabFrame {
+            fig_error: Some("TOML parse error at line 1, column 1"),
+            fig_filename: Some(".fig.toml"),
+            ..base_frame()
+        };
+        let html = render_tab_shell(&frame, "commits", &maud::html! {}).into_string();
+
+        let error = index_of(&html, "fig-config-error");
+        let tabs = index_of(&html, "id=\"tab-nav\"");
+        let content = index_of(&html, "id=\"tab-content\"");
+        assert!(
+            tabs < error && error < content,
+            "the notice sits between the tabs and the panel so it survives swaps: {html}"
+        );
+        assert!(
+            html.contains("TOML parse error at line 1, column 1"),
+            "{html}"
+        );
+    }
+
+    #[test]
     fn test_config_and_license_views_render_code_and_empty_states() {
         let html = render_config_view(Some("[present]\nfiles = []"), Some(".fig")).into_string();
         assert!(
@@ -2324,15 +2658,19 @@ mod tests {
         )];
 
         vec![
-            ("repo page", render_repo(&base_ctx()).into_string()),
+            (
+                "repo page",
+                render_tab_shell(&base_frame(), "commits", &maud::html! {}).into_string(),
+            ),
             (
                 "markdown tab",
-                render_tab_content(&TabContentContext {
-                    tab: "markdown",
-                    markdown_files: &files,
-                    selected_content: Some("# Hi\n\nHello."),
-                    ..base_ctx()
-                })
+                render_markdown_view(
+                    "acme",
+                    "my-project",
+                    "README.md",
+                    Some("# Hi\n\nHello."),
+                    &files,
+                )
                 .into_string(),
             ),
             ("commits tab", render_commits_view(&commits).into_string()),
@@ -2359,6 +2697,24 @@ mod tests {
             (
                 "empty present tab",
                 render_present_view("acme", "my-project", &[]).into_string(),
+            ),
+            (
+                "paper tab",
+                render_paper_view(
+                    "acme",
+                    "my-project",
+                    &["paper/01.md".to_string(), "paper/02.md".to_string()],
+                )
+                .into_string(),
+            ),
+            (
+                "empty paper tab",
+                render_paper_view("acme", "my-project", &[]).into_string(),
+            ),
+            (
+                "config error",
+                render_config_error(".fig.toml", "TOML parse error at line 1, column 1")
+                    .into_string(),
             ),
             (
                 "git error",
