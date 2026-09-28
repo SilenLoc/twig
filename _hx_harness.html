@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>hx-live presentation harness</title>
+<link rel="stylesheet" href="/assets/t.css">
+<link rel="stylesheet" href="/assets/fig.css">
+<script src="/assets/h.js"></script>
+<script src="/assets/hx-live.js"></script>
+</head>
+<body class="fig-shell">
+<main class="fig-main"><div class="fig-page">
+<section id="present-container" class="fig-present" data-fig-text-size="100" hx-live="try { let size = localStorage.getItem('fig-present-text-size'); if (['100', '115', '130'].includes(size)) data.figTextSize = Number(size); } catch (_) {}" tabindex="-1" aria-roledescription="carousel" aria-label="Presentation">
+<header class="fig-present-bar">
+<p class="fig-eyebrow">PRESENTATION</p>
+<div class="fig-present-tools">
+<span class="fig-present-count" aria-live="polite">1 / 3</span>
+<button id="decrease-text-size" class="fig-btn fig-btn--quiet" type="button" aria-label="Decrease presentation font size" title="Decrease font size" hx-on:click="data.figTextSize = Math.max(100, data.figTextSize - 15); try { localStorage.setItem('fig-present-text-size', String(data.figTextSize)); } catch (_) {}" hx-live:disabled="data.figTextSize === 100">A−</button>
+<span id="present-text-size" class="fig-present-count" aria-live="polite" hx-live:text="data.figTextSize + '%'">100%</span>
+<button id="increase-text-size" class="fig-btn fig-btn--quiet" type="button" aria-label="Increase presentation font size" title="Increase font size" hx-on:click="data.figTextSize = Math.min(130, data.figTextSize + 15); try { localStorage.setItem('fig-present-text-size', String(data.figTextSize)); } catch (_) {}" hx-live:disabled="data.figTextSize === 130">A+</button>
+<button id="fullscreen-toggle" class="fig-btn fig-btn--quiet" type="button">Fullscreen</button>
+</div>
+</header>
+<div id="slides-wrapper" class="fig-present-stage">
+<article class="fig-md fig-md--slide" aria-live="polite"><h1>Slide 0</h1></article>
+</div>
+<nav class="fig-present-controls" aria-label="Slide navigation">
+<button id="prev-slide" class="fig-btn fig-btn--quiet" type="button" disabled>← Previous</button>
+<div class="fig-ticks" role="group" aria-label="Go to slide">
+<button class="fig-tick" type="button" aria-label="Slide 1 of 3" aria-current="true" hx-get="/acme/my-project/slide/0" hx-target="#present-container" hx-swap="innerHTML"></button>
+<button class="fig-tick" type="button" aria-label="Slide 2 of 3" hx-get="/acme/my-project/slide/1" hx-target="#present-container" hx-swap="innerHTML"></button>
+<button class="fig-tick" type="button" aria-label="Slide 3 of 3" hx-get="/acme/my-project/slide/2" hx-target="#present-container" hx-swap="innerHTML"></button>
+</div>
+<button id="next-slide" class="fig-btn fig-btn--quiet" type="button" hx-get="/acme/my-project/slide/1" hx-target="#present-container" hx-swap="innerHTML">Next →</button>
+</nav>
+</section>
+<script>(function(){
+var c=document.getElementById('present-container');
+if(!c||c.dataset.figPresent)return;
+c.dataset.figPresent='1';
+var isFull=function(){return document.fullscreenElement===c;};
+var sync=function(){
+var f=c.querySelector('#fullscreen-toggle');
+if(f)f.textContent=isFull()?'Exit fullscreen':'Fullscreen';
+};
+c.addEventListener('keydown',function(e){
+if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;
+if(!isFull()&&!c.contains(document.activeElement))return;
+var b=c.querySelector(e.key==='ArrowLeft'?'#prev-slide':'#next-slide');
+if(!b||b.disabled)return;
+e.preventDefault();
+b.click();
+});
+c.addEventListener('click',function(e){
+if(!e.target.closest('#fullscreen-toggle'))return;
+if(isFull()){document.exitFullscreen();}else{c.requestFullscreen();}
+});
+c.addEventListener('fullscreenchange',sync);
+c.addEventListener('htmx:after:swap',function(){c.focus({preventScroll:true});sync();});
+sync();
+})();</script>
+</div></main>
+<pre id="result" style="display:none"></pre>
+<script>
+(function(){
+var params=new URLSearchParams(location.search);
+if(params.has('reset')){try{localStorage.removeItem('fig-present-text-size');}catch(_){}}
+var results={};
+function snap(label){
+var c=document.getElementById('present-container');
+var h1=document.querySelector('.fig-md--slide h1');
+results[label]={size:c.dataset.figTextSize,text:document.getElementById('present-text-size').textContent,down:document.getElementById('decrease-text-size').disabled,up:document.getElementById('increase-text-size').disabled,ls:localStorage.getItem('fig-present-text-size'),h1:h1?getComputedStyle(h1).fontSize:null,htmx:!!window.htmx,live:!!(window.htmx&&htmx.live)};
+}
+window.addEventListener('load',function(){
+setTimeout(function(){
+snap('initial');
+if(params.has('advance')){
+document.getElementById('increase-text-size').click();
+setTimeout(function(){
+snap('plus1');
+document.getElementById('increase-text-size').click();
+setTimeout(function(){
+snap('plus2');
+document.getElementById('decrease-text-size').click();
+setTimeout(function(){
+snap('minus1');
+document.getElementById('result').textContent=JSON.stringify(results);
+document.title='DONE';
+},80);
+},80);
+},80);
+}else{
+document.getElementById('result').textContent=JSON.stringify(results);
+document.title='DONE';
+}
+},250);
+});
+})();
+</script>
+</body>
+</html>

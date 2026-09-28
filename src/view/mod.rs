@@ -37,6 +37,7 @@ pub fn render_layout(
                 link rel="stylesheet" href="/assets/fig.css";
                 meta name="htmx-config" content=(r#"{"implicitInheritance":true,"noSwap":[204,304]}"#);
                 script src="/assets/h.js" {}
+                script src="/assets/hx-live.js" {}
             }
             body
                 class="fig-shell"
@@ -260,6 +261,11 @@ mod tests {
         assert!(html.contains("&quot;noSwap&quot;:[204,304]"), "{html}");
         assert!(html.contains("hx-status:4xx=\"swap:none\""), "{html}");
         assert!(html.contains("/assets/h.js"), "{html}");
+        assert!(html.contains("/assets/hx-live.js"), "{html}");
+        assert!(
+            index_of(&html, "/assets/h.js") < index_of(&html, "/assets/hx-live.js"),
+            "hx-live must load after htmx: {html}"
+        );
     }
 
     #[test]

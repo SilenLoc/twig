@@ -6,6 +6,7 @@ const TCSS: &str = include_str!("../assets/t.css");
 const FIGCSS: &str = include_str!("../assets/fig.css");
 const THEME_JS: &str = include_str!("../assets/theme.js");
 const HTMX: &str = include_str!("../assets/h.js");
+const HX_LIVE: &str = include_str!("../assets/hx-live.js");
 const FIG_SVG: &str = include_str!("../assets/fig.svg");
 const FIG_SCHEMA: &str = include_str!("../assets/fig.schema.json");
 
@@ -30,6 +31,10 @@ pub async fn assets(req: HttpRequest, config: web::Data<config::Server>) -> impl
             .content_type("application/javascript; charset=utf-8")
             .insert_header((CACHE_CONTROL, config.cache_control().clone()))
             .body(HTMX),
+        "hx-live.js" => HttpResponse::Ok()
+            .content_type("application/javascript; charset=utf-8")
+            .insert_header((CACHE_CONTROL, config.cache_control().clone()))
+            .body(HX_LIVE),
         "fig.svg" => HttpResponse::Ok()
             .content_type("image/svg+xml")
             .insert_header((CACHE_CONTROL, config.cache_control().clone()))
@@ -87,6 +92,7 @@ mod tests {
         assert!(!FIGCSS.is_empty(), "fig.css should not be empty");
         assert!(!THEME_JS.is_empty(), "theme.js should not be empty");
         assert!(!HTMX.is_empty(), "h.js should not be empty");
+        assert!(!HX_LIVE.is_empty(), "hx-live.js should not be empty");
         assert!(!FIG_SVG.is_empty(), "fig.svg should not be empty");
         assert!(
             !FIG_SCHEMA.is_empty(),
@@ -241,6 +247,7 @@ mod tests {
             ("/assets/fig.css", "text/css"),
             ("/assets/theme.js", "application/javascript"),
             ("/assets/h.js", "application/javascript"),
+            ("/assets/hx-live.js", "application/javascript"),
             ("/assets/fig.svg", "image/svg+xml"),
             ("/assets/fig.schema.json", "application/schema+json"),
         ] {

@@ -45,6 +45,47 @@ c.addEventListener('htmx:after:swap',function(){c.focus({preventScroll:true});sy
 sync();
 })();";
 
+/// Presentation text sizes, in percent. The A−/A+ buttons step through them
+/// one entry at a time; the active size lives in `data-fig-text-size`, which
+/// the stylesheet turns into a larger type scale.
+const PRESENT_TEXT_SIZES: [u16; 3] = [100, 115, 130];
+const PRESENT_TEXT_SIZE_KEY: &str = "fig-present-text-size";
+
+/// Mirrors the active size back to the browser so it survives a reload.
+const PRESENT_TEXT_PERSIST: &str =
+    "try { localStorage.setItem('fig-present-text-size', String(data.figTextSize)); } catch (_) {}";
+
+fn present_size_list() -> String {
+    PRESENT_TEXT_SIZES
+        .iter()
+        .map(|size| format!("'{size}'"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Restores a previously chosen size on load; expression runs against
+/// `#present-container`, where `data.figTextSize` is the shared state.
+fn present_size_restore() -> String {
+    format!(
+        "try {{ let size = localStorage.getItem('{PRESENT_TEXT_SIZE_KEY}'); if ([{}].includes(size)) data.figTextSize = Number(size); }} catch (_) {{}}",
+        present_size_list()
+    )
+}
+
+fn present_size_step(increase: bool) -> String {
+    let first = PRESENT_TEXT_SIZES[0];
+    let last = PRESENT_TEXT_SIZES[PRESENT_TEXT_SIZES.len() - 1];
+    let step = PRESENT_TEXT_SIZES[1] - PRESENT_TEXT_SIZES[0];
+    let (bound, operator, clamp) = if increase {
+        (last, '+', "Math.min")
+    } else {
+        (first, '-', "Math.max")
+    };
+    format!(
+        "data.figTextSize = {clamp}({bound}, data.figTextSize {operator} {step}); {PRESENT_TEXT_PERSIST}"
+    )
+}
+
 #[derive(Deserialize)]
 struct Params {
     namespace: String,
@@ -1320,6 +1361,25 @@ fn render_slide_content(
                 span class="fig-present-count" aria-live="polite" {
                     (slide_counter(current_index, slide_count))
                 }
+                button id="decrease-text-size" class="fig-btn fig-btn--quiet" type="button"
+                    aria-label="Decrease presentation font size" title="Decrease font size"
+                    "hx-on:click"=(present_size_step(false))
+                    "hx-live:disabled"=(format!("data.figTextSize === {}", PRESENT_TEXT_SIZES[0]))
+                {
+                    "A−"
+                }
+                span id="present-text-size" class="fig-present-count" aria-live="polite"
+                    "hx-live:text"="data.figTextSize + '%'" { "100%" }
+                button id="increase-text-size" class="fig-btn fig-btn--quiet" type="button"
+                    aria-label="Increase presentation font size" title="Increase font size"
+                    "hx-on:click"=(present_size_step(true))
+                    "hx-live:disabled"=(format!(
+                        "data.figTextSize === {}",
+                        PRESENT_TEXT_SIZES[PRESENT_TEXT_SIZES.len() - 1]
+                    ))
+                {
+                    "A+"
+                }
                 button id="fullscreen-toggle" class="fig-btn fig-btn--quiet" type="button" {
                     "Fullscreen"
                 }
@@ -1365,6 +1425,8 @@ fn render_present_view(namespace: &str, repo: &str, slides: &[PresentSlide]) -> 
         section
             id="present-container"
             class="fig-present"
+            data-fig-text-size=(PRESENT_TEXT_SIZES[0])
+            hx-live=(present_size_restore())
             tabindex="-1"
             aria-roledescription="carousel"
             aria-label="Presentation"
@@ -1964,9 +2026,15 @@ mod tests {
 
         assert!(
             html.contains(
-                r#"<section id="present-container" class="fig-present" tabindex="-1" aria-roledescription="carousel" aria-label="Presentation">"#
+                r#"<section id="present-container" class="fig-present" data-fig-text-size="100""#
             ),
             "{html}"
+        );
+        assert!(
+            html.contains(
+                r#"hx-live="try { let size = localStorage.getItem('fig-present-text-size'); if (['100', '115', '130'].includes(size)) data.figTextSize = Number(size); } catch (_) {}""#
+            ),
+            "the container restores the saved size through hx-live: {html}"
         );
         assert_eq!(
             count_of(&html, "hx-target=\"#present-container\""),
@@ -1998,6 +2066,52 @@ mod tests {
     }
 
     #[test]
+    fn test_presentation_font_size_is_hx_live_state() {
+        let html = render_slide_content("acme", "my-project", 0, &slides(3)).into_string();
+
+        // The steps are bounded by the configured sizes and persisted locally.
+        for (control, bound, operator) in [
+            (
+                "hx-on:click=\"data.figTextSize = Math.max(100, data.figTextSize - 15)",
+                "100",
+                '-',
+            ),
+            (
+                "hx-on:click=\"data.figTextSize = Math.min(130, data.figTextSize + 15)",
+                "130",
+                '+',
+            ),
+        ] {
+            let expected = format!(
+                r#"{control}; try {{ localStorage.setItem('fig-present-text-size', String(data.figTextSize)); }} catch (_) {{}}""#
+            );
+            assert!(
+                html.contains(&expected),
+                "missing {bound}{operator} step: {html}"
+            );
+        }
+        for binding in [
+            r#"hx-live:disabled="data.figTextSize === 100""#,
+            r#"hx-live:disabled="data.figTextSize === 130""#,
+            r#"hx-live:text="data.figTextSize + '%'""#,
+        ] {
+            assert!(html.contains(binding), "missing {binding}: {html}");
+        }
+
+        // State lives on the container, so swapping the slide (innerHTML) keeps it.
+        let container = render_present_view("acme", "my-project", &slides(3)).into_string();
+        assert!(
+            container.contains(r#"data-fig-text-size="100""#) && container.contains("hx-live="),
+            "font size is container state: {container}"
+        );
+        assert!(
+            !container.contains("PRESENT_SCRIPT")
+                && container.contains("c.addEventListener('keydown'"),
+            "the scripted keyboard/fullscreen wiring is preserved: {container}"
+        );
+    }
+
+    #[test]
     fn test_presentation_controls_are_labelled_and_bounded() {
         let deck = slides(3);
         let html = render_slide_content("acme", "my-project", 0, &deck).into_string();
@@ -2006,7 +2120,20 @@ mod tests {
             html.contains("fig-theme-toggle"),
             "the theme switch must remain accessible in fullscreen and after slide swaps: {html}"
         );
-
+        for control in [
+            r#"id="decrease-text-size" class="fig-btn fig-btn--quiet" type="button" aria-label="Decrease presentation font size" title="Decrease font size""#,
+            r#"id="increase-text-size" class="fig-btn fig-btn--quiet" type="button" aria-label="Increase presentation font size" title="Increase font size""#,
+            r#"<span id="present-text-size" class="fig-present-count" aria-live="polite" hx-live:text="data.figTextSize + '%'">100%</span>"#,
+        ] {
+            assert!(
+                html.contains(control),
+                "missing presentation font control: {html}"
+            );
+        }
+        assert!(
+            !html.contains("hx-ext="),
+            "htmx 4 enables registered extensions globally, not via hx-ext: {html}"
+        );
         assert!(
             html.contains(
                 r#"<button id="prev-slide" class="fig-btn fig-btn--quiet" type="button" disabled>"#

@@ -1551,8 +1551,38 @@ body.fig-shell {
 
 .fig-present-tools {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
+    justify-content: flex-end;
     gap: var(--fig-space-4);
+}
+
+/* Keep the slide's type hierarchy while giving presentation viewers two
+   larger, browser-persisted reading sizes. */
+.fig-present[data-fig-text-size="115"] {
+    --fig-t-h1: clamp(1.725rem, 1.15rem + 2.0125vw, 2.5875rem);
+    --fig-t-h2: clamp(1.4375rem, 1.2075rem + 0.69vw, 1.725rem);
+    --fig-t-h3: 1.221875rem;
+    --fig-t-body-lg: 1.29375rem;
+    --fig-t-body: 1.15rem;
+    --fig-t-body-sm: 1.00625rem;
+    --fig-t-data-lg: 1.078125rem;
+    --fig-t-data: 0.934375rem;
+    --fig-t-label: 0.8625rem;
+    --fig-t-eyebrow: 0.790625rem;
+}
+
+.fig-present[data-fig-text-size="130"] {
+    --fig-t-h1: clamp(1.95rem, 1.3rem + 2.275vw, 2.925rem);
+    --fig-t-h2: clamp(1.625rem, 1.365rem + 0.78vw, 1.95rem);
+    --fig-t-h3: 1.38125rem;
+    --fig-t-body-lg: 1.4625rem;
+    --fig-t-body: 1.3rem;
+    --fig-t-body-sm: 1.1375rem;
+    --fig-t-data-lg: 1.21875rem;
+    --fig-t-data: 1.05625rem;
+    --fig-t-label: 0.975rem;
+    --fig-t-eyebrow: 0.89375rem;
 }
 
 .fig-present-count {
