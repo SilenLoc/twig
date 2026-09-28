@@ -960,9 +960,16 @@ mod tests {
             body.contains("/pub/book/paper/paper/01.md"),
             "the page endpoint is wired: {body}"
         );
+        assert!(
+            body.contains(r#"id="paper-01.md""#),
+            "each page carries an anchor: {body}"
+        );
 
         let body = get_body(&app, "/pub/book/paper/paper/01.md").await;
-        assert!(body.contains("<h1>First</h1>"), "{body}");
+        assert!(
+            body.contains(r#"<h1 id="paper-01.md--first">First</h1>"#),
+            "headings are anchored: {body}"
+        );
 
         let body = get_body(&app, "/pub/book/paper/.fig.toml").await;
         assert!(

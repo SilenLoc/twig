@@ -56,8 +56,10 @@ configuration:
 - **Documentation** — rendered Markdown, including README files and links
   between repository Markdown files.
 - **Paper** — read every Markdown page under `[paper].dir` as one continuous
-  document. Pages load as they scroll into view, and the toolbar offers the
-  same A−/A+ zoom as presentations plus a Sans/Serif/Mono reading font.
+  document. Pages load as they scroll into view, and the pinned toolbar offers
+  the same A−/A+ zoom as presentations plus a Sans/Serif/Mono reading font.
+  Every page and heading carries an anchor (`#paper-01.md`,
+  `#paper-01.md--introduction`) so any position is directly linkable.
 - **Content** — browse files and folders; open file content.
 - **Commits** — recent commit history with short hash, author, date, and message.
 - **Config** — view `.fig.toml` when present.

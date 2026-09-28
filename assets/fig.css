@@ -1543,13 +1543,28 @@ body.fig-shell {
     min-block-size: 50dvh;
 }
 
-.fig-present-bar,
-.fig-paper-bar {
+.fig-present-bar {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: var(--fig-space-4);
+}
+
+/* The paper toolbar pins below the masthead so the page count, zoom, and font
+   switch stay reachable down a long read. */
+.fig-paper-bar {
+    position: sticky;
+    inset-block-start: var(--fig-masthead-h);
+    z-index: 5;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--fig-space-4);
+    padding-block: var(--fig-space-3);
+    background-color: var(--fig-surface-0);
+    border-block-end: 1px solid var(--fig-rule);
 }
 
 .fig-present-tools,
@@ -1642,6 +1657,7 @@ body.fig-shell {
 
 .fig-paper-page {
     min-inline-size: 0;
+    scroll-margin-block-start: var(--fig-paper-sticky-offset);
 }
 
 .fig-paper-page + .fig-paper-page {
@@ -1659,6 +1675,16 @@ body.fig-shell {
 
 .fig-paper[data-fig-paper-font="mono"] .fig-paper-body {
     font-family: var(--fig-mono);
+}
+
+/* Deep links to a page or a heading clear the masthead plus the pinned paper
+   toolbar, so the target is never hidden under the chrome. */
+.fig-paper {
+    --fig-paper-sticky-offset: calc(var(--fig-masthead-h) + 4rem);
+}
+
+#paper-body :is(h1, h2, h3, h4, h5, h6) {
+    scroll-margin-block-start: var(--fig-paper-sticky-offset);
 }
 
 .fig-present-stage {
