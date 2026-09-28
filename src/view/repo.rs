@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use actix_web::Result as AwResult;
 use actix_web::{HttpRequest, get, web};
 use maud::Markup;
@@ -257,7 +259,7 @@ pub async fn handler(
                 None
             };
 
-            let present_slides = load_present_slides(&handle, &fig_config.present);
+            let present_slides = load_present_slides(&handle, &fig_config.present, namespace, repo);
             let license_content = handle.get_license_content();
             let has_license = handle.has_license();
             let content_entries = handle.list_dir("", Some(fig_config)).unwrap_or_default();
@@ -347,7 +349,7 @@ pub async fn tab_handler(
                 None
             };
 
-            let present_slides = load_present_slides(&handle, &fig_config.present);
+            let present_slides = load_present_slides(&handle, &fig_config.present, namespace, repo);
             let license_content = handle.get_license_content();
             let has_license = handle.has_license();
             let (content_path, content_entries) = if tab == "content" {
@@ -468,7 +470,8 @@ pub async fn markdown_handler(
                 )
             } else {
                 let selected_content = blob_result.ok().flatten();
-                let present_slides = load_present_slides(&handle, &fig_config.present);
+                let present_slides =
+                    load_present_slides(&handle, &fig_config.present, namespace, repo);
                 let empty_entries: Vec<TreeEntry> = Vec::new();
                 let ctx = TabContentContext {
                     namespace,
@@ -526,7 +529,12 @@ fn render_content_full(ctx: &ContentFullContext<'_>) -> Markup {
     let markdown_files = files_result.unwrap_or_default().markdown_files;
     let default_file = get_default_markdown_file(&markdown_files);
     let default_content = default_file.and_then(|f| ctx.handle.read_file(f).ok().flatten());
-    let present_slides = load_present_slides(ctx.handle, &ctx.fig_result.config.present);
+    let present_slides = load_present_slides(
+        ctx.handle,
+        &ctx.fig_result.config.present,
+        ctx.namespace,
+        ctx.repo,
+    );
     let license_content = ctx.handle.get_license_content();
 
     let tab_ctx = TabContentContext {
@@ -683,7 +691,7 @@ pub async fn slide_handler(
         return Ok(render_repo_auth_error(&req, &page_title));
     }
 
-    let present_slides = load_present_slides(&handle, &fig_result.config.present);
+    let present_slides = load_present_slides(&handle, &fig_result.config.present, namespace, repo);
 
     if index >= present_slides.len() {
         let content = render_empty("NOT FOUND", "Slide not found");
@@ -784,6 +792,37 @@ fn rewrite_markdown_link(
     }
 }
 
+/// Rewrites a link tag's destination into a Fig URL, returning every other tag
+/// unchanged. Shared by the Documentation view and presentations so relative
+/// repository links resolve the same way in both.
+fn fix_link_tag<'a>(
+    tag: pulldown_cmark::Tag<'a>,
+    namespace: &str,
+    repo: &str,
+    base_dir: &str,
+) -> pulldown_cmark::Tag<'a> {
+    match tag {
+        pulldown_cmark::Tag::Link {
+            link_type,
+            dest_url,
+            title,
+            id,
+        } => {
+            let dest_url = match rewrite_markdown_link(namespace, repo, base_dir, &dest_url) {
+                Some(url) => url.into(),
+                None => dest_url,
+            };
+            pulldown_cmark::Tag::Link {
+                link_type,
+                dest_url,
+                title,
+                id,
+            }
+        }
+        other => other,
+    }
+}
+
 /// Renders markdown to HTML. `base_dir` is the repository-relative directory of
 /// the file being rendered and anchors every relative link it contains.
 fn markdown_to_html(markdown: &str, namespace: &str, repo: &str, base_dir: &str) -> String {
@@ -794,32 +833,34 @@ fn markdown_to_html(markdown: &str, namespace: &str, repo: &str, base_dir: &str)
     // Process events to fix relative links
     let parser = parser.map(|event| match event {
         Event::Html(text) | Event::InlineHtml(text) => Event::Text(text),
-        Event::Start(tag) => {
-            // Fix relative links in markdown
-            let fixed_tag = match tag {
-                pulldown_cmark::Tag::Link {
-                    link_type,
-                    dest_url,
-                    title,
-                    id,
-                } => {
-                    let fixed_dest =
-                        match rewrite_markdown_link(namespace, repo, base_dir, &dest_url) {
-                            Some(url) => url.into(),
-                            None => dest_url,
-                        };
-                    pulldown_cmark::Tag::Link {
-                        link_type,
-                        dest_url: fixed_dest,
-                        title,
-                        id,
-                    }
-                }
-                _ => tag,
-            };
-            Event::Start(fixed_tag)
-        }
-        _ => event,
+        Event::Start(tag) => Event::Start(fix_link_tag(tag, namespace, repo, base_dir)),
+        other => other,
+    });
+
+    let mut html_output = String::new();
+    html::push_html(&mut html_output, parser);
+    html_output
+}
+
+/// Renders a presentation slide. Mustache template variables are substituted
+/// first; relative links are then anchored to the directory that holds the
+/// slide's source file, so they open the repository document instead of
+/// resolving beneath the `/slide/` URL and 404ing.
+fn render_slide_markdown(
+    content: &str,
+    namespace: &str,
+    repo: &str,
+    file: &str,
+    vars: &HashMap<String, String>,
+) -> String {
+    let replaced = md::replace_mustache(content, vars);
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_TABLES);
+    let base_dir = parent_path(file);
+
+    let parser = Parser::new_ext(&replaced, options).map(|event| match event {
+        Event::Start(tag) => Event::Start(fix_link_tag(tag, namespace, repo, base_dir)),
+        other => other,
     });
 
     let mut html_output = String::new();
@@ -1302,13 +1343,24 @@ fn render_content_file(namespace: &str, repo: &str, path: &str, bytes: &[u8]) ->
     }
 }
 
-fn load_present_slides(handle: &RepoHandle, present_config: &PresentConfig) -> Vec<PresentSlide> {
+fn load_present_slides(
+    handle: &RepoHandle,
+    present_config: &PresentConfig,
+    namespace: &str,
+    repo: &str,
+) -> Vec<PresentSlide> {
     present_config
         .files
         .iter()
         .filter_map(|file| {
             let content = handle.read_file(file).ok()??;
-            let html = md::process_markdown(&content, &present_config.template_vars);
+            let html = render_slide_markdown(
+                &content,
+                namespace,
+                repo,
+                file,
+                &present_config.template_vars,
+            );
             Some(PresentSlide { html })
         })
         .collect()
@@ -1684,6 +1736,32 @@ mod tests {
         assert!(html.contains("href=\"/other\""), "{html}");
         assert!(html.contains("href=\"mailto:a@b.com\""), "{html}");
         assert!(html.contains("href=\"#here\""), "{html}");
+    }
+
+    #[test]
+    fn test_slide_markdown_anchors_relative_links_to_the_slide_directory() {
+        let md = "See [next](second.md), [chart](img/chart.png) and [site](https://example.com).";
+        let html = render_slide_markdown(md, "ns", "repo", "slides/first.md", &HashMap::new());
+        assert!(html.contains("/ns/repo/md/slides/second.md"), "{html}");
+        assert!(
+            html.contains("/ns/repo/content/slides/img/chart.png"),
+            "{html}"
+        );
+        assert!(html.contains("href=\"https://example.com\""), "{html}");
+    }
+
+    #[test]
+    fn test_slide_markdown_substitutes_template_variables() {
+        let mut vars = HashMap::new();
+        vars.insert("author".to_string(), "Jane".to_string());
+        let html = render_slide_markdown(
+            "# Talk by {{author}}",
+            "ns",
+            "repo",
+            "slides/intro.md",
+            &vars,
+        );
+        assert!(html.contains("Talk by Jane"), "{html}");
     }
 
     #[test]
