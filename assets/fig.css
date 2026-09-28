@@ -1,6 +1,6 @@
 /* Fig — warm minimal design system: autumn mulberry fields, blush-rose interaction.
-   Implements DESIGN.md and nothing else. Raw colour values appear only in the
-   :root token block below; every other rule references var(--fig-*). */
+   Raw colour values appear only in the :root token blocks below; every other
+   rule references var(--fig-*). */
 
 /* ---- 1. Tokens ---------------------------------------------------------- */
 
@@ -93,6 +93,33 @@
     --fig-dur-deliberate: 320ms;
     --fig-ease-out: cubic-bezier(0.2, 0, 0, 1);
     --fig-ease-emphasis: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:root[data-fig-theme="light"] {
+    color-scheme: light;
+
+    /* Warm paper and dark mulberry ink stay legible on projected displays. */
+    --fig-void: #ffffff;
+    --fig-surface-0: #faf7f4;
+    --fig-surface-1: #ffffff;
+    --fig-surface-2: #f3eae7;
+    --fig-surface-3: #ece0dc;
+
+    --fig-ink-primary: #29191f;
+    --fig-ink-secondary: #49383e;
+    --fig-ink-tertiary: #66545b;
+
+    --fig-rule: #d6c6c5;
+    --fig-rule-strong: #8d7078;
+
+    --fig-accent-700: #70283e;
+    --fig-accent-500: #973b55;
+    --fig-accent-300: #ac4b63;
+    --fig-accent-100: #f9e9e8;
+
+    --fig-signal-danger: #a33930;
+    --fig-signal-ok: #346538;
+    --fig-signal-warn: #845013;
 }
 
 @media (min-width: 48rem) {
@@ -237,9 +264,16 @@ body.fig-shell {
 .fig-nav {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: flex-start;
     gap: var(--fig-nav-gap);
     min-inline-size: 0;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+}
+
+.fig-nav::-webkit-scrollbar {
+    display: none;
 }
 
 /* Masthead nav items are inline text links (Section 8 target-size exception):
@@ -251,6 +285,23 @@ body.fig-shell {
 .fig-nav form {
     display: flex;
     margin: 0;
+}
+
+.fig-theme-toggle {
+    flex: 0 0 var(--fig-control-h);
+    inline-size: var(--fig-control-h);
+    padding-inline: 0;
+    font-size: var(--fig-t-body-lg);
+    letter-spacing: 0;
+}
+
+.fig-theme-toggle .fig-theme-light,
+:root[data-fig-theme="light"] .fig-theme-toggle .fig-theme-dark {
+    display: none;
+}
+
+:root[data-fig-theme="light"] .fig-theme-toggle .fig-theme-light {
+    display: inline;
 }
 
 .fig-nav-user {
@@ -1555,7 +1606,7 @@ body.fig-shell {
 
 .fig-present:fullscreen {
     min-block-size: 100dvh;
-    background-color: var(--fig-void);
+    background-color: var(--fig-surface-0);
 }
 
 .fig-present:fullscreen .fig-present-stage {

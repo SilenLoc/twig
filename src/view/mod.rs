@@ -29,6 +29,7 @@ pub fn render_layout(
                     }
                 }
                 link rel="icon" type="image/svg+xml" href="/assets/fig.svg";
+                script src="/assets/theme.js" {}
                 link rel="preconnect" href="https://fonts.googleapis.com";
                 link rel="preconnect" href="https://fonts.gstatic.com" crossorigin;
                 link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&display=swap";
@@ -47,6 +48,7 @@ pub fn render_layout(
                     div class="fig-page" {
                         a class="fig-wordmark" href="/" { "Fig" }
                         nav aria-label="Primary" class="fig-nav" {
+                            (render_theme_toggle())
                             @match username {
                                 Some(name) => {
                                     span class="fig-nav-user" { (name) }
@@ -83,6 +85,16 @@ pub fn render_layout(
                     }
                 }
             }
+        }
+    }
+}
+
+pub fn render_theme_toggle() -> maud::Markup {
+    maud::html! {
+        button class="fig-btn fig-btn--quiet fig-theme-toggle" type="button"
+            aria-label="Toggle light and dark mode" title="Toggle light and dark mode" {
+            span class="fig-theme-dark" aria-hidden="true" { "☀" }
+            span class="fig-theme-light" aria-hidden="true" { "☾" }
         }
     }
 }
@@ -218,6 +230,19 @@ mod tests {
             index_of(&html, "/assets/t.css") < index_of(&html, "/assets/fig.css"),
             "fig.css must override t.css: {html}"
         );
+    }
+
+    #[test]
+    fn test_layout_offers_theme_switch_before_rendering_styles() {
+        for username in [Some("testuser"), None] {
+            let html = layout_html(username);
+            assert!(html.contains("Toggle light and dark mode"), "{html}");
+            assert!(html.contains("fig-theme-toggle"), "{html}");
+            assert!(
+                index_of(&html, "/assets/theme.js") < index_of(&html, "/assets/fig.css"),
+                "restore the theme before the stylesheet paints: {html}"
+            );
+        }
     }
 
     #[test]

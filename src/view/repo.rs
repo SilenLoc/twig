@@ -1320,6 +1320,7 @@ fn render_slide_content(
                 span class="fig-present-count" aria-live="polite" {
                     (slide_counter(current_index, slide_count))
                 }
+                (super::render_theme_toggle())
                 button id="fullscreen-toggle" class="fig-btn fig-btn--quiet" type="button" {
                     "Fullscreen"
                 }
@@ -2000,6 +2001,11 @@ mod tests {
     fn test_presentation_controls_are_labelled_and_bounded() {
         let deck = slides(3);
         let html = render_slide_content("acme", "my-project", 0, &deck).into_string();
+
+        assert!(
+            html.contains("fig-theme-toggle"),
+            "the theme switch must remain accessible in fullscreen and after slide swaps: {html}"
+        );
 
         assert!(
             html.contains(
