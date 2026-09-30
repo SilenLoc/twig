@@ -113,7 +113,6 @@ fn render_docs_tab(requested_slug: Option<&str>) -> maud::Markup {
         div class="twig-rail-shell" {
             (render_docs_menu(&docs, active_slug))
             div class="twig-rail-body twig-stack" {
-                h2 class="twig-title" { (active_page.title) }
                 div class="twig-md twig-md--prose" {
                     (maud::PreEscaped(html))
                 }
@@ -279,7 +278,7 @@ mod tests {
         for hook in [
             "class=\"twig-rail-shell\"",
             "class=\"twig-rail-body twig-stack\"",
-            "<h2 class=\"twig-title\">",
+            "<h1>API</h1>",
             "class=\"twig-md twig-md--prose\"",
         ] {
             assert!(html.contains(hook), "missing {hook}: {html}");

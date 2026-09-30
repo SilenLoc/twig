@@ -1,3 +1,5 @@
+# Environment Variables
+
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `PORT` | HTTP server port (binds on `0.0.0.0`) | `80` |
