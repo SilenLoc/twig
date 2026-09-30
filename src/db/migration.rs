@@ -205,7 +205,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_tables_runs_all_migrations() {
-        let db_path = format!("/tmp/test_fig_migrations_{}.db", uuid::Uuid::new_v4());
+        let db_path = format!("/tmp/test_twig_migrations_{}.db", uuid::Uuid::new_v4());
         let db = Database::new(&db_path);
 
         let result = db.create_tables().await;

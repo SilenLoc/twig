@@ -80,13 +80,13 @@ mod tests {
 
     #[test]
     fn test_database_new_stores_path() {
-        let db = Database::new("/tmp/test_fig_new.db");
-        assert_eq!(db.db_path, "/tmp/test_fig_new.db");
+        let db = Database::new("/tmp/test_twig_new.db");
+        assert_eq!(db.db_path, "/tmp/test_twig_new.db");
     }
 
     #[tokio::test]
     async fn test_database_conn_creates_file() {
-        let db_path = format!("/tmp/test_fig_conn_{}.db", uuid::Uuid::new_v4());
+        let db_path = format!("/tmp/test_twig_conn_{}.db", uuid::Uuid::new_v4());
         let db = Database::new(&db_path);
 
         let conn = db.conn().await;
@@ -102,7 +102,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_database_init_tables_succeeds() {
-        let db_path = format!("/tmp/test_fig_init_{}.db", uuid::Uuid::new_v4());
+        let db_path = format!("/tmp/test_twig_init_{}.db", uuid::Uuid::new_v4());
         let db = Database::new(&db_path);
 
         let result = db.init_tables().await;

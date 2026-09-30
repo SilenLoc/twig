@@ -1,15 +1,15 @@
 (function () {
     var root = document.documentElement;
-    var key = "fig-theme";
+    var key = "twig-theme";
 
     function applyTheme(theme) {
         if (theme === "light") {
-            root.dataset.figTheme = "light";
+            root.dataset.twigTheme = "light";
         } else {
-            delete root.dataset.figTheme;
+            delete root.dataset.twigTheme;
         }
 
-        document.querySelectorAll(".fig-theme-toggle").forEach(function (button) {
+        document.querySelectorAll(".twig-theme-toggle").forEach(function (button) {
             var label = theme === "light" ? "Switch to dark mode" : "Switch to light mode";
             button.setAttribute("aria-label", label);
             button.setAttribute("title", label);
@@ -26,9 +26,9 @@
     document.addEventListener("click", function (event) {
         var target = event.target;
         if (!(target instanceof Element)) return;
-        if (!target.closest(".fig-theme-toggle")) return;
+        if (!target.closest(".twig-theme-toggle")) return;
 
-        var theme = root.dataset.figTheme === "light" ? "dark" : "light";
+        var theme = root.dataset.twigTheme === "light" ? "dark" : "light";
         applyTheme(theme);
         try {
             localStorage.setItem(key, theme);

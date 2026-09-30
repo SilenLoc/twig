@@ -63,7 +63,7 @@ mod tests {
     use crate::auth::Invite;
 
     async fn setup_db() -> (Database, String) {
-        let db_path = format!("/tmp/test_fig_invites_{}.db", uuid::Uuid::new_v4());
+        let db_path = format!("/tmp/test_twig_invites_{}.db", uuid::Uuid::new_v4());
         let db = Database::new(&db_path);
         db.init_tables().await.expect("init tables");
         (db, db_path)

@@ -77,7 +77,7 @@ mod tests {
 
     #[tokio::test]
     async fn table_reader_lists_tables_and_pages_values() {
-        let db_path = format!("/tmp/test_fig_database_view_{}.db", uuid::Uuid::new_v4());
+        let db_path = format!("/tmp/test_twig_database_view_{}.db", uuid::Uuid::new_v4());
         let db = Database::new(&db_path);
         db.init_tables().await.expect("initialize tables");
         db.conn()

@@ -13,14 +13,14 @@ mod tests {
             ("127.0.0.1".to_string(), 8080),
             "debug".to_string(),
             "/tmp/test_git".to_string(),
-            format!("/tmp/test_fig_health_{}.db", uuid::Uuid::new_v4()),
+            format!("/tmp/test_twig_health_{}.db", uuid::Uuid::new_v4()),
             "secure".to_string(),
             true,
             1.0,
         );
 
         let db = Database::new(config.db_path());
-        let auth_state = web::Data::new(auth::FigContext::new(db, "secure".to_string()));
+        let auth_state = web::Data::new(auth::TwigContext::new(db, "secure".to_string()));
         // Initialize database synchronously (we are already inside an async test runtime)
         auth_state.db().init_tables().await.expect("init tables");
         auth_state.set_initialized();
@@ -69,14 +69,14 @@ mod tests {
             ("127.0.0.1".to_string(), 8080),
             "debug".to_string(),
             project_root.to_string(),
-            format!("/tmp/test_fig_service_{}.db", uuid::Uuid::new_v4()),
+            format!("/tmp/test_twig_service_{}.db", uuid::Uuid::new_v4()),
             "secure".to_string(),
             true,
             1.0,
         );
 
         let db = Database::new(config.db_path());
-        let auth_state = web::Data::new(auth::FigContext::new(db, "secure".to_string()));
+        let auth_state = web::Data::new(auth::TwigContext::new(db, "secure".to_string()));
         // Initialize database synchronously (we are already inside an async test runtime)
         auth_state.db().init_tables().await.expect("init tables");
         auth_state.set_initialized();
@@ -118,7 +118,7 @@ mod tests {
         assert!(resp.status().is_success());
         let body = test::read_body(resp).await;
         let body_str = String::from_utf8(body.to_vec()).unwrap();
-        assert!(body_str.contains("<title>Get Signup Invite · Fig</title>"));
+        assert!(body_str.contains("<title>Get Signup Invite · Twig</title>"));
         assert!(body_str.contains("Get Signup Invite"));
         assert!(body_str.contains("API Key"));
     }
@@ -131,7 +131,7 @@ mod tests {
         assert!(resp.status().is_success());
         let body = test::read_body(resp).await;
         let body_str = String::from_utf8(body.to_vec()).unwrap();
-        assert!(body_str.contains("<title>Create Account · Fig</title>"));
+        assert!(body_str.contains("<title>Create Account · Twig</title>"));
         assert!(body_str.contains("Create Account"));
         assert!(body_str.contains("Signup Invite"));
     }
@@ -144,7 +144,7 @@ mod tests {
         assert!(resp.status().is_success());
         let body = test::read_body(resp).await;
         let body_str = String::from_utf8(body.to_vec()).unwrap();
-        assert!(body_str.contains("<title>Log In · Fig</title>"));
+        assert!(body_str.contains("<title>Log In · Twig</title>"));
         assert!(body_str.contains("Log In"));
         assert!(body_str.contains("Username"));
     }
@@ -157,7 +157,7 @@ mod tests {
         assert!(resp.status().is_success());
         let body = test::read_body(resp).await;
         let body_str = String::from_utf8(body.to_vec()).unwrap();
-        assert!(body_str.contains("<title>Create Namespace · Fig</title>"));
+        assert!(body_str.contains("<title>Create Namespace · Twig</title>"));
         assert!(body_str.contains("Create Namespace"));
     }
 
@@ -238,7 +238,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_tree_hub_and_admin_data_view_are_gated_and_paginated() {
-        let db_path = format!("/tmp/test_fig_admin_data_{}.db", uuid::Uuid::new_v4());
+        let db_path = format!("/tmp/test_twig_admin_data_{}.db", uuid::Uuid::new_v4());
         let server = config::Server::new(
             ("127.0.0.1".to_string(), 8080),
             "debug".to_string(),
@@ -252,7 +252,7 @@ mod tests {
         .with_test_user(Some("testadmin".to_string()));
         let db = Database::new(&db_path);
         db.init_tables().await.expect("initialize tables");
-        let auth_state = web::Data::new(auth::FigContext::new(db.clone(), "secure".to_string()));
+        let auth_state = web::Data::new(auth::TwigContext::new(db.clone(), "secure".to_string()));
 
         let admin = auth::create_user(
             "dbadmin".to_string(),
@@ -409,7 +409,7 @@ mod tests {
         let body = test::read_body(resp).await;
         let body_str = String::from_utf8(body.to_vec()).unwrap();
         assert!(body_str.contains("<!DOCTYPE html>"));
-        assert!(body_str.contains("<title>Account · Fig</title>"));
+        assert!(body_str.contains("<title>Account · Twig</title>"));
         assert!(body_str.contains("href=\"/auth/login\""));
         assert!(body_str.contains("Session expired"));
     }
@@ -424,7 +424,7 @@ mod tests {
         let body = test::read_body(resp).await;
         let body_str = String::from_utf8(body.to_vec()).unwrap();
         assert!(body_str.contains("<!DOCTYPE html>"));
-        assert!(body_str.contains("<title>Account · Fig</title>"));
+        assert!(body_str.contains("<title>Account · Twig</title>"));
         assert!(body_str.contains("href=\"/auth/login\""));
         assert!(body_str.contains("Not logged in"));
     }
@@ -523,7 +523,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_move_repo_between_owned_namespaces() {
-        let root = format!("/tmp/test_fig_move_repo_{}", uuid::Uuid::new_v4());
+        let root = format!("/tmp/test_twig_move_repo_{}", uuid::Uuid::new_v4());
         let app = create_test_service_in(&root).await;
         let session = signup_and_login(&app, "moveowner").await;
         create_namespace(&app, session.clone(), "source").await;
@@ -553,7 +553,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_move_repo_rejects_namespace_owned_by_another_user() {
-        let root = format!("/tmp/test_fig_move_denied_{}", uuid::Uuid::new_v4());
+        let root = format!("/tmp/test_twig_move_denied_{}", uuid::Uuid::new_v4());
         let app = create_test_service_in(&root).await;
         let owner_session = signup_and_login(&app, "sourceowner").await;
         create_namespace(&app, owner_session.clone(), "ownedsource").await;
@@ -586,8 +586,151 @@ mod tests {
     }
 
     #[actix_web::test]
+    async fn test_rename_repo_within_owned_namespace() {
+        let root = format!("/tmp/test_twig_rename_repo_{}", uuid::Uuid::new_v4());
+        let app = create_test_service_in(&root).await;
+        let session = signup_and_login(&app, "renameowner").await;
+        create_namespace(&app, session.clone(), "acme").await;
+
+        let source = std::path::Path::new(&root).join("acme/old-name");
+        std::fs::create_dir_all(&source).unwrap();
+        crate::git::repo::bare_init(&source, "main", "Test", "test@example.com").unwrap();
+
+        let req = test::TestRequest::post()
+            .uri("/settings/rename-repo")
+            .cookie(session)
+            .set_form([
+                ("namespace", "acme"),
+                ("repo_name", "old-name"),
+                ("new_name", "new-name"),
+            ])
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert!(!source.exists());
+        let destination = std::path::Path::new(&root).join("acme/new-name");
+        assert!(git2::Repository::open(destination).is_ok());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[actix_web::test]
+    async fn test_rename_repo_rejects_foreign_namespace_and_existing_name() {
+        let root = format!("/tmp/test_twig_rename_denied_{}", uuid::Uuid::new_v4());
+        let app = create_test_service_in(&root).await;
+        let owner_session = signup_and_login(&app, "renameowner").await;
+        create_namespace(&app, owner_session.clone(), "owned").await;
+        let other_session = signup_and_login(&app, "renameother").await;
+        create_namespace(&app, other_session, "foreign").await;
+
+        let repo = std::path::Path::new(&root).join("owned/repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        crate::git::repo::bare_init(&repo, "main", "Test", "test@example.com").unwrap();
+        let taken = std::path::Path::new(&root).join("owned/taken");
+        std::fs::create_dir_all(&taken).unwrap();
+        crate::git::repo::bare_init(&taken, "main", "Test", "test@example.com").unwrap();
+
+        // Another user's namespace is off limits.
+        let req = test::TestRequest::post()
+            .uri("/settings/rename-repo")
+            .cookie(owner_session.clone())
+            .set_form([
+                ("namespace", "foreign"),
+                ("repo_name", "repo"),
+                ("new_name", "renamed"),
+            ])
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+        // Renaming onto an existing repository name conflicts.
+        let req = test::TestRequest::post()
+            .uri("/settings/rename-repo")
+            .cookie(owner_session)
+            .set_form([
+                ("namespace", "owned"),
+                ("repo_name", "repo"),
+                ("new_name", "taken"),
+            ])
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::CONFLICT);
+        assert!(repo.exists());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[actix_web::test]
+    async fn test_rename_namespace_moves_directory_and_record() {
+        let root = format!("/tmp/test_twig_rename_ns_{}", uuid::Uuid::new_v4());
+        let app = create_test_service_in(&root).await;
+        let session = signup_and_login(&app, "nsrenameowner").await;
+        create_namespace(&app, session.clone(), "oldns").await;
+
+        let source = std::path::Path::new(&root).join("oldns");
+        let repo = source.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        crate::git::repo::bare_init(&repo, "main", "Test", "test@example.com").unwrap();
+
+        let req = test::TestRequest::post()
+            .uri("/settings/rename-namespace")
+            .cookie(session.clone())
+            .set_form([("namespace", "oldns"), ("new_name", "newns")])
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert!(!source.exists());
+        assert!(git2::Repository::open(std::path::Path::new(&root).join("newns/repo")).is_ok());
+
+        // The database record moved too: renaming again from the new name works.
+        let req = test::TestRequest::post()
+            .uri("/settings/rename-namespace")
+            .cookie(session)
+            .set_form([("namespace", "newns"), ("new_name", "final")])
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert!(std::path::Path::new(&root).join("final/repo").is_dir());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[actix_web::test]
+    async fn test_rename_namespace_rejects_foreign_owner_and_existing_name() {
+        let root = format!("/tmp/test_twig_rename_ns_denied_{}", uuid::Uuid::new_v4());
+        let app = create_test_service_in(&root).await;
+        let owner_session = signup_and_login(&app, "nsrenameowner").await;
+        create_namespace(&app, owner_session.clone(), "ownedns").await;
+        create_namespace(&app, owner_session.clone(), "taken").await;
+        let other_session = signup_and_login(&app, "nsrenameother").await;
+        create_namespace(&app, other_session, "foreignns").await;
+
+        // Another user's namespace is off limits.
+        let req = test::TestRequest::post()
+            .uri("/settings/rename-namespace")
+            .cookie(owner_session.clone())
+            .set_form([("namespace", "foreignns"), ("new_name", "renamedns")])
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+        assert!(std::path::Path::new(&root).join("foreignns").is_dir());
+
+        // Renaming onto an existing namespace name conflicts.
+        let req = test::TestRequest::post()
+            .uri("/settings/rename-namespace")
+            .cookie(owner_session)
+            .set_form([("namespace", "ownedns"), ("new_name", "taken")])
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::CONFLICT);
+        assert!(std::path::Path::new(&root).join("ownedns").is_dir());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[actix_web::test]
     async fn test_cannot_create_namespace_with_reserved_prefix() {
-        let root = format!("/tmp/test_fig_ns_reserved_{}", uuid::Uuid::new_v4());
+        let root = format!("/tmp/test_twig_ns_reserved_{}", uuid::Uuid::new_v4());
         let app = create_test_service_in(&root).await;
         let session = signup_and_login(&app, "underscoreuser").await;
 
@@ -631,7 +774,7 @@ mod tests {
         use std::path::PathBuf;
 
         let id = uuid::Uuid::new_v4().to_string();
-        let root = PathBuf::from(format!("/tmp/fig_trav_root_{id}"));
+        let root = PathBuf::from(format!("/tmp/twig_trav_root_{id}"));
         let repo_dir = root.join("public").join("repo");
         std::fs::create_dir_all(&repo_dir).unwrap();
 
@@ -639,7 +782,7 @@ mod tests {
             .expect("bare_init failed");
 
         // Secret file outside the project root, reachable only via traversal
-        let outside = PathBuf::from(format!("/tmp/fig_trav_secret_{id}"));
+        let outside = PathBuf::from(format!("/tmp/twig_trav_secret_{id}"));
         std::fs::create_dir_all(&outside).unwrap();
         std::fs::write(
             outside.join("secret.txt"),
@@ -650,7 +793,7 @@ mod tests {
         TraversalFixture {
             root,
             outside,
-            db_path: format!("/tmp/fig_trav_{id}.db"),
+            db_path: format!("/tmp/twig_trav_{id}.db"),
         }
     }
 
@@ -672,7 +815,7 @@ mod tests {
         );
 
         let db = Database::new(config.db_path());
-        let auth_state = web::Data::new(auth::FigContext::new(db, "secure".to_string()));
+        let auth_state = web::Data::new(auth::TwigContext::new(db, "secure".to_string()));
         auth_state.db().init_tables().await.expect("init tables");
         auth_state.set_initialized();
 
@@ -714,8 +857,8 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         // Positive control: repo's own file is listed
         assert!(
-            body.contains(".fig.toml"),
-            "expected .fig.toml in listing: {body}"
+            body.contains(".twig.toml"),
+            "expected .twig.toml in listing: {body}"
         );
         assert!(!body.contains(SECRET_MARKER));
     }
@@ -725,15 +868,15 @@ mod tests {
         let fixture = setup_traversal_fixture();
         let app = create_traversal_service(&fixture).await;
 
-        let (status, body) = body_of(&app, "/public/repo/content/.fig.toml").await;
+        let (status, body) = body_of(&app, "/public/repo/content/.twig.toml").await;
         assert_eq!(status, StatusCode::OK);
-        assert!(body.contains("Created with Fig"), "{body}");
+        assert!(body.contains("Created with Twig"), "{body}");
         assert!(
-            body.contains(r#"<nav class="fig-crumbs fig-crumbs--page" aria-label="Breadcrumb">"#),
+            body.contains(r#"<nav class="twig-crumbs twig-crumbs--page" aria-label="Breadcrumb">"#),
             "direct file views must retain the repository breadcrumb: {body}"
         );
         assert!(
-            body.contains(r#"<h1 class="fig-crumb-current" aria-current="page">repo</h1>"#),
+            body.contains(r#"<h1 class="twig-crumb-current" aria-current="page">repo</h1>"#),
             "direct file views must identify the repository in the breadcrumb: {body}"
         );
         assert!(!body.contains(SECRET_MARKER));
@@ -795,13 +938,13 @@ mod tests {
         let app = create_traversal_service(&fixture).await;
 
         for uri in [
-            "/public/repo/content/.fig.toml%00",
-            "/public/repo/content/%00.fig.toml",
+            "/public/repo/content/.twig.toml%00",
+            "/public/repo/content/%00.twig.toml",
             "/public/repo/content/a%00b",
         ] {
             let (_status, body) = body_of(&app, uri).await;
             assert!(
-                !body.contains("Created with Fig") || uri.contains(".fig"),
+                !body.contains("Created with Twig") || uri.contains(".twig"),
                 "unexpected content served for {uri}",
             );
             assert!(!body.contains(SECRET_MARKER), "leak via {uri}");
@@ -837,15 +980,15 @@ mod tests {
         let app = create_traversal_service(&fixture).await;
 
         // Normal access to a public path still works...
-        let (status, body) = body_of(&app, "/public/repo/content/.fig.toml").await;
+        let (status, body) = body_of(&app, "/public/repo/content/.twig.toml").await;
         assert_eq!(status, StatusCode::OK);
-        assert!(body.contains("Created with Fig"));
+        assert!(body.contains("Created with Twig"));
 
         // ...but dot-segment navigation must not escape into other namespaces
         let (_status, body) =
-            body_of(&app, "/public/repo/content/../../other/vault/.fig.toml").await;
+            body_of(&app, "/public/repo/content/../../other/vault/.twig.toml").await;
         assert!(
-            !body.contains("Created with Fig"),
+            !body.contains("Created with Twig"),
             "escaped into sibling namespace: {body}"
         );
         assert!(body.contains("Path not found"), "{body}");
@@ -863,7 +1006,7 @@ mod tests {
             .read()
             .unwrap();
         let tree = xshell::cmd!(sh, "git mktree")
-            .stdin(format!("100644 blob {blob}\t.fig.toml\n"))
+            .stdin(format!("100644 blob {blob}\t.twig.toml\n"))
             .read()
             .unwrap();
         let commit = xshell::cmd!(sh, "git commit-tree {tree} -m 'make private'")
@@ -874,9 +1017,9 @@ mod tests {
             .unwrap();
     }
 
-    /// Builds a bare repository whose tree contains the given `.fig.toml` and,
+    /// Builds a bare repository whose tree contains the given `.twig.toml` and,
     /// when non-empty, a `paper/` directory holding the supplied pages.
-    fn init_repo_with_paper(repo_path: &std::path::Path, fig: &str, paper_pages: &[(&str, &str)]) {
+    fn init_repo_with_paper(repo_path: &std::path::Path, twig: &str, paper_pages: &[(&str, &str)]) {
         use std::fmt::Write as _;
 
         std::fs::create_dir_all(repo_path).unwrap();
@@ -891,8 +1034,8 @@ mod tests {
                 .unwrap()
         };
 
-        let fig_blob = hash(fig);
-        let mut entries = format!("100644 blob {fig_blob}\t.fig.toml\n");
+        let twig_blob = hash(twig);
+        let mut entries = format!("100644 blob {twig_blob}\t.twig.toml\n");
 
         if !paper_pages.is_empty() {
             let mut paper_entries = String::new();
@@ -934,7 +1077,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_paper_tab_renders_lazily_loaded_pages() {
-        let root = format!("/tmp/test_fig_paper_{}", uuid::Uuid::new_v4());
+        let root = format!("/tmp/test_twig_paper_{}", uuid::Uuid::new_v4());
         let app = create_test_service_in(&root).await;
         init_repo_with_paper(
             &std::path::Path::new(&root).join("pub/book"),
@@ -951,7 +1094,7 @@ mod tests {
 
         let body = get_body(&app, "/pub/book/paper").await;
         assert!(body.contains("paper-container"), "{body}");
-        assert!(body.contains("data-fig-paper-font=\"sans\""), "{body}");
+        assert!(body.contains("data-twig-paper-font=\"sans\""), "{body}");
         assert!(
             body.contains(r#"hx-trigger="revealed""#),
             "pages must lazy load on scroll: {body}"
@@ -971,7 +1114,7 @@ mod tests {
             "headings are anchored: {body}"
         );
 
-        let body = get_body(&app, "/pub/book/paper/.fig.toml").await;
+        let body = get_body(&app, "/pub/book/paper/.twig.toml").await;
         assert!(
             body.contains("Paper page not found."),
             "files outside the paper dir are refused: {body}"
@@ -982,7 +1125,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_legacy_tab_url_redirects_to_the_tab_route() {
-        let root = format!("/tmp/test_fig_tab_redirect_{}", uuid::Uuid::new_v4());
+        let root = format!("/tmp/test_twig_tab_redirect_{}", uuid::Uuid::new_v4());
         let app = create_test_service_in(&root).await;
         init_repo_with_paper(
             &std::path::Path::new(&root).join("pub/book"),
@@ -1019,8 +1162,8 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn test_invalid_fig_toml_shows_a_diagnostic() {
-        let root = format!("/tmp/test_fig_badconfig_{}", uuid::Uuid::new_v4());
+    async fn test_invalid_twig_toml_shows_a_diagnostic() {
+        let root = format!("/tmp/test_twig_badconfig_{}", uuid::Uuid::new_v4());
         let app = create_test_service_in(&root).await;
         init_repo_with_paper(
             &std::path::Path::new(&root).join("pub/broken"),
@@ -1036,7 +1179,7 @@ mod tests {
         );
         assert!(body.contains("help: fix the syntax"), "{body}");
         assert!(
-            body.contains(".fig.toml"),
+            body.contains(".twig.toml"),
             "the offending file is named: {body}"
         );
 
@@ -1054,7 +1197,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_private_repository_ui_visibility_gated_on_login() {
-        let root = format!("/tmp/test_fig_private_ui_{}", uuid::Uuid::new_v4());
+        let root = format!("/tmp/test_twig_private_ui_{}", uuid::Uuid::new_v4());
         let app = create_test_service_in(&root).await;
         let owner_session = signup_and_login(&app, "privowner").await;
         create_namespace(&app, owner_session.clone(), "privspace").await;
@@ -1138,7 +1281,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_private_repository_git_read_gated_behind_auth() {
-        let root = format!("/tmp/test_fig_private_git_{}", uuid::Uuid::new_v4());
+        let root = format!("/tmp/test_twig_private_git_{}", uuid::Uuid::new_v4());
         let app = create_test_service_in(&root).await;
         let owner_session = signup_and_login(&app, "gitprivowner").await;
         let other_session = signup_and_login(&app, "gitprivother").await;
@@ -1233,13 +1376,13 @@ mod tests {
             Response = actix_web::dev::ServiceResponse,
             Error = actix_web::Error,
         >,
-        web::Data<auth::FigContext>,
+        web::Data<auth::TwigContext>,
     ) {
         let mut config = config::Server::new(
             ("127.0.0.1".to_string(), 8080),
             "debug".to_string(),
             "/tmp/test_git".to_string(),
-            format!("/tmp/test_fig_test_user_{}.db", uuid::Uuid::new_v4()),
+            format!("/tmp/test_twig_test_user_{}.db", uuid::Uuid::new_v4()),
             "secure".to_string(),
             true,
             1.0,
@@ -1249,7 +1392,7 @@ mod tests {
         }
 
         let db = Database::new(config.db_path());
-        let auth_state = web::Data::new(auth::FigContext::new(db, "secure".to_string()));
+        let auth_state = web::Data::new(auth::TwigContext::new(db, "secure".to_string()));
         auth_state.db().init_tables().await.expect("init tables");
         auth_state.set_initialized();
 

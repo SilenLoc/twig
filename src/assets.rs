@@ -3,12 +3,12 @@ use actix_web::{HttpRequest, HttpResponse, Responder, get, http::header::CACHE_C
 use crate::config;
 
 const TCSS: &str = include_str!("../assets/t.css");
-const FIGCSS: &str = include_str!("../assets/fig.css");
+const TWIGCSS: &str = include_str!("../assets/twig.css");
 const THEME_JS: &str = include_str!("../assets/theme.js");
 const HTMX: &str = include_str!("../assets/h.js");
 const HX_LIVE: &str = include_str!("../assets/hx-live.js");
-const FIG_SVG: &str = include_str!("../assets/fig.svg");
-const FIG_SCHEMA: &str = include_str!("../assets/fig.schema.json");
+const TWIG_SVG: &str = include_str!("../assets/twig.svg");
+const TWIG_SCHEMA: &str = include_str!("../assets/twig.schema.json");
 
 #[get("/assets/{filename:.*}")]
 pub async fn assets(req: HttpRequest, config: web::Data<config::Server>) -> impl Responder {
@@ -19,10 +19,10 @@ pub async fn assets(req: HttpRequest, config: web::Data<config::Server>) -> impl
             .content_type("text/css; charset=utf-8")
             .insert_header((CACHE_CONTROL, config.cache_control().clone()))
             .body(TCSS),
-        "fig.css" => HttpResponse::Ok()
+        "twig.css" => HttpResponse::Ok()
             .content_type("text/css; charset=utf-8")
             .insert_header((CACHE_CONTROL, config.cache_control().clone()))
-            .body(FIGCSS),
+            .body(TWIGCSS),
         "theme.js" => HttpResponse::Ok()
             .content_type("application/javascript; charset=utf-8")
             .insert_header((CACHE_CONTROL, config.cache_control().clone()))
@@ -35,14 +35,14 @@ pub async fn assets(req: HttpRequest, config: web::Data<config::Server>) -> impl
             .content_type("application/javascript; charset=utf-8")
             .insert_header((CACHE_CONTROL, config.cache_control().clone()))
             .body(HX_LIVE),
-        "fig.svg" => HttpResponse::Ok()
+        "twig.svg" => HttpResponse::Ok()
             .content_type("image/svg+xml")
             .insert_header((CACHE_CONTROL, config.cache_control().clone()))
-            .body(FIG_SVG),
-        "fig.schema.json" => HttpResponse::Ok()
+            .body(TWIG_SVG),
+        "twig.schema.json" => HttpResponse::Ok()
             .content_type("application/schema+json; charset=utf-8")
             .insert_header((CACHE_CONTROL, config.cache_control().clone()))
-            .body(FIG_SCHEMA),
+            .body(TWIG_SCHEMA),
         _ => HttpResponse::NotFound().body("Not found"),
     }
 }
@@ -89,21 +89,21 @@ mod tests {
     #[test]
     fn test_asset_constants_are_non_empty() {
         assert!(!TCSS.is_empty(), "t.css should not be empty");
-        assert!(!FIGCSS.is_empty(), "fig.css should not be empty");
+        assert!(!TWIGCSS.is_empty(), "twig.css should not be empty");
         assert!(!THEME_JS.is_empty(), "theme.js should not be empty");
         assert!(!HTMX.is_empty(), "h.js should not be empty");
         assert!(!HX_LIVE.is_empty(), "hx-live.js should not be empty");
-        assert!(!FIG_SVG.is_empty(), "fig.svg should not be empty");
+        assert!(!TWIG_SVG.is_empty(), "twig.svg should not be empty");
         assert!(
-            !FIG_SCHEMA.is_empty(),
-            "fig.schema.json should not be empty"
+            !TWIG_SCHEMA.is_empty(),
+            "twig.schema.json should not be empty"
         );
     }
 
     #[test]
-    fn test_fig_schema_lists_every_config_key() {
+    fn test_twig_schema_lists_every_config_key() {
         let schema: serde_json::Value =
-            serde_json::from_str(FIG_SCHEMA).expect("fig.schema.json must be valid JSON");
+            serde_json::from_str(TWIG_SCHEMA).expect("twig.schema.json must be valid JSON");
         let properties = schema["properties"]
             .as_object()
             .expect("schema must define top-level properties");
@@ -120,8 +120,8 @@ mod tests {
     }
 
     #[test]
-    fn test_fig_css_confines_raw_colour_values_to_the_token_block() {
-        let scanned = css_outside_root_blocks(&css_without_comments(FIGCSS));
+    fn test_twig_css_confines_raw_colour_values_to_the_token_block() {
+        let scanned = css_outside_root_blocks(&css_without_comments(TWIGCSS));
         for (offset, _) in scanned.match_indices('#') {
             assert!(
                 !starts_a_hex_colour(&scanned[offset + 1..]),
@@ -132,18 +132,18 @@ mod tests {
         for function in ["rgb(", "rgba(", "hsl(", "hsla("] {
             assert!(
                 !scanned.contains(function),
-                "{function} outside :root; every colour is a var(--fig-*) token"
+                "{function} outside :root; every colour is a var(--twig-*) token"
             );
         }
         assert!(
-            scanned.contains("var(--fig-ink-primary)"),
+            scanned.contains("var(--twig-ink-primary)"),
             "primitives must reference tokens"
         );
     }
 
     #[test]
-    fn test_fig_css_honours_the_depth_and_motion_bans() {
-        let css = css_without_comments(FIGCSS);
+    fn test_twig_css_honours_the_depth_and_motion_bans() {
+        let css = css_without_comments(TWIGCSS);
         for banned in ["box-shadow", "backdrop-filter", "text-shadow", "100vh"] {
             assert!(!css.contains(banned), "{banned} is banned by DESIGN.md");
         }
@@ -166,8 +166,8 @@ mod tests {
     }
 
     #[test]
-    fn test_fig_css_uses_only_the_two_authoritative_breakpoints() {
-        let css = css_without_comments(FIGCSS);
+    fn test_twig_css_uses_only_the_two_authoritative_breakpoints() {
+        let css = css_without_comments(TWIGCSS);
         let marker = "min-width:";
         let widths: Vec<String> = css
             .match_indices(marker)
@@ -177,7 +177,7 @@ mod tests {
                 rest[..end].trim().to_owned()
             })
             .collect();
-        assert!(!widths.is_empty(), "responsive structure lives in fig.css");
+        assert!(!widths.is_empty(), "responsive structure lives in twig.css");
         for width in &widths {
             assert!(
                 width == "48rem" || width == "80rem",
@@ -187,8 +187,8 @@ mod tests {
     }
 
     #[test]
-    fn test_fig_css_drops_the_outgoing_system() {
-        let css = css_without_comments(FIGCSS);
+    fn test_twig_css_drops_the_outgoing_system() {
+        let css = css_without_comments(TWIGCSS);
         for outgoing in ["tf-", "Anton", "Bricolage", "markdown-body"] {
             assert!(!css.contains(outgoing), "{outgoing} is superseded");
         }
@@ -201,7 +201,7 @@ mod tests {
             ("127.0.0.1".to_string(), 8080),
             "debug".to_string(),
             "/srv/git".to_string(),
-            "fig.db".to_string(),
+            "twig.db".to_string(),
             "key".to_string(),
             false,
             1.0,
@@ -231,7 +231,7 @@ mod tests {
             ("127.0.0.1".to_string(), 8080),
             "debug".to_string(),
             "/srv/git".to_string(),
-            "fig.db".to_string(),
+            "twig.db".to_string(),
             "key".to_string(),
             false,
             1.0,
@@ -245,12 +245,12 @@ mod tests {
 
         for (path, expected_type) in [
             ("/assets/t.css", "text/css"),
-            ("/assets/fig.css", "text/css"),
+            ("/assets/twig.css", "text/css"),
             ("/assets/theme.js", "application/javascript"),
             ("/assets/h.js", "application/javascript"),
             ("/assets/hx-live.js", "application/javascript"),
-            ("/assets/fig.svg", "image/svg+xml"),
-            ("/assets/fig.schema.json", "application/schema+json"),
+            ("/assets/twig.svg", "image/svg+xml"),
+            ("/assets/twig.schema.json", "application/schema+json"),
         ] {
             let req = aw_test::TestRequest::get().uri(path).to_request();
             let resp = aw_test::call_service(&app, req).await;
@@ -281,7 +281,7 @@ mod tests {
             ("127.0.0.1".to_string(), 8080),
             "debug".to_string(),
             "/srv/git".to_string(),
-            "fig.db".to_string(),
+            "twig.db".to_string(),
             "key".to_string(),
             false,
             1.0,

@@ -166,7 +166,7 @@ pub fn from_env() -> Server {
         .unwrap_or(80);
     let log_level = std::env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string());
     let project_root = std::env::var("PROJECT_ROOT").unwrap_or_else(|_| "/srv/git".to_string());
-    let db_path = std::env::var("DB_PATH").unwrap_or_else(|_| "fig.db".to_string());
+    let db_path = std::env::var("DB_PATH").unwrap_or_else(|_| "twig.db".to_string());
     let api_key = std::env::var("API_KEY").unwrap_or_default();
     let session_key = std::env::var("SESSION_KEY")
         .ok()
@@ -223,14 +223,14 @@ fn ascii(server: &Server) -> String {
     format!(
         "
 
-        ▐▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▌
-        ▐  ███████╗██╗ ██████╗   ▌
-        ▐  ██╔════╝██║██╔════╝   ▌
-        ▐  █████╗  ██║██║  ███╗  ▌
-        ▐  ██╔══╝  ██║██║   ██║  ▌
-        ▐  ██║     ██║╚██████╔╝  ▌
-        ▐  ╚═╝     ╚═╝ ╚═════╝   ▌
-        ▐▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▌
+        ▐▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▌
+        ▐  ████████╗██╗    ██╗██╗ ██████╗   ▌
+        ▐  ╚══██╔══╝██║    ██║██║██╔════╝   ▌
+        ▐     ██║   ██║ █╗ ██║██║██║  ███╗  ▌
+        ▐     ██║   ██║███╗██║██║██║   ██║  ▌
+        ▐     ██║   ╚███╔███╔╝██║╚██████╔╝  ▌
+        ▐     ╚═╝    ╚══╝╚══╝ ╚═╝ ╚═════╝   ▌
+        ▐▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▌
 
         Server running at: {url}
         Version: {version}
@@ -248,7 +248,7 @@ mod tests {
             ("127.0.0.1".to_string(), 8080),
             "debug".to_string(),
             "/srv/git".to_string(),
-            "fig.db".to_string(),
+            "twig.db".to_string(),
             "mykey".to_string(),
             false,
             1.0,
@@ -256,7 +256,7 @@ mod tests {
         assert_eq!(server.address(), ("127.0.0.1".to_string(), 8080));
         assert_eq!(server.log_level(), "debug");
         assert_eq!(server.project_root(), "/srv/git");
-        assert_eq!(server.db_path(), "fig.db");
+        assert_eq!(server.db_path(), "twig.db");
         assert_eq!(
             server.cache_control(),
             &HeaderValue::from_static(DEFAULT_CACHE_CONTROL)
@@ -269,7 +269,7 @@ mod tests {
             ("127.0.0.1".to_string(), 8080),
             "debug".to_string(),
             "/srv/git".to_string(),
-            "fig.db".to_string(),
+            "twig.db".to_string(),
             "mykey".to_string(),
             false,
             1.0,
@@ -288,7 +288,7 @@ mod tests {
             ("0.0.0.0".to_string(), 80),
             "info".to_string(),
             "/srv/git".to_string(),
-            "fig.db".to_string(),
+            "twig.db".to_string(),
             "apikey".to_string(),
             false,
             1.0,
@@ -304,7 +304,7 @@ mod tests {
             ("0.0.0.0".to_string(), 80),
             "info".to_string(),
             "/srv/git".to_string(),
-            "fig.db".to_string(),
+            "twig.db".to_string(),
             "my-secret-key".to_string(),
             false,
             1.0,
@@ -334,7 +334,7 @@ mod tests {
             ("0.0.0.0".to_string(), 80),
             "info".to_string(),
             "/srv/git".to_string(),
-            "/tmp/fig_test_no_reset.db".to_string(),
+            "/tmp/twig_test_no_reset.db".to_string(),
             "key".to_string(),
             false,
             1.0,
@@ -348,7 +348,7 @@ mod tests {
             ("0.0.0.0".to_string(), 3000),
             "info".to_string(),
             "/srv/git".to_string(),
-            "fig.db".to_string(),
+            "twig.db".to_string(),
             "key".to_string(),
             false,
             1.0,
@@ -363,7 +363,7 @@ mod tests {
             ("0.0.0.0".to_string(), 8080),
             "info".to_string(),
             "/srv/git".to_string(),
-            "fig.db".to_string(),
+            "twig.db".to_string(),
             "key".to_string(),
             false,
             1.0,
@@ -385,7 +385,7 @@ mod tests {
             ("0.0.0.0".to_string(), 8080),
             "info".to_string(),
             "/srv/git".to_string(),
-            "fig.db".to_string(),
+            "twig.db".to_string(),
             "key".to_string(),
             false,
             1.0,
@@ -404,7 +404,7 @@ mod tests {
             ("0.0.0.0".to_string(), 8080),
             "info".to_string(),
             "/srv/git".to_string(),
-            "fig.db".to_string(),
+            "twig.db".to_string(),
             "key".to_string(),
             false,
             1.0,

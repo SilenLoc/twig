@@ -166,17 +166,17 @@ impl RepoHandle {
         get_non_commercial_license()
     }
 
-    pub fn load_config_with_raw(&self) -> FigConfigWithRaw {
-        if let Ok(Some(content)) = self.read_file(".fig.toml") {
-            return FigConfigWithRaw::from_source(&content, ".fig.toml");
+    pub fn load_config_with_raw(&self) -> TwigConfigWithRaw {
+        if let Ok(Some(content)) = self.read_file(".twig.toml") {
+            return TwigConfigWithRaw::from_source(&content, ".twig.toml");
         }
-        if let Ok(Some(content)) = self.read_file(".fig") {
-            return FigConfigWithRaw::from_source(&content, ".fig");
+        if let Ok(Some(content)) = self.read_file(".twig") {
+            return TwigConfigWithRaw::from_source(&content, ".twig");
         }
-        FigConfigWithRaw::default()
+        TwigConfigWithRaw::default()
     }
 
-    pub fn list_files(&self, config: Option<&FigConfig>) -> Result<RepoFiles, git2::Error> {
+    pub fn list_files(&self, config: Option<&TwigConfig>) -> Result<RepoFiles, git2::Error> {
         let Some(commit) = self.head_commit()? else {
             return Ok(RepoFiles {
                 markdown_files: Vec::new(),
@@ -198,7 +198,7 @@ impl RepoHandle {
     pub fn list_dir(
         &self,
         dir_path: &str,
-        config: Option<&FigConfig>,
+        config: Option<&TwigConfig>,
     ) -> Result<Vec<TreeEntry>, git2::Error> {
         let Some(commit) = self.head_commit()? else {
             return Ok(Vec::new());
@@ -266,7 +266,7 @@ impl RepoHandle {
     }
 }
 
-/// Presentation configuration from `.fig.toml`
+/// Presentation configuration from `.twig.toml`
 #[derive(Debug, Deserialize, Default, Clone)]
 pub struct PresentConfig {
     pub files: Vec<String>,
@@ -274,7 +274,7 @@ pub struct PresentConfig {
     pub template_vars: HashMap<String, String>,
 }
 
-/// Paper (long-form reading) configuration from `.fig.toml`.
+/// Paper (long-form reading) configuration from `.twig.toml`.
 ///
 /// The section is optional; a repository only offers the Paper tab when
 /// `[paper]` is present and its directory holds at least one Markdown page.
@@ -296,9 +296,9 @@ fn default_paper_dir() -> String {
     "paper".to_string()
 }
 
-/// Configuration from `.fig.toml` file in repository
+/// Configuration from `.twig.toml` file in repository
 #[derive(Debug, Deserialize, Default)]
-pub struct FigConfig {
+pub struct TwigConfig {
     #[serde(default)]
     pub ignore_for_view: Vec<String>,
     /// Tabs to display. If empty or not present, all tabs are shown.
@@ -321,8 +321,8 @@ pub struct FigConfig {
 
 /// A repository's parsed configuration alongside its source.
 #[derive(Default)]
-pub struct FigConfigWithRaw {
-    pub config: FigConfig,
+pub struct TwigConfigWithRaw {
+    pub config: TwigConfig,
     pub raw: Option<String>,
     pub filename: Option<String>,
     /// The parse error, when `raw` is present but invalid. `config` then holds
@@ -330,11 +330,11 @@ pub struct FigConfigWithRaw {
     pub error: Option<String>,
 }
 
-impl FigConfigWithRaw {
+impl TwigConfigWithRaw {
     /// Parses `content` and records a human-readable error instead of silently
     /// discarding it, so the UI can point at the offending line.
     fn from_source(content: &str, filename: &str) -> Self {
-        match FigConfig::parse(content) {
+        match TwigConfig::parse(content) {
             Ok(config) => Self {
                 config,
                 raw: Some(content.to_string()),
@@ -342,7 +342,7 @@ impl FigConfigWithRaw {
                 error: None,
             },
             Err(error) => Self {
-                config: FigConfig::default(),
+                config: TwigConfig::default(),
                 raw: Some(content.to_string()),
                 filename: Some(filename.to_string()),
                 error: Some(error.to_string()),
@@ -351,9 +351,9 @@ impl FigConfigWithRaw {
     }
 }
 
-impl FigConfig {
-    /// Load config from `.fig.toml` file in the repository
-    /// Falls back to `.fig` for backwards compatibility
+impl TwigConfig {
+    /// Load config from `.twig.toml` file in the repository
+    /// Falls back to `.twig` for backwards compatibility
     /// Opens and closes the repo each time — prefer `RepoHandle::load_config_with_raw` when possible
     pub fn load(root: &str, namespace: &str, repo: &str) -> Self {
         let Ok(handle) = RepoHandle::open(root, namespace, repo) else {
@@ -411,7 +411,7 @@ fn collect_markdown_files(
     tree: &git2::Tree,
     prefix: &str,
     markdown_files: &mut Vec<String>,
-    config: Option<&FigConfig>,
+    config: Option<&TwigConfig>,
 ) -> Result<(), git2::Error> {
     for entry in tree {
         let name = entry.name().unwrap_or("");
@@ -653,7 +653,7 @@ pub fn search_repos_with_info(root: &str, namespace: &str, query: &str) -> Vec<R
     repos
 }
 
-/// Check if a repository is configured as private in its `.fig.toml` or `.fig`.
+/// Check if a repository is configured as private in its `.twig.toml` or `.twig`.
 pub fn is_repo_private(root: &str, namespace: &str, repo: &str) -> bool {
     let clean_repo = repo.strip_suffix(".git").unwrap_or(repo);
     if let Ok(handle) = RepoHandle::open(root, namespace, clean_repo)
@@ -688,7 +688,7 @@ mod tests {
 
     fn create_temp_dir(name: &str) -> PathBuf {
         let temp = std::env::temp_dir().join(format!(
-            "fig_test_{}_{}",
+            "twig_test_{}_{}",
             name,
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -732,12 +732,12 @@ mod tests {
     }
 
     #[test]
-    fn test_fig_config_parse() {
+    fn test_twig_config_parse() {
         let toml_content = r#"
 ignore_for_view = ["skills/", "temp", "drafts/"]
 deleteable = true
 "#;
-        let config = FigConfig::parse(toml_content).expect("valid config");
+        let config = TwigConfig::parse(toml_content).expect("valid config");
         assert_eq!(config.ignore_for_view.len(), 3);
         assert!(config.ignore_for_view.contains(&"skills/".to_string()));
         assert!(config.ignore_for_view.contains(&"temp".to_string()));
@@ -752,7 +752,7 @@ deleteable = true
 files = ["slides/intro.md", "slides/conclusion.md"]
 author = "Jane Doe"
 "#;
-        let config = FigConfig::parse(toml_content).expect("valid config");
+        let config = TwigConfig::parse(toml_content).expect("valid config");
         assert_eq!(config.present.files.len(), 2);
         assert!(
             config
@@ -768,18 +768,18 @@ author = "Jane Doe"
 
     #[test]
     fn test_paper_config_parse() {
-        let config = FigConfig::parse("[paper]\ndir = \"manuscript\"\n").expect("valid config");
+        let config = TwigConfig::parse("[paper]\ndir = \"manuscript\"\n").expect("valid config");
         let paper = config.paper.expect("paper section should be present");
         assert_eq!(paper.dir, "manuscript");
         assert!(paper.is_configured());
 
         // An empty section falls back to the default directory.
-        let config = FigConfig::parse("[paper]\n").expect("valid config");
+        let config = TwigConfig::parse("[paper]\n").expect("valid config");
         assert_eq!(config.paper.expect("paper section").dir, "paper");
 
         // Without the section the Paper tab stays off.
         assert!(
-            FigConfig::parse("private = true")
+            TwigConfig::parse("private = true")
                 .expect("valid config")
                 .paper
                 .is_none()
@@ -788,32 +788,32 @@ author = "Jane Doe"
 
     #[test]
     fn test_paper_config_empty_dir_is_not_configured() {
-        let config = FigConfig::parse("[paper]\ndir = \"  \"\n").expect("valid config");
+        let config = TwigConfig::parse("[paper]\ndir = \"  \"\n").expect("valid config");
         assert!(!config.paper.expect("paper section").is_configured());
     }
 
     #[test]
     fn test_config_parse_errors_are_reported_not_swallowed() {
-        let parsed = FigConfigWithRaw::from_source("not = = valid\n", ".fig.toml");
+        let parsed = TwigConfigWithRaw::from_source("not = = valid\n", ".twig.toml");
         assert!(parsed.error.is_some(), "the parse error must be kept");
         assert!(
             parsed.config.paper.is_none() && !parsed.config.deleteable,
             "a broken file falls back to defaults so the UI keeps rendering"
         );
-        assert_eq!(parsed.filename.as_deref(), Some(".fig.toml"));
+        assert_eq!(parsed.filename.as_deref(), Some(".twig.toml"));
         assert_eq!(parsed.raw.as_deref(), Some("not = = valid\n"));
 
-        let parsed = FigConfigWithRaw::from_source("private = true\n", ".fig.toml");
+        let parsed = TwigConfigWithRaw::from_source("private = true\n", ".twig.toml");
         assert!(parsed.error.is_none());
         assert!(parsed.config.private);
 
-        let parsed = FigConfigWithRaw::default();
+        let parsed = TwigConfigWithRaw::default();
         assert!(parsed.error.is_none() && parsed.raw.is_none());
     }
 
     #[test]
-    fn test_fig_config_should_ignore_folder() {
-        let config = FigConfig {
+    fn test_twig_config_should_ignore_folder() {
+        let config = TwigConfig {
             ignore_for_view: vec!["skills".to_string()],
             tabs: vec![],
             deleteable: false,
@@ -834,8 +834,8 @@ author = "Jane Doe"
     }
 
     #[test]
-    fn test_fig_config_should_ignore_with_slash_pattern() {
-        let config = FigConfig {
+    fn test_twig_config_should_ignore_with_slash_pattern() {
+        let config = TwigConfig {
             ignore_for_view: vec!["drafts/".to_string()],
             tabs: vec![],
             deleteable: false,
@@ -854,8 +854,8 @@ author = "Jane Doe"
     }
 
     #[test]
-    fn test_fig_config_should_ignore_multiple_patterns() {
-        let config = FigConfig {
+    fn test_twig_config_should_ignore_multiple_patterns() {
+        let config = TwigConfig {
             ignore_for_view: vec!["temp".to_string(), "archive".to_string()],
             tabs: vec![],
             deleteable: false,
@@ -875,8 +875,8 @@ author = "Jane Doe"
     }
 
     #[test]
-    fn test_fig_config_empty() {
-        let config = FigConfig {
+    fn test_twig_config_empty() {
+        let config = TwigConfig {
             ignore_for_view: vec![],
             tabs: vec![],
             deleteable: false,
@@ -890,9 +890,9 @@ author = "Jane Doe"
     }
 
     #[test]
-    fn test_fig_config_should_ignore_folder_with_trailing_slash() {
+    fn test_twig_config_should_ignore_folder_with_trailing_slash() {
         // Test that "skills/" pattern correctly ignores the skills folder
-        let config = FigConfig {
+        let config = TwigConfig {
             ignore_for_view: vec!["skills/".to_string()],
             tabs: vec![],
             deleteable: false,
@@ -915,10 +915,10 @@ author = "Jane Doe"
     }
 
     #[test]
-    fn test_fig_config_should_ignore_exact_file() {
+    fn test_twig_config_should_ignore_exact_file() {
         // Test that "AGENTS.md" pattern correctly ignores any file with that name
         // (simple patterns match any path component)
-        let config = FigConfig {
+        let config = TwigConfig {
             ignore_for_view: vec!["AGENTS.md".to_string()],
             tabs: vec![],
             deleteable: false,
@@ -940,12 +940,12 @@ author = "Jane Doe"
     }
 
     #[test]
-    fn test_fig_config_toml_format_parsing() {
+    fn test_twig_config_toml_format_parsing() {
         let toml_content = r#"
-# Fig Configuration File
+# Twig Configuration File
 ignore_for_view = ["skills/", "AGENTS.md"]
 "#;
-        let config = FigConfig::parse(toml_content).expect("valid config");
+        let config = TwigConfig::parse(toml_content).expect("valid config");
         assert_eq!(config.ignore_for_view.len(), 2);
         assert!(config.ignore_for_view.contains(&"skills/".to_string()));
         assert!(config.ignore_for_view.contains(&"AGENTS.md".to_string()));
@@ -972,8 +972,8 @@ ignore_for_view = ["skills/", "AGENTS.md"]
     }
 
     #[test]
-    fn test_fig_config_config_filename_order() {
-        let config = FigConfig::default();
+    fn test_twig_config_config_filename_order() {
+        let config = TwigConfig::default();
         assert_eq!(config.ignore_for_view.len(), 0);
     }
 
@@ -990,14 +990,14 @@ ignore_for_view = ["skills/", "AGENTS.md"]
     }
 
     #[test]
-    fn test_fig_config_parse_private() {
+    fn test_twig_config_parse_private() {
         let toml_content = r"
 private = true
 ";
-        let config = FigConfig::parse(toml_content).expect("valid config");
+        let config = TwigConfig::parse(toml_content).expect("valid config");
         assert!(config.private);
 
-        let default_config = FigConfig::parse("").expect("empty config is valid");
+        let default_config = TwigConfig::parse("").expect("empty config is valid");
         assert!(!default_config.private);
     }
 
@@ -1033,7 +1033,7 @@ private = true
         };
 
         let blob = git_pipe(&["hash-object", "-w", "--stdin"], "private = true\n");
-        let root_hash = git_pipe(&["mktree"], &format!("100644 blob {blob}\t.fig.toml\n"));
+        let root_hash = git_pipe(&["mktree"], &format!("100644 blob {blob}\t.twig.toml\n"));
         let commit = Command::new("git")
             .args(["commit-tree", &root_hash, "-m", "set private"])
             .env("GIT_AUTHOR_NAME", "Test")

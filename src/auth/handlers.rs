@@ -4,7 +4,7 @@ use log::info;
 use serde::Deserialize;
 
 use crate::{
-    auth::{FigContext, Invite, create_namespace, create_user, generate_token, verify_password},
+    auth::{Invite, TwigContext, create_namespace, create_user, generate_token, verify_password},
     config,
     view::auth::{render_invite_success, render_login_success, render_signup_success},
     view::{render_error, render_success},
@@ -38,7 +38,7 @@ pub struct CreateNamespaceForm {
 #[post("/auth/logout")]
 pub async fn logout_ui_handler(
     req: HttpRequest,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
 ) -> impl Responder {
     if let Some(cookie) = req.cookie("session")
         && let Err(e) = auth_state.invalidate_token(cookie.value()).await
@@ -72,7 +72,7 @@ pub async fn logout_ui_handler(
 #[post("/auth/invite")]
 pub async fn create_invite_ui_handler(
     _req: HttpRequest,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     form: web::Form<InviteForm>,
 ) -> impl Responder {
     // Validate API key
@@ -113,7 +113,7 @@ pub async fn create_invite_ui_handler(
 #[post("/auth/signup")]
 pub async fn signup_ui_handler(
     _req: HttpRequest,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     form: web::Form<SignupForm>,
 ) -> impl Responder {
     let db = auth_state.db();
@@ -201,7 +201,7 @@ pub async fn signup_ui_handler(
 #[post("/auth/login")]
 pub async fn login_ui_handler(
     req: HttpRequest,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     form: web::Form<LoginForm>,
 ) -> impl Responder {
     let db = auth_state.db();
@@ -269,7 +269,7 @@ pub async fn login_ui_handler(
 #[post("/auth/namespace")]
 pub async fn create_namespace_ui_handler(
     req: HttpRequest,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     form: web::Form<CreateNamespaceForm>,
 ) -> impl Responder {
     let db = auth_state.db();
@@ -391,7 +391,7 @@ mod tests {
     #[tokio::test]
     async fn test_create_invite_with_null_user_id() {
         // Create a temporary database for testing
-        let db_path = format!("/tmp/test_fig_db_{}.db", generate_token());
+        let db_path = format!("/tmp/test_twig_db_{}.db", generate_token());
         let db = Database::new(&db_path);
 
         // Initialize tables for testing

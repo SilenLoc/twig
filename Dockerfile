@@ -3,7 +3,7 @@
 # Build strategy: BuildKit cache mounts instead of cargo-chef.
 #
 # The cargo registry and the `target/` directory are persisted in BuildKit
-# cache mounts, so a release build only recompiles the `fig` crate itself —
+# cache mounts, so a release build only recompiles the `twig` crate itself —
 # all 340+ dependency artifacts are reused from the previous build. That makes
 # cargo-chef (and the `cargo install cargo-chef` + full `chef cook` passes it
 # needs) redundant on a machine with a persistent BuildKit cache, which is how
@@ -16,7 +16,7 @@
 
 FROM rust:slim-bookworm AS builder
 
-LABEL remote="silenloc/fig"
+LABEL remote="silenloc/twig"
 
 WORKDIR /app
 
@@ -43,7 +43,7 @@ COPY src ./src
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/app/target,sharing=locked \
     cargo build --release \
-    && cp target/release/fig /usr/local/bin/fig
+    && cp target/release/twig /usr/local/bin/twig
 
 # Runtime stage
 FROM debian:bookworm-slim
@@ -55,10 +55,10 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /usr/local/bin/fig /app/fig
+COPY --from=builder /usr/local/bin/twig /app/twig
 
 # Expose port 80
 EXPOSE 80
 
 # Run the binary
-ENTRYPOINT ["./fig"]
+ENTRYPOINT ["./twig"]

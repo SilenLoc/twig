@@ -3,7 +3,7 @@ use actix_web::{HttpRequest, get, web};
 
 use super::render_layout;
 use super::session_auth::get_username_from_request;
-use crate::auth::FigContext;
+use crate::auth::TwigContext;
 
 #[derive(Default)]
 struct AuthField<'a> {
@@ -19,14 +19,14 @@ struct AuthField<'a> {
 fn render_field(field: &AuthField<'_>) -> maud::Markup {
     let hint_id = field.hint.map(|_| format!("{}-hint", field.id));
     let input_class = if field.mono {
-        "fig-input fig-input--mono"
+        "twig-input twig-input--mono"
     } else {
-        "fig-input"
+        "twig-input"
     };
 
     maud::html! {
-        div class="fig-field" {
-            label class="fig-label" for=(field.id) { (field.label) }
+        div class="twig-field" {
+            label class="twig-label" for=(field.id) { (field.label) }
             input
                 type=(field.input_type)
                 name=(field.id)
@@ -37,7 +37,7 @@ fn render_field(field: &AuthField<'_>) -> maud::Markup {
                 aria-describedby=[hint_id.as_deref()]
                 class=(input_class);
             @if let Some((hint, hint_id)) = field.hint.zip(hint_id.as_deref()) {
-                p class="fig-hint" id=(hint_id) { (hint) }
+                p class="twig-hint" id=(hint_id) { (hint) }
             }
         }
     }
@@ -45,8 +45,8 @@ fn render_field(field: &AuthField<'_>) -> maud::Markup {
 
 fn render_submit(label: &str) -> maud::Markup {
     maud::html! {
-        div class="fig-form-actions" {
-            button type="submit" class="fig-btn fig-btn--primary fig-btn--block" { (label) }
+        div class="twig-form-actions" {
+            button type="submit" class="twig-btn twig-btn--primary twig-btn--block" { (label) }
         }
     }
 }
@@ -56,7 +56,7 @@ fn wrap_auth_content(_title: &str, content: &maud::Markup) -> maud::Markup {
     maud::html! {
         div id="auth-content" {
 
-            div class="fig-stack fig-form--narrow" {
+            div class="twig-stack twig-form--narrow" {
                 (content)
             }
         }
@@ -73,17 +73,17 @@ fn render_invite_page() -> maud::Markup {
     });
 
     let content = maud::html! {
-        section class="fig-panel" aria-labelledby="invite-panel-title" {
-            header class="fig-panel-head" {
-                h2 class="fig-eyebrow" id="invite-panel-title" { "INVITE" }
+        section class="twig-panel" aria-labelledby="invite-panel-title" {
+            header class="twig-panel-head" {
+                h2 class="twig-eyebrow" id="invite-panel-title" { "INVITE" }
             }
-            div class="fig-panel-body" {
-                div class="fig-stack" {
-                    div class="fig-stack fig-stack--tight" {
-                        p class="fig-body-sm fig-ink-secondary" {
+            div class="twig-panel-body" {
+                div class="twig-stack" {
+                    div class="twig-stack twig-stack--tight" {
+                        p class="twig-body-sm twig-ink-secondary" {
                             "To create an account, you first need a signup invite."
                         }
-                        p class="fig-body-sm fig-ink-secondary" {
+                        p class="twig-body-sm twig-ink-secondary" {
                             "Enter your API key below to generate a one-time invite."
                         }
                     }
@@ -93,7 +93,7 @@ fn render_invite_page() -> maud::Markup {
                         "hx-status:4xx"="swap:innerHTML target:#invite-result"
                         "hx-status:5xx"="swap:innerHTML target:#invite-result"
                         hx-swap="innerHTML"
-                        class="fig-form"
+                        class="twig-form"
                     {
                         (api_key)
                         (render_submit("Generate Invite"))
@@ -103,9 +103,9 @@ fn render_invite_page() -> maud::Markup {
             }
         }
 
-        div class="fig-cluster" {
-            p class="fig-body-sm fig-ink-secondary" { "Already have an invite?" }
-            a class="fig-btn fig-btn--ghost" href="/auth/signup" { "Sign up now" }
+        div class="twig-cluster" {
+            p class="twig-body-sm twig-ink-secondary" { "Already have an invite?" }
+            a class="twig-btn twig-btn--ghost" href="/auth/signup" { "Sign up now" }
         }
     };
 
@@ -115,7 +115,7 @@ fn render_invite_page() -> maud::Markup {
 #[get("/auth/invite")]
 pub async fn invite_page(
     req: HttpRequest,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
 ) -> AwResult<maud::Markup> {
     let username = get_username_from_request(&req, &auth_state).await;
     let content = render_invite_page();
@@ -163,13 +163,13 @@ fn render_signup_page() -> maud::Markup {
     });
 
     let content = maud::html! {
-        section class="fig-panel" aria-labelledby="signup-panel-title" {
-            header class="fig-panel-head" {
-                h2 class="fig-eyebrow" id="signup-panel-title" { "ACCOUNT" }
+        section class="twig-panel" aria-labelledby="signup-panel-title" {
+            header class="twig-panel-head" {
+                h2 class="twig-eyebrow" id="signup-panel-title" { "ACCOUNT" }
             }
-            div class="fig-panel-body" {
-                div class="fig-stack" {
-                    p class="fig-body-sm fig-ink-secondary" {
+            div class="twig-panel-body" {
+                div class="twig-stack" {
+                    p class="twig-body-sm twig-ink-secondary" {
                         "Enter your signup invite along with your desired username and password."
                     }
                     form
@@ -178,7 +178,7 @@ fn render_signup_page() -> maud::Markup {
                         "hx-status:4xx"="swap:innerHTML target:#signup-result"
                         "hx-status:5xx"="swap:innerHTML target:#signup-result"
                         hx-swap="innerHTML"
-                        class="fig-form"
+                        class="twig-form"
                     {
                         (invite)
                         (username)
@@ -191,14 +191,14 @@ fn render_signup_page() -> maud::Markup {
             }
         }
 
-        div class="fig-stack fig-stack--tight" {
-            div class="fig-cluster" {
-                p class="fig-body-sm fig-ink-secondary" { "Need an invite?" }
-                a class="fig-btn fig-btn--ghost" href="/auth/invite" { "Get one here" }
+        div class="twig-stack twig-stack--tight" {
+            div class="twig-cluster" {
+                p class="twig-body-sm twig-ink-secondary" { "Need an invite?" }
+                a class="twig-btn twig-btn--ghost" href="/auth/invite" { "Get one here" }
             }
-            div class="fig-cluster" {
-                p class="fig-body-sm fig-ink-secondary" { "Already have an account?" }
-                a class="fig-btn fig-btn--ghost" href="/auth/login" { "Log in" }
+            div class="twig-cluster" {
+                p class="twig-body-sm twig-ink-secondary" { "Already have an account?" }
+                a class="twig-btn twig-btn--ghost" href="/auth/login" { "Log in" }
             }
         }
     };
@@ -209,7 +209,7 @@ fn render_signup_page() -> maud::Markup {
 #[get("/auth/signup")]
 pub async fn signup_page(
     req: HttpRequest,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
 ) -> AwResult<maud::Markup> {
     let username = get_username_from_request(&req, &auth_state).await;
     let content = render_signup_page();
@@ -240,18 +240,18 @@ fn render_login_page() -> maud::Markup {
     });
 
     let content = maud::html! {
-        section class="fig-panel" aria-labelledby="login-panel-title" {
-            header class="fig-panel-head" {
-                h2 class="fig-eyebrow" id="login-panel-title" { "CREDENTIALS" }
+        section class="twig-panel" aria-labelledby="login-panel-title" {
+            header class="twig-panel-head" {
+                h2 class="twig-eyebrow" id="login-panel-title" { "CREDENTIALS" }
             }
-            div class="fig-panel-body" {
+            div class="twig-panel-body" {
                 form
                     hx-post="/auth/login"
                     hx-target="#login-result"
                     "hx-status:4xx"="swap:innerHTML target:#login-result"
                     "hx-status:5xx"="swap:innerHTML target:#login-result"
                     hx-swap="innerHTML"
-                    class="fig-form"
+                    class="twig-form"
                 {
                     (username)
                     (password)
@@ -261,14 +261,14 @@ fn render_login_page() -> maud::Markup {
             }
         }
 
-        div class="fig-cluster" {
-            p class="fig-body-sm fig-ink-secondary" { "Don't have an account?" }
-            a class="fig-btn fig-btn--ghost" href="/auth/invite" { "Get an invite" }
+        div class="twig-cluster" {
+            p class="twig-body-sm twig-ink-secondary" { "Don't have an account?" }
+            a class="twig-btn twig-btn--ghost" href="/auth/invite" { "Get an invite" }
         }
     };
 
     maud::html! {
-        div class="fig-auth-login" {
+        div class="twig-auth-login" {
             (wrap_auth_content("Log In", &content))
         }
     }
@@ -277,7 +277,7 @@ fn render_login_page() -> maud::Markup {
 #[get("/auth/login")]
 pub async fn login_page(
     req: HttpRequest,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
 ) -> AwResult<maud::Markup> {
     let username = get_username_from_request(&req, &auth_state).await;
     let content = render_login_page();
@@ -301,17 +301,17 @@ fn render_namespace_page() -> maud::Markup {
     });
 
     let content = maud::html! {
-        section class="fig-panel" aria-labelledby="namespace-panel-title" {
-            header class="fig-panel-head" {
-                h2 class="fig-eyebrow" id="namespace-panel-title" { "NAMESPACE" }
+        section class="twig-panel" aria-labelledby="namespace-panel-title" {
+            header class="twig-panel-head" {
+                h2 class="twig-eyebrow" id="namespace-panel-title" { "NAMESPACE" }
             }
-            div class="fig-panel-body" {
-                div class="fig-stack" {
-                    div class="fig-stack fig-stack--tight" {
-                        p class="fig-body-sm fig-ink-secondary" {
+            div class="twig-panel-body" {
+                div class="twig-stack" {
+                    div class="twig-stack twig-stack--tight" {
+                        p class="twig-body-sm twig-ink-secondary" {
                             "Create a new namespace for your repositories."
                         }
-                        p class="fig-body-sm fig-ink-secondary" {
+                        p class="twig-body-sm twig-ink-secondary" {
                             "You can create as many namespaces as you want. Just enter a unique name below."
                         }
                     }
@@ -321,7 +321,7 @@ fn render_namespace_page() -> maud::Markup {
                         "hx-status:4xx"="swap:innerHTML target:#namespace-result"
                         "hx-status:5xx"="swap:innerHTML target:#namespace-result"
                         hx-swap="innerHTML"
-                        class="fig-form"
+                        class="twig-form"
                     {
                         (name)
                         (render_submit("Create Namespace"))
@@ -331,8 +331,8 @@ fn render_namespace_page() -> maud::Markup {
             }
         }
 
-        div class="fig-cluster" {
-            a class="fig-btn fig-btn--quiet" href="/" { "Back to home" }
+        div class="twig-cluster" {
+            a class="twig-btn twig-btn--quiet" href="/" { "Back to home" }
         }
     };
 
@@ -342,7 +342,7 @@ fn render_namespace_page() -> maud::Markup {
 #[get("/auth/namespace")]
 pub async fn namespace_page(
     req: HttpRequest,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
 ) -> AwResult<maud::Markup> {
     let username = get_username_from_request(&req, &auth_state).await;
     let content = render_namespace_page();
@@ -361,14 +361,14 @@ pub async fn namespace_page(
 // Handler for successful invite generation
 pub fn render_invite_success(invite: &str) -> maud::Markup {
     maud::html! {
-        div class="fig-notice fig-notice--success" role="status" {
-            p class="fig-eyebrow" { "DONE" }
-            p class="fig-notice-body" {
+        div class="twig-notice twig-notice--success" role="status" {
+            p class="twig-eyebrow" { "DONE" }
+            p class="twig-notice-body" {
                 "Invite Generated! Use this one-time signup invite to create your account. It can only be used once."
             }
-            pre class="fig-code" { (invite) }
-            div class="fig-notice-actions" {
-                a class="fig-btn fig-btn--primary" href="/auth/signup" { "Create your account" }
+            pre class="twig-code" { (invite) }
+            div class="twig-notice-actions" {
+                a class="twig-btn twig-btn--primary" href="/auth/signup" { "Create your account" }
             }
         }
     }
@@ -377,14 +377,14 @@ pub fn render_invite_success(invite: &str) -> maud::Markup {
 // Handler for successful signup
 pub fn render_signup_success(username: &str) -> maud::Markup {
     maud::html! {
-        div class="fig-notice fig-notice--success" role="status" {
-            p class="fig-eyebrow" { "DONE" }
-            p class="fig-notice-body" {
+        div class="twig-notice twig-notice--success" role="status" {
+            p class="twig-eyebrow" { "DONE" }
+            p class="twig-notice-body" {
                 "Welcome, " (username) "! Your account has been created successfully."
             }
-            div class="fig-notice-actions" {
-                a class="fig-btn fig-btn--primary" href="/auth/login" { "Log in" }
-                a class="fig-btn fig-btn--ghost" href="/auth/namespace" { "Create a namespace" }
+            div class="twig-notice-actions" {
+                a class="twig-btn twig-btn--primary" href="/auth/login" { "Log in" }
+                a class="twig-btn twig-btn--ghost" href="/auth/namespace" { "Create a namespace" }
             }
         }
     }
@@ -393,13 +393,13 @@ pub fn render_signup_success(username: &str) -> maud::Markup {
 // Handler for login success
 pub fn render_login_success(username: &str) -> maud::Markup {
     maud::html! {
-        div class="fig-notice fig-notice--success" role="status" {
-            p class="fig-eyebrow" { "DONE" }
-            p class="fig-notice-body" {
+        div class="twig-notice twig-notice--success" role="status" {
+            p class="twig-eyebrow" { "DONE" }
+            p class="twig-notice-body" {
                 "Welcome back, " (username) "! You are now logged in. You can create as many namespaces as you want."
             }
-            div class="fig-notice-actions" {
-                a class="fig-btn fig-btn--primary" href="/auth/namespace" { "Create namespace" }
+            div class="twig-notice-actions" {
+                a class="twig-btn twig-btn--primary" href="/auth/namespace" { "Create namespace" }
             }
         }
     }
@@ -467,13 +467,13 @@ mod tests {
     }
 
     #[test]
-    fn test_auth_markup_uses_only_fig_design_system_classes() {
+    fn test_auth_markup_uses_only_twig_design_system_classes() {
         for (page, html) in auth_pages().iter().chain(success_notices().iter()) {
             let classes = classes_in(html);
             assert!(!classes.is_empty(), "{page} should carry classes:\n{html}");
             for class in classes {
                 assert!(
-                    class.starts_with("fig-"),
+                    class.starts_with("twig-"),
                     "non design-system class {class:?} on {page}:\n{html}"
                 );
             }
@@ -510,16 +510,16 @@ mod tests {
                     "input name and id must agree on {page}: {tag}"
                 );
                 assert!(
-                    html.contains(&format!("<label class=\"fig-label\" for=\"{id}\">")),
+                    html.contains(&format!("<label class=\"twig-label\" for=\"{id}\">")),
                     "input {id} needs a real label on {page}:\n{html}"
                 );
                 assert!(
-                    tag.contains(" class=\"fig-input"),
+                    tag.contains(" class=\"twig-input"),
                     "input {id} must use the design-system field on {page}: {tag}"
                 );
                 if let Some(described_by) = attr_value(tag, "aria-describedby") {
                     assert!(
-                        html.contains(&format!("<p class=\"fig-hint\" id=\"{described_by}\">")),
+                        html.contains(&format!("<p class=\"twig-hint\" id=\"{described_by}\">")),
                         "input {id} points at a missing hint on {page}:\n{html}"
                     );
                 }
@@ -555,7 +555,7 @@ mod tests {
         assert!(api_key.contains(" required"), "{api_key}");
         assert!(!api_key.contains("minlength"), "{api_key}");
         assert!(
-            api_key.contains("fig-input--mono"),
+            api_key.contains("twig-input--mono"),
             "an API key is a machine value: {api_key}"
         );
     }
@@ -577,7 +577,7 @@ mod tests {
         assert_eq!(attr_value(invite, "type"), Some("text"));
         assert!(invite.contains(" required"), "{invite}");
         assert!(
-            invite.contains("fig-input--mono"),
+            invite.contains("twig-input--mono"),
             "an invite is a machine value: {invite}"
         );
 
@@ -585,7 +585,7 @@ mod tests {
         assert_eq!(attr_value(username, "type"), Some("text"));
         assert_eq!(attr_value(username, "minlength"), Some("3"));
         assert!(
-            !username.contains("fig-input--mono"),
+            !username.contains("twig-input--mono"),
             "a username is prose-typed: {username}"
         );
 
@@ -646,7 +646,7 @@ mod tests {
         assert_eq!(attr_value(name, "minlength"), Some("2"));
         assert!(name.contains(" required"), "{name}");
         assert!(
-            name.contains("fig-input--mono"),
+            name.contains("twig-input--mono"),
             "a namespace is a machine value: {name}"
         );
     }
@@ -656,7 +656,7 @@ mod tests {
         for (page, html) in auth_pages() {
             assert!(
                 html.contains(
-                    "<button type=\"submit\" class=\"fig-btn fig-btn--primary fig-btn--block\">"
+                    "<button type=\"submit\" class=\"twig-btn twig-btn--primary twig-btn--block\">"
                 ),
                 "{page} needs the primary block submit:\n{html}"
             );
@@ -677,19 +677,19 @@ mod tests {
     fn test_success_notices_are_announced_status_notices() {
         for (flow, html) in success_notices() {
             assert!(
-                html.contains("class=\"fig-notice fig-notice--success\" role=\"status\""),
+                html.contains("class=\"twig-notice twig-notice--success\" role=\"status\""),
                 "{flow} success must be a status notice:\n{html}"
             );
             assert!(
-                html.contains("<p class=\"fig-eyebrow\">DONE</p>"),
+                html.contains("<p class=\"twig-eyebrow\">DONE</p>"),
                 "the signal word carries the meaning, not the colour, on {flow}:\n{html}"
             );
             assert!(
-                html.contains("<p class=\"fig-notice-body\">"),
+                html.contains("<p class=\"twig-notice-body\">"),
                 "{flow} success needs body text:\n{html}"
             );
             assert!(
-                html.contains("<div class=\"fig-notice-actions\">"),
+                html.contains("<div class=\"twig-notice-actions\">"),
                 "{flow} success needs its next step:\n{html}"
             );
         }
@@ -700,7 +700,7 @@ mod tests {
         let invite = "abc-123-test";
         let html = render_invite_success(invite).into_string();
         assert!(
-            html.contains(&format!("<pre class=\"fig-code\">{invite}</pre>")),
+            html.contains(&format!("<pre class=\"twig-code\">{invite}</pre>")),
             "the invite is a machine value:\n{html}"
         );
         assert!(

@@ -5,7 +5,7 @@ use log::info;
 use serde::Deserialize;
 use xshell::cmd;
 
-use crate::auth::{FigContext, extract_basic_auth, verify_password};
+use crate::auth::{TwigContext, extract_basic_auth, verify_password};
 use crate::config;
 
 #[derive(Deserialize)]
@@ -39,14 +39,14 @@ pub async fn init(
     req: HttpRequest,
     init_repo: web::Form<InitRepo>,
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
 ) -> impl Responder {
     let db = auth_state.db();
 
     // Authenticate the request
     let Some((username, password)) = extract_basic_auth(&req) else {
         return HttpResponse::Unauthorized()
-            .insert_header(("WWW-Authenticate", "Basic realm=\"fig\""))
+            .insert_header(("WWW-Authenticate", "Basic realm=\"twig\""))
             .body("Missing credentials");
     };
 
@@ -137,7 +137,7 @@ fn create_repo(
     if !repo.exists() {
         std::fs::create_dir_all(&repo)
             .map_err(|e| format!("Failed to create repo directory: {e}"))?;
-        let res = bare_init(&repo, &branch, "Fig", "fig@localhost");
+        let res = bare_init(&repo, &branch, "Twig", "twig@localhost");
 
         match res {
             Ok(std) => info!("{std}"),
@@ -167,10 +167,10 @@ pub fn bare_init(
         .run()
         .map_err(|e| format!("Failed to enable http.receivepack: {e}"))?;
 
-    // Create initial commit with .fig.toml file
+    // Create initial commit with .twig.toml file
     // Use git plumbing commands to create a commit in a bare repo
-    let blob_content = r#"#:schema https://fig.silenlocatelli.ch/assets/fig.schema.json
-# Created with Fig
+    let blob_content = r#"#:schema https://twig.silenlocatelli.ch/assets/twig.schema.json
+# Created with Twig
 # All configuration options are listed below, commented out with their defaults.
 
 # Files or folders to ignore in the file browser view.
@@ -199,7 +199,7 @@ pub fn bare_init(
         .read()
         .map_err(|e| format!("Failed to create blob: {e}"))?;
 
-    let tree_entry = format!("100644 blob {blob_hash}\t.fig.toml\n");
+    let tree_entry = format!("100644 blob {blob_hash}\t.twig.toml\n");
     let tree_hash = cmd!(sh, "git mktree")
         .stdin(tree_entry)
         .read()
@@ -248,7 +248,7 @@ mod tests {
 
     #[test]
     fn test_create_repo_creates_directory_structure() {
-        let temp_root = format!("/tmp/test_fig_repo_{}", uuid::Uuid::new_v4());
+        let temp_root = format!("/tmp/test_twig_repo_{}", uuid::Uuid::new_v4());
         let result = create_repo(&temp_root, "myns", "myrepo", "main");
         assert!(result.is_ok(), "create_repo failed: {result:?}");
 
@@ -265,7 +265,7 @@ mod tests {
 
     #[test]
     fn test_bare_init_creates_valid_repository() {
-        let temp_dir = format!("/tmp/test_fig_bare_init_{}", uuid::Uuid::new_v4());
+        let temp_dir = format!("/tmp/test_twig_bare_init_{}", uuid::Uuid::new_v4());
         std::fs::create_dir_all(&temp_dir).unwrap();
 
         let repo_path = Path::new(&temp_dir);
@@ -279,19 +279,19 @@ mod tests {
         let repo = git2::Repository::open(repo_path);
         assert!(repo.is_ok(), "repo should be openable by git2");
 
-        // The initial commit's .fig.toml points editors at the TOML schema.
+        // The initial commit's .twig.toml points editors at the TOML schema.
         let repo = repo.unwrap();
         let commit = repo.head().unwrap().peel_to_commit().unwrap();
         let entry = commit
             .tree()
             .unwrap()
-            .get_path(Path::new(".fig.toml"))
+            .get_path(Path::new(".twig.toml"))
             .unwrap();
         let blob = entry.to_object(&repo).unwrap().into_blob().unwrap();
         let content = std::str::from_utf8(blob.content()).unwrap();
         assert!(
-            content.starts_with("#:schema https://fig.silenlocatelli.ch/assets/fig.schema.json"),
-            "default .fig.toml should reference the schema, got: {content}"
+            content.starts_with("#:schema https://twig.silenlocatelli.ch/assets/twig.schema.json"),
+            "default .twig.toml should reference the schema, got: {content}"
         );
 
         // Cleanup

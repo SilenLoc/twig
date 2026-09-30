@@ -6,7 +6,7 @@ use log::info;
 use serde::Deserialize;
 
 use super::{render_error, render_error_with_action, render_success};
-use crate::auth::FigContext;
+use crate::auth::TwigContext;
 use crate::config;
 use crate::git;
 
@@ -28,19 +28,32 @@ struct MoveRepoForm {
     target_namespace: String,
 }
 
+#[derive(Deserialize)]
+struct RenameRepoForm {
+    namespace: String,
+    repo_name: String,
+    new_name: String,
+}
+
+#[derive(Deserialize)]
+struct RenameNamespaceForm {
+    namespace: String,
+    new_name: String,
+}
+
 /// Renders the settings page body shared by the full-page and HTMX responses.
 fn render_settings(user: &crate::auth::User) -> maud::Markup {
     maud::html! {
-        nav class="fig-crumbs fig-crumbs--page" aria-label="Breadcrumb" {
+        nav class="twig-crumbs twig-crumbs--page" aria-label="Breadcrumb" {
             a href="/" { "Namespaces" }
-            span class="fig-crumb-sep" aria-hidden="true" { "/" }
+            span class="twig-crumb-sep" aria-hidden="true" { "/" }
             span aria-current="page" { "Account" }
         }
 
-        section class="fig-pagehead" {
+        section class="twig-pagehead" {
         }
 
-        div class="fig-bento" {
+        div class="twig-bento" {
             (render_profile_panel(user))
         }
     }
@@ -49,37 +62,37 @@ fn render_settings(user: &crate::auth::User) -> maud::Markup {
 /// Identity values plus the email update form.
 fn render_profile_panel(user: &crate::auth::User) -> maud::Markup {
     maud::html! {
-        section class="fig-panel" aria-labelledby="settings-profile-heading" {
-            header class="fig-panel-head" {
-                h2 class="fig-eyebrow" id="settings-profile-heading" { "Account" }
+        section class="twig-panel" aria-labelledby="settings-profile-heading" {
+            header class="twig-panel-head" {
+                h2 class="twig-eyebrow" id="settings-profile-heading" { "Account" }
             }
-            div class="fig-panel-body fig-stack" {
-                div class="fig-field" {
-                    span class="fig-label" { "Username" }
-                    p class="fig-body fig-break" { (user.username) }
+            div class="twig-panel-body twig-stack" {
+                div class="twig-field" {
+                    span class="twig-label" { "Username" }
+                    p class="twig-body twig-break" { (user.username) }
                 }
 
-                div class="fig-field" {
-                    span class="fig-label" { "Email" }
+                div class="twig-field" {
+                    span class="twig-label" { "Email" }
                     @match &user.email {
-                        Some(email) => { p class="fig-body fig-break" { (email) } }
-                        None => { p class="fig-body fig-ink-tertiary" { "Not set" } }
+                        Some(email) => { p class="twig-body twig-break" { (email) } }
+                        None => { p class="twig-body twig-ink-tertiary" { "Not set" } }
                     }
                 }
 
                 form
-                    class="fig-form"
+                    class="twig-form"
                     aria-labelledby="settings-email-heading"
                     hx-post="/settings/email"
                     hx-target="#settings-result"
                     hx-swap="innerHTML"
                 {
-                    h3 class="fig-subsection" id="settings-email-heading" { "Update Email" }
+                    h3 class="twig-subsection" id="settings-email-heading" { "Update Email" }
 
-                    div class="fig-field" {
-                        label class="fig-label" for="email" { "Email Address" }
+                    div class="twig-field" {
+                        label class="twig-label" for="email" { "Email Address" }
                         input
-                            class="fig-input"
+                            class="twig-input"
                             type="email"
                             name="email"
                             id="email"
@@ -88,8 +101,8 @@ fn render_profile_panel(user: &crate::auth::User) -> maud::Markup {
                             placeholder="Enter your email address";
                     }
 
-                    div class="fig-form-actions" {
-                        button class="fig-btn fig-btn--primary" type="submit" { "Save Email" }
+                    div class="twig-form-actions" {
+                        button class="twig-btn twig-btn--primary" type="submit" { "Save Email" }
                     }
                 }
 
@@ -105,32 +118,32 @@ pub(crate) fn render_repo_deletion_panel(
 ) -> maud::Markup {
     maud::html! {
         section
-            class="fig-panel fig-panel--danger"
+            class="twig-panel twig-panel--danger"
             aria-labelledby="settings-delete-repo-heading"
         {
-            header class="fig-panel-head" {
-                h2 class="fig-eyebrow" id="settings-delete-repo-heading" { "Delete Repository" }
+            header class="twig-panel-head" {
+                h2 class="twig-eyebrow" id="settings-delete-repo-heading" { "Delete Repository" }
             }
 
             @if repos_by_namespace.is_empty() {
-                div class="fig-empty" {
-                    p class="fig-eyebrow" { "NO REPOSITORIES" }
-                    p class="fig-empty-body" { "You don't have any repositories to delete." }
+                div class="twig-empty" {
+                    p class="twig-eyebrow" { "NO REPOSITORIES" }
+                    p class="twig-empty-body" { "You don't have any repositories to delete." }
                 }
             } @else {
-                div class="fig-panel-body" {
-                    div class="fig-notice fig-notice--warning" role="alert" {
-                        p class="fig-eyebrow" { "CAUTION" }
-                        p class="fig-notice-body" { "Select a repository to permanently delete it. This action cannot be undone." }
+                div class="twig-panel-body" {
+                    div class="twig-notice twig-notice--warning" role="alert" {
+                        p class="twig-eyebrow" { "CAUTION" }
+                        p class="twig-notice-body" { "Select a repository to permanently delete it. This action cannot be undone." }
                     }
                     div id="delete-repo-result" aria-live="polite" {}
                 }
 
-                div class="fig-list" {
+                div class="twig-list" {
                     @for (ns, repos) in repos_by_namespace {
                         @for repo in repos {
                             form
-                                class="fig-row fig-row--form"
+                                class="twig-row twig-row--form"
                                 hx-post="/settings/delete-repo"
                                 hx-target="#delete-repo-result"
                                 hx-swap="innerHTML"
@@ -138,8 +151,71 @@ pub(crate) fn render_repo_deletion_panel(
                             {
                                 input type="hidden" name="namespace" value=(ns);
                                 input type="hidden" name="repo_name" value=(repo.name);
-                                span class="fig-row-id" { (ns) "/" (repo.name) }
-                                button class="fig-btn fig-btn--danger" type="submit" { "Delete" }
+                                span class="twig-row-id" { (ns) "/" (repo.name) }
+                                button class="twig-btn twig-btn--danger" type="submit" { "Delete" }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Repositories the user may rename, one technical form row each. Renaming
+/// keeps the repository in its namespace and preserves its history and
+/// configuration; only its web and Git URLs change.
+pub(crate) fn render_repo_rename_panel(
+    repos_by_namespace: &[(String, Vec<git::bare::RepoInfo>)],
+) -> maud::Markup {
+    maud::html! {
+        section class="twig-panel" aria-labelledby="settings-rename-repo-heading" {
+            header class="twig-panel-head" {
+                h2 class="twig-eyebrow" id="settings-rename-repo-heading" { "Rename Repository" }
+            }
+
+            @if repos_by_namespace.is_empty() {
+                div class="twig-empty" {
+                    p class="twig-eyebrow" { "NO REPOSITORIES" }
+                    p class="twig-empty-body" { "You don't have any repositories to rename." }
+                }
+            } @else {
+                div class="twig-panel-body twig-stack twig-stack--tight" {
+                    p class="twig-body-sm twig-ink-secondary" {
+                        "Renaming a repository changes its web and Git URLs. Its history and configuration are preserved."
+                    }
+                    div id="rename-repo-result" aria-live="polite" {}
+                }
+
+                div class="twig-list" {
+                    @for (ns, repos) in repos_by_namespace {
+                        @for repo in repos {
+                            form
+                                class="twig-row twig-row--form"
+                                hx-post="/settings/rename-repo"
+                                hx-target="#rename-repo-result"
+                                hx-swap="innerHTML"
+                                "hx-status:4xx"="swap:innerHTML target:#rename-repo-result"
+                                "hx-status:5xx"="swap:innerHTML target:#rename-repo-result"
+                                hx-confirm=(format!("Rename '{}/{}'? Its URL will change.", ns, repo.name))
+                            {
+                                input type="hidden" name="namespace" value=(ns);
+                                input type="hidden" name="repo_name" value=(repo.name);
+                                span class="twig-row-id" { (ns) "/" (repo.name) }
+                                div class="twig-field" {
+                                    label class="twig-label" {
+                                        "New name"
+                                        input
+                                            class="twig-input twig-input--mono"
+                                            type="text"
+                                            name="new_name"
+                                            required
+                                            autocomplete="off"
+                                            spellcheck="false"
+                                            value=(repo.name);
+                                    }
+                                }
+                                button class="twig-btn twig-btn--primary" type="submit" { "Rename" }
                             }
                         }
                     }
@@ -153,7 +229,7 @@ pub(crate) fn render_repo_deletion_panel(
 pub async fn settings_page(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
 ) -> AwResult<maud::Markup> {
     // Get user from session
     let Some(user_id) = auth_state.user_id_from_request(&req).await else {
@@ -205,7 +281,7 @@ fn render_settings_auth_error(req: &HttpRequest, message: &str) -> maud::Markup 
 #[post("/settings/email")]
 pub async fn update_email(
     req: HttpRequest,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     form: web::Form<UpdateEmailForm>,
 ) -> impl Responder {
     // Validate email format (basic validation) before requiring a session,
@@ -243,7 +319,7 @@ pub async fn update_email(
 pub async fn delete_repo(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     form: web::Form<DeleteRepoForm>,
 ) -> impl Responder {
     // Get user from session
@@ -286,12 +362,12 @@ pub async fn delete_repo(
             .body(render_error("Path is not a valid git repository").into_string());
     }
 
-    // Check if repository is marked as deletable in fig.toml
-    let fig_config =
-        git::bare::FigConfig::load(server.project_root(), &form.namespace, &form.repo_name);
-    if !fig_config.deleteable {
+    // Check if repository is marked as deletable in twig.toml
+    let twig_config =
+        git::bare::TwigConfig::load(server.project_root(), &form.namespace, &form.repo_name);
+    if !twig_config.deleteable {
         return HttpResponse::Forbidden()
-            .body(render_error("Repository is not marked as deletable. Set deleteable=true in .fig.toml to enable deletion.").into_string());
+            .body(render_error("Repository is not marked as deletable. Set deleteable=true in .twig.toml to enable deletion.").into_string());
     }
 
     // Delete the repository
@@ -317,7 +393,7 @@ pub async fn delete_repo(
 pub async fn move_repo(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     form: web::Form<MoveRepoForm>,
 ) -> impl Responder {
     if !git::bare::is_safe_component(&form.source_namespace)
@@ -412,6 +488,199 @@ pub async fn move_repo(
     )
 }
 
+#[post("/settings/rename-repo")]
+pub async fn rename_repo(
+    req: HttpRequest,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<TwigContext>,
+    form: web::Form<RenameRepoForm>,
+) -> impl Responder {
+    if !git::bare::is_safe_component(&form.namespace) {
+        return HttpResponse::BadRequest()
+            .body(render_error("Invalid namespace name").into_string());
+    }
+    if let Err(message) = git::reserved::validate_repo_name(&form.repo_name) {
+        return HttpResponse::BadRequest().body(render_error(&message).into_string());
+    }
+    if form.repo_name.trim() != form.repo_name {
+        return HttpResponse::BadRequest()
+            .body(render_error("Invalid repository name").into_string());
+    }
+    if let Err(message) = git::reserved::validate_repo_name(&form.new_name) {
+        return HttpResponse::BadRequest().body(render_error(&message).into_string());
+    }
+    if form.new_name.trim() != form.new_name {
+        return HttpResponse::BadRequest()
+            .body(render_error("Invalid repository name").into_string());
+    }
+    if form.new_name == form.repo_name {
+        return HttpResponse::BadRequest()
+            .body(render_error("Choose a different repository name").into_string());
+    }
+
+    let Some(user_id) = auth_state.user_id_from_request(&req).await else {
+        return HttpResponse::Unauthorized()
+            .body(render_error("Not logged in. Please log in first.").into_string());
+    };
+
+    let db = auth_state.db();
+    let namespace = match db.get_namespace_by_name(&form.namespace).await {
+        Ok(Some(namespace)) => namespace,
+        Ok(None) => {
+            return HttpResponse::NotFound()
+                .body(render_error("Namespace not found").into_string());
+        }
+        Err(e) => {
+            log::error!("Failed to load namespace: {e}");
+            return HttpResponse::InternalServerError()
+                .body(render_error("Database error").into_string());
+        }
+    };
+    if namespace.owner_id != user_id {
+        return HttpResponse::Forbidden().body(
+            render_error("Repositories can only be renamed by their namespace owner").into_string(),
+        );
+    }
+
+    let namespace_dir = Path::new(server.project_root()).join(&form.namespace);
+    let source = namespace_dir.join(&form.repo_name);
+    let destination = namespace_dir.join(&form.new_name);
+
+    if !source.exists() {
+        return HttpResponse::NotFound().body(render_error("Repository not found").into_string());
+    }
+    if git2::Repository::open(&source).is_err() {
+        return HttpResponse::BadRequest()
+            .body(render_error("Path is not a valid git repository").into_string());
+    }
+    if destination.exists() {
+        return HttpResponse::Conflict().body(
+            render_error("A repository with that name already exists in this namespace")
+                .into_string(),
+        );
+    }
+    if let Err(e) = std::fs::rename(&source, &destination) {
+        log::error!("Failed to rename repository: {e}");
+        return HttpResponse::InternalServerError()
+            .body(render_error("Failed to rename repository").into_string());
+    }
+
+    info!(
+        "Renamed repository '{}/{}' to '{}/{}' by user: {}",
+        form.namespace, form.repo_name, form.namespace, form.new_name, user_id
+    );
+    HttpResponse::Ok().content_type("text/html").body(
+        render_success(&format!(
+            "Repository renamed to {}/{}.",
+            form.namespace, form.new_name
+        ))
+        .into_string(),
+    )
+}
+
+#[post("/settings/rename-namespace")]
+pub async fn rename_namespace(
+    req: HttpRequest,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<TwigContext>,
+    form: web::Form<RenameNamespaceForm>,
+) -> impl Responder {
+    if !git::bare::is_safe_component(&form.namespace) {
+        return HttpResponse::BadRequest()
+            .body(render_error("Invalid namespace name").into_string());
+    }
+    if form.new_name.len() < 2 {
+        return HttpResponse::BadRequest()
+            .body(render_error("Namespace name must be at least 2 characters").into_string());
+    }
+    if form.new_name.starts_with('_') {
+        return HttpResponse::BadRequest()
+            .body(render_error("Namespace names starting with '_' are reserved").into_string());
+    }
+    if !git::bare::is_safe_component(&form.new_name) {
+        return HttpResponse::BadRequest()
+            .body(render_error("Invalid namespace name").into_string());
+    }
+    if form.new_name.trim() != form.new_name {
+        return HttpResponse::BadRequest()
+            .body(render_error("Invalid namespace name").into_string());
+    }
+    if form.new_name == form.namespace {
+        return HttpResponse::BadRequest()
+            .body(render_error("Choose a different namespace name").into_string());
+    }
+
+    let Some(user_id) = auth_state.user_id_from_request(&req).await else {
+        return HttpResponse::Unauthorized()
+            .body(render_error("Not logged in. Please log in first.").into_string());
+    };
+
+    let db = auth_state.db();
+    let namespace = match db.get_namespace_by_name(&form.namespace).await {
+        Ok(Some(namespace)) => namespace,
+        Ok(None) => {
+            return HttpResponse::NotFound()
+                .body(render_error("Namespace not found").into_string());
+        }
+        Err(e) => {
+            log::error!("Failed to load namespace: {e}");
+            return HttpResponse::InternalServerError()
+                .body(render_error("Database error").into_string());
+        }
+    };
+    if namespace.owner_id != user_id {
+        return HttpResponse::Forbidden()
+            .body(render_error("Only the namespace owner can rename it").into_string());
+    }
+
+    match db.get_namespace_by_name(&form.new_name).await {
+        Ok(Some(_)) => {
+            return HttpResponse::Conflict()
+                .body(render_error("Namespace already exists").into_string());
+        }
+        Ok(None) => {}
+        Err(e) => {
+            log::error!("Database error: {e}");
+            return HttpResponse::InternalServerError()
+                .body(render_error("Database error").into_string());
+        }
+    }
+
+    let root = Path::new(server.project_root());
+    let source = root.join(&form.namespace);
+    let destination = root.join(&form.new_name);
+
+    if destination.exists() {
+        return HttpResponse::Conflict().body(
+            render_error("A directory with that namespace name already exists").into_string(),
+        );
+    }
+
+    let moved_directory = source.exists();
+    if moved_directory && let Err(e) = std::fs::rename(&source, &destination) {
+        log::error!("Failed to rename namespace directory: {e}");
+        return HttpResponse::InternalServerError()
+            .body(render_error("Failed to rename namespace").into_string());
+    }
+
+    if let Err(e) = db.rename_namespace(&namespace.id, &form.new_name).await {
+        log::error!("Failed to rename namespace: {e}");
+        if moved_directory {
+            let _ = std::fs::rename(&destination, &source);
+        }
+        return HttpResponse::InternalServerError()
+            .body(render_error("Failed to rename namespace").into_string());
+    }
+
+    info!(
+        "Renamed namespace '{}' to '{}' by user: {}",
+        form.namespace, form.new_name, user_id
+    );
+    HttpResponse::Ok()
+        .content_type("text/html")
+        .body(render_success(&format!("Namespace renamed to {}.", form.new_name)).into_string())
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct NamespaceForm {
     pub namespace: String,
@@ -421,7 +690,7 @@ pub struct NamespaceForm {
 pub async fn delete_namespace(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     form: web::Form<NamespaceForm>,
 ) -> impl Responder {
     let Some(user_id) = auth_state.user_id_from_request(&req).await else {
@@ -510,11 +779,20 @@ mod tests {
     }
 
     fn repo_panel_html() -> String {
-        render_repo_deletion_panel(&[("acme".to_string(), vec![repo_fixture("fig")])]).into_string()
+        render_repo_deletion_panel(&[("acme".to_string(), vec![repo_fixture("twig")])])
+            .into_string()
     }
 
     fn empty_repo_panel_html() -> String {
         render_repo_deletion_panel(&[]).into_string()
+    }
+
+    fn rename_panel_html() -> String {
+        render_repo_rename_panel(&[("acme".to_string(), vec![repo_fixture("twig")])]).into_string()
+    }
+
+    fn empty_rename_panel_html() -> String {
+        render_repo_rename_panel(&[]).into_string()
     }
 
     fn classes_in(html: &str) -> Vec<String> {
@@ -540,21 +818,23 @@ mod tests {
     fn test_settings_leads_with_crumbs_and_page_head() {
         let html = populated_html();
         assert!(
-            html.contains("<nav class=\"fig-crumbs fig-crumbs--page\" aria-label=\"Breadcrumb\">"),
+            html.contains(
+                "<nav class=\"twig-crumbs twig-crumbs--page\" aria-label=\"Breadcrumb\">"
+            ),
             "breadcrumb must be a labelled nav landmark: {html}"
         );
         assert!(
-            html.contains("<span class=\"fig-crumb-sep\" aria-hidden=\"true\">/</span>"),
+            html.contains("<span class=\"twig-crumb-sep\" aria-hidden=\"true\">/</span>"),
             "separators are decorative: {html}"
         );
         assert!(
             html.contains("<span aria-current=\"page\">Account</span>"),
             "final crumb names the account page: {html}"
         );
-        let crumbs = index_of(&html, "fig-crumbs");
-        let head = index_of(&html, "<section class=\"fig-pagehead\">");
+        let crumbs = index_of(&html, "twig-crumbs");
+        let head = index_of(&html, "<section class=\"twig-pagehead\">");
         assert!(
-            crumbs < head && head < index_of(&html, "fig-bento"),
+            crumbs < head && head < index_of(&html, "twig-bento"),
             "crumbs sit above the page head and bento: {html}"
         );
     }
@@ -563,22 +843,22 @@ mod tests {
     fn test_account_page_renders_account_panel_only() {
         let html = populated_html();
         assert_eq!(
-            html.matches("class=\"fig-bento\"").count(),
+            html.matches("class=\"twig-bento\"").count(),
             1,
             "one bento container: {html}"
         );
         assert_eq!(
-            html.matches("<section class=\"fig-panel").count(),
+            html.matches("<section class=\"twig-panel").count(),
             1,
             "only the account panel appears here: {html}"
         );
         assert_eq!(
-            html.matches("class=\"fig-panel-head\"").count(),
+            html.matches("class=\"twig-panel-head\"").count(),
             1,
             "every panel declares a head: {html}"
         );
         assert_eq!(
-            html.matches("<h2 class=\"fig-eyebrow\"").count(),
+            html.matches("<h2 class=\"twig-eyebrow\"").count(),
             1,
             "panel headings are h2 eyebrows under the page h1: {html}"
         );
@@ -589,7 +869,7 @@ mod tests {
         );
         assert!(
             html.contains(&format!(
-                "<h2 class=\"fig-eyebrow\" id=\"{heading_id}\">Account</h2>"
+                "<h2 class=\"twig-eyebrow\" id=\"{heading_id}\">Account</h2>"
             )),
             "missing heading {heading_id}: {html}"
         );
@@ -612,12 +892,12 @@ mod tests {
     fn test_settings_deletion_panels_carry_danger_and_caution_affordances() {
         let html = repo_panel_html();
         assert_eq!(
-            html.matches("fig-panel fig-panel--danger").count(),
+            html.matches("twig-panel twig-panel--danger").count(),
             1,
             "the repository panel takes the danger variant: {html}"
         );
         assert_eq!(
-            html.matches("<div class=\"fig-notice fig-notice--warning\" role=\"alert\">")
+            html.matches("<div class=\"twig-notice twig-notice--warning\" role=\"alert\">")
                 .count(),
             1,
             "the deletion panel warns before it lists targets: {html}"
@@ -635,7 +915,7 @@ mod tests {
         );
         assert_eq!(
             html.matches(
-                "<button class=\"fig-btn fig-btn--danger\" type=\"submit\">Delete</button>"
+                "<button class=\"twig-btn twig-btn--danger\" type=\"submit\">Delete</button>"
             )
             .count(),
             1,
@@ -650,7 +930,7 @@ mod tests {
             "hx-post=\"/settings/delete-repo\"",
             "hx-target=\"#delete-repo-result\"",
             "hx-swap=\"innerHTML\"",
-            "hx-confirm=\"Are you sure you want to permanently delete 'acme/fig'?\"",
+            "hx-confirm=\"Are you sure you want to permanently delete 'acme/twig'?\"",
         ] {
             assert!(
                 html.contains(attribute),
@@ -658,19 +938,78 @@ mod tests {
             );
         }
         assert!(
-            html.contains("<form class=\"fig-row fig-row--form\""),
+            html.contains("<form class=\"twig-row twig-row--form\""),
             "deletion targets are technical form rows: {html}"
         );
         assert!(
-            html.contains("<span class=\"fig-row-id\">acme/fig</span>"),
+            html.contains("<span class=\"twig-row-id\">acme/twig</span>"),
             "the row identifier names the same object as the confirm text: {html}"
         );
         for hidden in [
             "<input type=\"hidden\" name=\"namespace\" value=\"acme\">",
-            "<input type=\"hidden\" name=\"repo_name\" value=\"fig\">",
+            "<input type=\"hidden\" name=\"repo_name\" value=\"twig\">",
         ] {
             assert!(html.contains(hidden), "missing payload {hidden}: {html}");
         }
+    }
+
+    #[test]
+    fn test_settings_rename_repo_rows_preserve_the_htmx_contract() {
+        let html = rename_panel_html();
+        for attribute in [
+            "hx-post=\"/settings/rename-repo\"",
+            "hx-target=\"#rename-repo-result\"",
+            "hx-swap=\"innerHTML\"",
+            "hx-confirm=\"Rename 'acme/twig'? Its URL will change.\"",
+        ] {
+            assert!(
+                html.contains(attribute),
+                "missing exact attribute {attribute}: {html}"
+            );
+        }
+        assert!(
+            html.contains("<form class=\"twig-row twig-row--form\""),
+            "rename targets are technical form rows: {html}"
+        );
+        assert!(
+            html.contains("<span class=\"twig-row-id\">acme/twig</span>"),
+            "the row identifier names the repository being renamed: {html}"
+        );
+        for hidden in [
+            "<input type=\"hidden\" name=\"namespace\" value=\"acme\">",
+            "<input type=\"hidden\" name=\"repo_name\" value=\"twig\">",
+        ] {
+            assert!(html.contains(hidden), "missing payload {hidden}: {html}");
+        }
+        assert!(
+            html.contains(
+                "<input class=\"twig-input twig-input--mono\" type=\"text\" name=\"new_name\" required autocomplete=\"off\" spellcheck=\"false\" value=\"twig\">"
+            ),
+            "the new-name input is labelled, required and prefilled: {html}"
+        );
+        assert!(
+            html.contains(
+                "<button class=\"twig-btn twig-btn--primary\" type=\"submit\">Rename</button>"
+            ),
+            "{html}"
+        );
+        assert!(
+            html.contains("Renaming a repository changes its web and Git URLs."),
+            "{html}"
+        );
+    }
+
+    #[test]
+    fn test_settings_rename_panel_empty_state_offers_no_targets() {
+        let html = empty_rename_panel_html();
+        assert!(html.contains("Rename Repository"), "{html}");
+        assert!(html.contains(">NO REPOSITORIES<"), "{html}");
+        assert!(
+            html.contains("You don't have any repositories to rename."),
+            "{html}"
+        );
+        assert!(!html.contains("hx-confirm"), "{html}");
+        assert!(!html.contains("twig-btn--primary"), "{html}");
     }
 
     #[test]
@@ -694,18 +1033,18 @@ mod tests {
             );
         }
         assert!(
-            html.contains("<label class=\"fig-label\" for=\"email\">Email Address</label>"),
+            html.contains("<label class=\"twig-label\" for=\"email\">Email Address</label>"),
             "every input keeps a real label: {html}"
         );
         assert!(
             html.contains(
-                "<input class=\"fig-input\" type=\"email\" name=\"email\" id=\"email\" required value=\"silen@example.com\""
+                "<input class=\"twig-input\" type=\"email\" name=\"email\" id=\"email\" required value=\"silen@example.com\""
             ),
             "the email input keeps its type, requirement and current value: {html}"
         );
         assert!(
             html.contains(
-                "<button class=\"fig-btn fig-btn--primary\" type=\"submit\">Save Email</button>"
+                "<button class=\"twig-btn twig-btn--primary\" type=\"submit\">Save Email</button>"
             ),
             "{html}"
         );
@@ -724,21 +1063,21 @@ mod tests {
     fn test_settings_keeps_identity_visible_and_email_break_safe() {
         let html = populated_html();
         assert!(
-            html.contains("<span class=\"fig-label\">Username</span>"),
+            html.contains("<span class=\"twig-label\">Username</span>"),
             "{html}"
         );
         assert!(
-            html.contains("<p class=\"fig-body fig-break\">silen</p>"),
+            html.contains("<p class=\"twig-body twig-break\">silen</p>"),
             "{html}"
         );
         assert!(
-            html.contains("<p class=\"fig-body fig-break\">silen@example.com</p>"),
+            html.contains("<p class=\"twig-body twig-break\">silen@example.com</p>"),
             "long addresses must wrap rather than overflow: {html}"
         );
 
         let unset = empty_html();
         assert!(
-            unset.contains("<p class=\"fig-body fig-ink-tertiary\">Not set</p>"),
+            unset.contains("<p class=\"twig-body twig-ink-tertiary\">Not set</p>"),
             "a missing email reads as tertiary ink, not as an error: {unset}"
         );
         assert!(unset.contains("silen"), "username stays visible: {unset}");
@@ -748,7 +1087,7 @@ mod tests {
     fn test_settings_empty_states_name_their_condition_and_offer_no_targets() {
         let html = empty_repo_panel_html();
         assert_eq!(
-            html.matches("<div class=\"fig-empty\">").count(),
+            html.matches("<div class=\"twig-empty\">").count(),
             1,
             "repository tab degrades to an empty state: {html}"
         );
@@ -762,24 +1101,26 @@ mod tests {
             "no deletion affordance without a deletable object: {html}"
         );
         assert!(
-            !html.contains("fig-btn--danger"),
+            !html.contains("twig-btn--danger"),
             "no danger control without a deletable object: {html}"
         );
     }
 
     #[test]
-    fn test_settings_uses_only_fig_design_system_classes() {
+    fn test_settings_uses_only_twig_design_system_classes() {
         for html in [
             populated_html(),
             empty_html(),
             repo_panel_html(),
             empty_repo_panel_html(),
+            rename_panel_html(),
+            empty_rename_panel_html(),
         ] {
             let classes = classes_in(&html);
             assert!(!classes.is_empty(), "settings should carry classes: {html}");
             for class in classes {
                 assert!(
-                    class.starts_with("fig-"),
+                    class.starts_with("twig-"),
                     "non design-system class {class:?} in settings: {html}"
                 );
             }
@@ -819,5 +1160,22 @@ mod tests {
         assert_eq!(form.source_namespace, "source");
         assert_eq!(form.repo_name, "repo");
         assert_eq!(form.target_namespace, "target");
+    }
+
+    #[test]
+    fn test_rename_repo_form_deserialization() {
+        let form: RenameRepoForm =
+            serde_urlencoded::from_str("namespace=ns&repo_name=old&new_name=new").unwrap();
+        assert_eq!(form.namespace, "ns");
+        assert_eq!(form.repo_name, "old");
+        assert_eq!(form.new_name, "new");
+    }
+
+    #[test]
+    fn test_rename_namespace_form_deserialization() {
+        let form: RenameNamespaceForm =
+            serde_urlencoded::from_str("namespace=oldns&new_name=newns").unwrap();
+        assert_eq!(form.namespace, "oldns");
+        assert_eq!(form.new_name, "newns");
     }
 }

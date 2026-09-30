@@ -59,7 +59,7 @@ mod tests {
     use crate::auth::User;
 
     async fn setup_db_with_user() -> (Database, String, String) {
-        let db_path = format!("/tmp/test_fig_tokens_{}.db", uuid::Uuid::new_v4());
+        let db_path = format!("/tmp/test_twig_tokens_{}.db", uuid::Uuid::new_v4());
         let db = Database::new(&db_path);
         db.init_tables().await.expect("init tables");
 

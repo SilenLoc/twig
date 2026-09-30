@@ -2,7 +2,7 @@ use actix_web::{Error, FromRequest, HttpRequest, HttpResponse, Responder, error,
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
-use crate::{auth::FigContext, config, git};
+use crate::{auth::TwigContext, config, git};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct NamespaceTree {
@@ -60,7 +60,7 @@ pub fn msgpack_responder<T: Serialize>(data: T) -> impl Responder {
 pub async fn tree_endpoint(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
 ) -> Result<impl Responder, Error> {
     let username = crate::view::session_auth::get_username_from_request(&req, &auth_state).await;
     let is_logged_in = username.is_some();
@@ -136,14 +136,14 @@ mod tests {
         let tree_data = NamespaceTree {
             namespaces: vec![NamespaceNode {
                 name: "silen".to_string(),
-                repositories: vec!["fig".to_string(), "site".to_string()],
+                repositories: vec!["twig".to_string(), "site".to_string()],
             }],
         };
 
         let bytes = rmp_serde::to_vec_named(&tree_data).expect("serialize tree");
         let decoded: NamespaceTree = rmp_serde::from_slice(&bytes).expect("deserialize tree");
         assert_eq!(decoded.namespaces[0].name, "silen");
-        assert_eq!(decoded.namespaces[0].repositories, ["fig", "site"]);
+        assert_eq!(decoded.namespaces[0].repositories, ["twig", "site"]);
     }
 
     async fn echo_tree(req: HttpRequest, payload: web::Payload) -> Result<impl Responder, Error> {
@@ -174,10 +174,10 @@ mod tests {
     #[actix_web::test]
     async fn test_tree_endpoint_returns_namespaces_and_repositories() {
         let id = uuid::Uuid::new_v4();
-        let project_root = std::env::temp_dir().join(format!("fig_api_root_{id}"));
-        let db_path = std::env::temp_dir().join(format!("fig_api_db_{id}.db"));
+        let project_root = std::env::temp_dir().join(format!("twig_api_root_{id}"));
+        let db_path = std::env::temp_dir().join(format!("twig_api_db_{id}.db"));
         std::fs::create_dir_all(project_root.join("silen")).expect("create namespace");
-        git2::Repository::init_bare(project_root.join("silen").join("fig"))
+        git2::Repository::init_bare(project_root.join("silen").join("twig"))
             .expect("create repository");
 
         let db = crate::db::Database::new(db_path.to_str().expect("db path"));
@@ -200,7 +200,7 @@ mod tests {
                     project_root.to_str().expect("project root"),
                     db_path.to_str().expect("db path"),
                 )))
-                .app_data(web::Data::new(FigContext::new(db, "secure".to_string())))
+                .app_data(web::Data::new(TwigContext::new(db, "secure".to_string())))
                 .service(tree_endpoint),
         )
         .await;
@@ -219,7 +219,7 @@ mod tests {
         let decoded: NamespaceTree = rmp_serde::from_slice(&body).expect("decode response");
         assert_eq!(decoded.namespaces.len(), 1);
         assert_eq!(decoded.namespaces[0].name, "silen");
-        assert_eq!(decoded.namespaces[0].repositories, ["fig"]);
+        assert_eq!(decoded.namespaces[0].repositories, ["twig"]);
 
         let _ = std::fs::remove_file(db_path);
         let _ = std::fs::remove_dir_all(project_root);
@@ -228,8 +228,8 @@ mod tests {
     #[actix_web::test]
     async fn test_tree_endpoint_filters_private_repositories() {
         let id = uuid::Uuid::new_v4();
-        let project_root = std::env::temp_dir().join(format!("fig_api_root_{id}"));
-        let db_path = std::env::temp_dir().join(format!("fig_api_db_{id}.db"));
+        let project_root = std::env::temp_dir().join(format!("twig_api_root_{id}"));
+        let db_path = std::env::temp_dir().join(format!("twig_api_db_{id}.db"));
         std::fs::create_dir_all(project_root.join("silen")).expect("create namespace");
         git2::Repository::init_bare(project_root.join("silen").join("public"))
             .expect("create repository");
@@ -246,7 +246,7 @@ mod tests {
                 .read()
                 .unwrap();
             let tree = xshell::cmd!(sh, "git mktree")
-                .stdin(format!("100644 blob {blob}\t.fig.toml\n"))
+                .stdin(format!("100644 blob {blob}\t.twig.toml\n"))
                 .read()
                 .unwrap();
             let commit = xshell::cmd!(sh, "git commit-tree {tree} -m 'private'")
@@ -282,7 +282,7 @@ mod tests {
                     project_root.to_str().expect("project root"),
                     db_path.to_str().expect("db path"),
                 )))
-                .app_data(web::Data::new(FigContext::new(db, "secure".to_string())))
+                .app_data(web::Data::new(TwigContext::new(db, "secure".to_string())))
                 .service(tree_endpoint),
         )
         .await;

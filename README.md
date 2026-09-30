@@ -1,6 +1,6 @@
-# Fig
+# Twig
 
-Fig is a self-hosted Git server with a web interface for browsing and managing
+Twig is a self-hosted Git server with a web interface for browsing and managing
 repositories. It is a single Rust/Actix-web application backed by a local
 SQLite-compatible database (Turso/libSQL) and Git's smart-HTTP backend.
 
@@ -8,9 +8,9 @@ SQLite-compatible database (Turso/libSQL) and Git's smart-HTTP backend.
 
 - Public namespace and repository browsing, with search, Markdown rendering,
   file browsing, commit history, license display, optional slide presentations,
-  and an optional long-form Paper reader configured in `.fig.toml`.
+  and an optional long-form Paper reader configured in `.twig.toml`.
 - Git clone/fetch over HTTP; pushes use HTTP Basic Auth. Repositories can be
-  made private in `.fig.toml`.
+  made private in `.twig.toml`.
 - Account signup by one-time invite, session-based web login, owned namespaces,
   and repository creation from the UI or Git push.
 - Settings for updating email, moving repositories between your namespaces, and
@@ -29,7 +29,7 @@ mise run run
 ```
 
 The development configuration sets `PROJECT_ROOT=tests/git/srv`,
-`RESET_DB=true`, `PORT=8080`, and `TEST_USER=admin`. With `RESET_DB=true`, Fig
+`RESET_DB=true`, `PORT=8080`, and `TEST_USER=admin`. With `RESET_DB=true`, Twig
 resets its local database and seeds an `admin` / `admin` account for local
 browsing. Do not use this mode for persistent data.
 
@@ -40,11 +40,11 @@ survive restarts. For example:
 ```sh
 docker run --rm -p 8080:80 \
   -e PROJECT_ROOT=/data/git \
-  -e DB_PATH=/data/fig.db \
+  -e DB_PATH=/data/twig.db \
   -e SESSION_KEY='replace-with-a-long-random-secret' \
   -e API_KEY='replace-with-a-secret' \
-  -v fig-data:/data \
-  silenloc/fig
+  -v twig-data:/data \
+  silenloc/twig
 ```
 
 See [Environment Variables](docs/environment-variables.md) for the complete

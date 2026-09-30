@@ -91,7 +91,7 @@ mod tests {
 
     #[test]
     fn test_ordinary_names_are_allowed() {
-        for name in ["fig", "my-repo", "repo.git", "a", "Ticketing", "ticketz"] {
+        for name in ["twig", "my-repo", "repo.git", "a", "Ticketing", "ticketz"] {
             assert!(
                 validate_repo_name(name).is_ok(),
                 "{name} should be allowed: {:?}",

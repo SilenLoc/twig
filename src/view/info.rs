@@ -12,7 +12,7 @@ use serde::Deserialize;
 
 use super::render_layout;
 use super::session_auth::get_username_from_request;
-use crate::auth::FigContext;
+use crate::auth::TwigContext;
 use crate::info::{self, DocPage};
 
 #[derive(Deserialize)]
@@ -46,10 +46,10 @@ impl Tab {
 fn render_tabs(active: Tab) -> maud::Markup {
     let tabs = [(Tab::Docs, "Documentation"), (Tab::About, "About")];
     maud::html! {
-        nav class="fig-tabs" aria-label="Information views" {
+        nav class="twig-tabs" aria-label="Information views" {
             @for (tab, label) in tabs {
                 a
-                    class="fig-tab"
+                    class="twig-tab"
                     aria-current=[(tab == active).then_some("page")]
                     href=(format!("/_info?tab={}", tab.as_str()))
                 {
@@ -78,13 +78,13 @@ fn render_docs_menu(docs: &[DocPage], active_slug: &str) -> maud::Markup {
         .collect();
 
     maud::html! {
-        nav class="fig-rail fig-rail--docs" aria-label="Documentation" {
+        nav class="twig-rail twig-rail--docs" aria-label="Documentation" {
             @for (doc, is_new_section) in docs.iter().zip(&show_heading) {
                 @if *is_new_section {
-                    p class="fig-eyebrow" { (doc.page.section.unwrap_or_default()) }
+                    p class="twig-eyebrow" { (doc.page.section.unwrap_or_default()) }
                 }
                 a
-                    class="fig-rail-item"
+                    class="twig-rail-item"
                     aria-current=[(doc.slug == active_slug).then_some("page")]
                     href=(format!("/_info?tab=docs&page={}", doc.slug))
                 {
@@ -110,11 +110,11 @@ fn render_docs_tab(requested_slug: Option<&str>) -> maud::Markup {
     let html = info::render_page_html(&active_page);
 
     maud::html! {
-        div class="fig-rail-shell" {
+        div class="twig-rail-shell" {
             (render_docs_menu(&docs, active_slug))
-            div class="fig-rail-body fig-stack" {
-                h2 class="fig-title" { (active_page.title) }
-                div class="fig-md fig-md--prose" {
+            div class="twig-rail-body twig-stack" {
+                h2 class="twig-title" { (active_page.title) }
+                div class="twig-md twig-md--prose" {
                     (maud::PreEscaped(html))
                 }
             }
@@ -126,9 +126,9 @@ fn render_about_tab() -> maud::Markup {
     let html = info::render_page_html(&info::ABOUT_PAGE);
 
     maud::html! {
-        div class="fig-stack" {
-            h2 class="fig-title" { (info::ABOUT_PAGE.title) }
-            div class="fig-md fig-md--prose" {
+        div class="twig-stack" {
+            h2 class="twig-title" { (info::ABOUT_PAGE.title) }
+            div class="twig-md twig-md--prose" {
                 (maud::PreEscaped(html))
             }
         }
@@ -145,7 +145,7 @@ fn render_page(active: Tab, body: &maud::Markup) -> maud::Markup {
 #[get("/_info")]
 pub async fn index(
     req: HttpRequest,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     query: web::Query<Query>,
 ) -> AwResult<maud::Markup> {
     let username = get_username_from_request(&req, &auth_state).await;
@@ -203,10 +203,10 @@ mod tests {
     fn test_render_tabs_is_a_labelled_navigation_landmark() {
         let html = render_tabs(Tab::About).into_string();
         assert!(
-            html.starts_with("<nav class=\"fig-tabs\" aria-label=\"Information views\">"),
+            html.starts_with("<nav class=\"twig-tabs\" aria-label=\"Information views\">"),
             "tabs are a labelled navigation landmark: {html}"
         );
-        assert_eq!(html.matches("class=\"fig-tab\"").count(), 2, "{html}");
+        assert_eq!(html.matches("class=\"twig-tab\"").count(), 2, "{html}");
     }
 
     #[test]
@@ -228,12 +228,12 @@ mod tests {
         let html = render_docs_menu(&docs, docs[0].slug).into_string();
         assert!(
             html.starts_with(
-                "<nav class=\"fig-rail fig-rail--docs\" aria-label=\"Documentation\">"
+                "<nav class=\"twig-rail twig-rail--docs\" aria-label=\"Documentation\">"
             ),
             "the docs menu is a labelled rail landmark: {html}"
         );
         assert!(
-            html.contains("<p class=\"fig-eyebrow\">Self-hosting</p>"),
+            html.contains("<p class=\"twig-eyebrow\">Self-hosting</p>"),
             "section labels are eyebrow paragraphs, not headings: {html}"
         );
     }
@@ -277,10 +277,10 @@ mod tests {
     fn test_render_docs_tab_pairs_the_rail_with_measured_prose() {
         let html = render_docs_tab(None).into_string();
         for hook in [
-            "class=\"fig-rail-shell\"",
-            "class=\"fig-rail-body fig-stack\"",
-            "<h2 class=\"fig-title\">",
-            "class=\"fig-md fig-md--prose\"",
+            "class=\"twig-rail-shell\"",
+            "class=\"twig-rail-body twig-stack\"",
+            "<h2 class=\"twig-title\">",
+            "class=\"twig-md twig-md--prose\"",
         ] {
             assert!(html.contains(hook), "missing {hook}: {html}");
         }
@@ -291,10 +291,10 @@ mod tests {
         let html = render_about_tab().into_string();
         assert!(html.contains("self-hosted Git server"));
         assert!(
-            html.contains("<h2 class=\"fig-title\">About</h2>"),
+            html.contains("<h2 class=\"twig-title\">About</h2>"),
             "{html}"
         );
-        assert!(html.contains("class=\"fig-md fig-md--prose\""), "{html}");
+        assert!(html.contains("class=\"twig-md twig-md--prose\""), "{html}");
     }
 
     #[test]
@@ -305,7 +305,7 @@ mod tests {
             assert!(!html.contains("markdown-body"), "{html}");
             for class in classes_in(&html) {
                 assert!(
-                    class.starts_with("fig-") || class.starts_with("language-"),
+                    class.starts_with("twig-") || class.starts_with("language-"),
                     "non design-system class {class:?} on /_info: {html}"
                 );
             }

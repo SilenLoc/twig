@@ -3,7 +3,7 @@
 | `PORT` | HTTP server port (binds on `0.0.0.0`) | `80` |
 | `LOG_LEVEL` | Logging level (error, warn, info, debug, trace) | `info` |
 | `PROJECT_ROOT` | Root directory for Git repositories | `/srv/git` |
-| `DB_PATH` | Path to the SQLite database file | `fig.db` |
+| `DB_PATH` | Path to the SQLite database file | `twig.db` |
 | `API_KEY` | Secret required to generate one-time signup invites. If unset or empty, a random key is generated and logged at startup. | Generated per process |
 | `SESSION_KEY` | Secret used to sign/encrypt web session cookies. Set a stable value to keep sessions valid across restarts. | Random per process; sessions do not survive restart |
 | `RESET_DB` | Set to exactly `true` to delete the database file at startup and seed a development `admin` / `admin` account with automatic local login. | `false` |

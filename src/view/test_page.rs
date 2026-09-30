@@ -7,7 +7,7 @@ use rand::rngs::OsRng;
 use serde::Deserialize;
 
 use super::session_auth::get_username_from_request;
-use crate::auth::FigContext;
+use crate::auth::TwigContext;
 use crate::config;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -138,10 +138,10 @@ fn docs_endpoints() -> Vec<TestEndpoint> {
 fn asset_endpoints() -> Vec<TestEndpoint> {
     vec![
         TestEndpoint {
-            id: "css-fig",
+            id: "css-twig",
             category: "Assets",
             method: "GET",
-            url: "/assets/fig.css".to_string(),
+            url: "/assets/twig.css".to_string(),
         },
         TestEndpoint {
             id: "css-t",
@@ -156,10 +156,10 @@ fn asset_endpoints() -> Vec<TestEndpoint> {
             url: "/assets/h.js".to_string(),
         },
         TestEndpoint {
-            id: "svg-fig",
+            id: "svg-twig",
             category: "Assets",
             method: "GET",
-            url: "/assets/fig.svg".to_string(),
+            url: "/assets/twig.svg".to_string(),
         },
     ]
 }
@@ -209,27 +209,27 @@ pub fn list_test_endpoints() -> Vec<TestEndpoint> {
 
 fn render_pagehead(role: &CallerRole) -> maud::Markup {
     maud::html! {
-        section class="fig-pagehead" {
-            nav class="fig-crumbs fig-crumbs--page" aria-label="Breadcrumb" {
-                a href="/" { "Fig" }
-                span class="fig-crumbs-sep" aria-hidden="true" { "/" }
+        section class="twig-pagehead" {
+            nav class="twig-crumbs twig-crumbs--page" aria-label="Breadcrumb" {
+                a href="/" { "Twig" }
+                span class="twig-crumbs-sep" aria-hidden="true" { "/" }
                 span aria-current="page" { "Test Suite" }
             }
-            div class="fig-cluster" {
+            div class="twig-cluster" {
                 div {
-                    p class="fig-eyebrow" { (role.display_name()) }
-                    h1 class="fig-title" { "Test Suite & Rapid Endpoint Runner" }
+                    p class="twig-eyebrow" { (role.display_name()) }
+                    h1 class="twig-title" { "Test Suite & Rapid Endpoint Runner" }
                 }
-                div class="fig-cluster" {
+                div class="twig-cluster" {
                     button id="btn-start"
-                        class="fig-btn fig-btn--primary"
+                        class="twig-btn twig-btn--primary"
                         hx-get="/_test/runner"
                         hx-target="#test-runner-container"
                         hx-swap="innerHTML" {
                         "Start"
                     }
                     button id="btn-stop"
-                        class="fig-btn fig-btn--ghost"
+                        class="twig-btn twig-btn--ghost"
                         hx-get="/_test/stopped"
                         hx-target="#test-runner-container"
                         hx-swap="innerHTML" {
@@ -243,22 +243,22 @@ fn render_pagehead(role: &CallerRole) -> maud::Markup {
 
 pub fn render_pin_panel(is_admin: bool, active_pin: Option<&str>, base_url: &str) -> maud::Markup {
     maud::html! {
-        section id="pin-management-panel" class="fig-panel" aria-label="Multi-user PIN and QR code access" {
-            div class="fig-panel-head" {
-                span class="fig-eyebrow" { "MULTI-USER ACCESS" }
-                span class="fig-title" { "Session PIN & QR Code" }
+        section id="pin-management-panel" class="twig-panel" aria-label="Multi-user PIN and QR code access" {
+            div class="twig-panel-head" {
+                span class="twig-eyebrow" { "MULTI-USER ACCESS" }
+                span class="twig-title" { "Session PIN & QR Code" }
             }
-            div class="fig-panel-body" {
+            div class="twig-panel-body" {
                 @if let Some(pin) = active_pin {
-                    div class="fig-stack" {
-                        div class="fig-cluster" {
+                    div class="twig-stack" {
+                        div class="twig-cluster" {
                             div {
-                                p class="fig-label" { "Active Session PIN" }
-                                p id="active-pin-display" class="fig-data-lg" { (pin) }
+                                p class="twig-label" { "Active Session PIN" }
+                                p id="active-pin-display" class="twig-data-lg" { (pin) }
                             }
                             @if is_admin {
                                 button id="btn-remove-pin"
-                                    class="fig-btn fig-btn--danger"
+                                    class="twig-btn twig-btn--danger"
                                     hx-post="/_test/pin/remove"
                                     hx-target="#pin-management-panel"
                                     hx-swap="outerHTML" {
@@ -268,35 +268,35 @@ pub fn render_pin_panel(is_admin: bool, active_pin: Option<&str>, base_url: &str
                         }
 
                         @let redirect_url = format!("{base_url}/_test?pin={pin}");
-                        div class="fig-panel" {
-                            div class="fig-panel-body" {
-                                div class="fig-cluster" {
+                        div class="twig-panel" {
+                            div class="twig-panel-body" {
+                                div class="twig-cluster" {
                                     @if let Ok(qr_svg) = generate_qr_svg(&redirect_url) {
-                                        div id="qr-code-container" class="fig-panel" {
+                                        div id="qr-code-container" class="twig-panel" {
                                             (maud::PreEscaped(qr_svg))
                                         }
                                     }
-                                    div class="fig-stack fig-stack--tight" {
-                                        p class="fig-eyebrow" { "SCAN TO JOIN" }
-                                        p class="fig-body-sm" {
+                                    div class="twig-stack twig-stack--tight" {
+                                        p class="twig-eyebrow" { "SCAN TO JOIN" }
+                                        p class="twig-body-sm" {
                                             "Scan this QR code or use the link below to allow multiple users to run tests simultaneously. Access is revoked when the admin removes the PIN."
                                         }
-                                        p class="fig-label" { "Redirect Link:" }
-                                        a id="pin-direct-link" class="fig-data" href=(redirect_url) { (redirect_url) }
+                                        p class="twig-label" { "Redirect Link:" }
+                                        a id="pin-direct-link" class="twig-data" href=(redirect_url) { (redirect_url) }
                                     }
                                 }
                             }
                         }
                     }
                 } @else if is_admin {
-                    div class="fig-cluster" {
-                        div class="fig-stack fig-stack--tight" {
-                            p class="fig-body-sm" {
+                    div class="twig-cluster" {
+                        div class="twig-stack twig-stack--tight" {
+                            p class="twig-body-sm" {
                                 "No PIN active. Create a session PIN to let multiple users access and run the test suite concurrently."
                             }
                         }
                         button id="btn-create-pin"
-                            class="fig-btn fig-btn--primary"
+                            class="twig-btn twig-btn--primary"
                             hx-post="/_test/pin/create"
                             hx-target="#pin-management-panel"
                             hx-swap="outerHTML" {
@@ -304,7 +304,7 @@ pub fn render_pin_panel(is_admin: bool, active_pin: Option<&str>, base_url: &str
                         }
                     }
                 } @else {
-                    p class="fig-body-sm" {
+                    p class="twig-body-sm" {
                         "Connected via Session PIN. You can run all test endpoints concurrently until the admin ends the session."
                     }
                 }
@@ -316,39 +316,39 @@ pub fn render_pin_panel(is_admin: bool, active_pin: Option<&str>, base_url: &str
 #[must_use]
 pub fn render_pin_entry_page(admin_user: &str, has_active_pin: bool) -> maud::Markup {
     maud::html! {
-        div class="fig-stack" {
-            div class="fig-notice fig-notice--warn" role="alert" {
-                p class="fig-eyebrow" { "ACCESS RESTRICTED" }
-                p class="fig-notice-body" {
+        div class="twig-stack" {
+            div class="twig-notice twig-notice--warn" role="alert" {
+                p class="twig-eyebrow" { "ACCESS RESTRICTED" }
+                p class="twig-notice-body" {
                     (format!("The test suite is restricted to admin '{admin_user}' or users with an active session PIN."))
                 }
             }
 
-            section class="fig-panel" {
-                div class="fig-panel-head" {
-                    span class="fig-eyebrow" { "SESSION PIN" }
-                    span class="fig-title" { "Enter PIN to Join" }
+            section class="twig-panel" {
+                div class="twig-panel-head" {
+                    span class="twig-eyebrow" { "SESSION PIN" }
+                    span class="twig-title" { "Enter PIN to Join" }
                 }
-                div class="fig-panel-body" {
+                div class="twig-panel-body" {
                     @if has_active_pin {
-                        form method="GET" action="/_test" class="fig-form fig-form--narrow" {
-                            div class="fig-field" {
-                                label class="fig-label" for="pin-input" { "Enter 6-digit Session PIN" }
-                                input id="pin-input" class="fig-input fig-input--mono" type="text" name="pin" placeholder="e.g. 123456" required;
+                        form method="GET" action="/_test" class="twig-form twig-form--narrow" {
+                            div class="twig-field" {
+                                label class="twig-label" for="pin-input" { "Enter 6-digit Session PIN" }
+                                input id="pin-input" class="twig-input twig-input--mono" type="text" name="pin" placeholder="e.g. 123456" required;
                             }
-                            div class="fig-form-actions" {
-                                button class="fig-btn fig-btn--primary" type="submit" { "Join Session" }
-                                a class="fig-btn fig-btn--ghost" href="/auth/login" { "Log in as Admin" }
+                            div class="twig-form-actions" {
+                                button class="twig-btn twig-btn--primary" type="submit" { "Join Session" }
+                                a class="twig-btn twig-btn--ghost" href="/auth/login" { "Log in as Admin" }
                             }
                         }
                     } @else {
-                        div class="fig-empty fig-empty--void" {
-                            p class="fig-eyebrow" { "NO ACTIVE SESSION" }
-                            p class="fig-empty-body" {
+                        div class="twig-empty twig-empty--void" {
+                            p class="twig-eyebrow" { "NO ACTIVE SESSION" }
+                            p class="twig-empty-body" {
                                 "There is currently no active session PIN. Please ask the admin to generate a PIN on the test page, or log in as admin."
                             }
-                            div class="fig-cluster" {
-                                a class="fig-btn fig-btn--primary" href="/auth/login" { "Log in as Admin" }
+                            div class="twig-cluster" {
+                                a class="twig-btn twig-btn--primary" href="/auth/login" { "Log in as Admin" }
                             }
                         }
                     }
@@ -378,13 +378,13 @@ pub fn render_test_page(
 #[must_use]
 pub fn render_idle_content() -> maud::Markup {
     maud::html! {
-        div id="test-runner-idle" class="fig-panel" {
-            div class="fig-panel-head" {
-                span class="fig-eyebrow" { "IDLE" }
-                span class="fig-title" { "Test run has not started" }
+        div id="test-runner-idle" class="twig-panel" {
+            div class="twig-panel-head" {
+                span class="twig-eyebrow" { "IDLE" }
+                span class="twig-title" { "Test run has not started" }
             }
-            div class="fig-panel-body" {
-                p class="fig-body-sm" {
+            div class="twig-panel-body" {
+                p class="twig-body-sm" {
                     "Press Start to run every read-only endpoint and feature check. Press Stop at any time to interrupt the run."
                 }
             }
@@ -395,13 +395,13 @@ pub fn render_idle_content() -> maud::Markup {
 #[must_use]
 pub fn render_stopped_content() -> maud::Markup {
     maud::html! {
-        div id="test-runner-stopped" class="fig-panel" {
-            div class="fig-panel-head" {
-                span class="fig-eyebrow" { "STOPPED" }
-                span class="fig-title" { "Test run interrupted" }
+        div id="test-runner-stopped" class="twig-panel" {
+            div class="twig-panel-head" {
+                span class="twig-eyebrow" { "STOPPED" }
+                span class="twig-title" { "Test run interrupted" }
             }
-            div class="fig-panel-body" {
-                p class="fig-body-sm" {
+            div class="twig-panel-body" {
+                p class="twig-body-sm" {
                     "The run has been stopped. Press Start to run the endpoints again."
                 }
             }
@@ -413,27 +413,27 @@ pub fn render_runner_content() -> maud::Markup {
     let endpoints = list_test_endpoints();
     maud::html! {
         div id="test-runner"
-            class="fig-stack"
+            class="twig-stack"
             hx-get="/_test/runner"
             hx-trigger="every 25ms"
             hx-target="#test-runner"
             hx-swap="outerHTML" {
-            div class="fig-cluster" {
-                span class="fig-label" { "Runner active: triggering all read-only endpoints every 5ms (container polling every 25ms)" }
+            div class="twig-cluster" {
+                span class="twig-label" { "Runner active: triggering all read-only endpoints every 5ms (container polling every 25ms)" }
             }
-            div class="fig-bento" {
+            div class="twig-bento" {
                 @for ep in endpoints {
-                    div class="fig-panel" {
-                        div class="fig-panel-head" {
-                            span class="fig-eyebrow" { (ep.category) " · " (ep.method) }
-                            span class="fig-title" { (ep.url) }
+                    div class="twig-panel" {
+                        div class="twig-panel-head" {
+                            span class="twig-eyebrow" { (ep.category) " · " (ep.method) }
+                            span class="twig-title" { (ep.url) }
                         }
-                        div class="fig-panel-body"
+                        div class="twig-panel-body"
                             hx-get=(ep.url)
                             hx-trigger="load, every 5ms"
                             hx-swap="none"
                             data-ep-id=(ep.id) {
-                            span id=(format!("res-{}", ep.id)) class="fig-data" {
+                            span id=(format!("res-{}", ep.id)) class="twig-data" {
                                 "Active"
                             }
                         }
@@ -458,7 +458,7 @@ fn get_base_url(req: &HttpRequest, server: &config::Server) -> String {
 async fn authenticate_caller(
     req: &HttpRequest,
     server: &config::Server,
-    auth_state: &web::Data<FigContext>,
+    auth_state: &web::Data<TwigContext>,
     query_pin: Option<&str>,
 ) -> Result<CallerRole, HttpResponse> {
     if !server.is_test_user_enabled() {
@@ -516,7 +516,7 @@ async fn authenticate_caller(
 async fn verify_admin_only(
     req: &HttpRequest,
     server: &config::Server,
-    auth_state: &web::Data<FigContext>,
+    auth_state: &web::Data<TwigContext>,
 ) -> Result<String, HttpResponse> {
     if !server.is_test_user_enabled() {
         return Err(HttpResponse::NotFound().body("Not Found"));
@@ -547,7 +547,7 @@ fn is_hx_request(headers: &HeaderMap) -> bool {
 async fn handle_test_page(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     query: web::Query<TestPageQuery>,
 ) -> HttpResponse {
     let role = match authenticate_caller(&req, &server, &auth_state, query.pin.as_deref()).await {
@@ -587,7 +587,7 @@ async fn handle_test_page(
 pub async fn test_page_alias(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     query: web::Query<TestPageQuery>,
 ) -> HttpResponse {
     handle_test_page(req, server, auth_state, query).await
@@ -597,7 +597,7 @@ pub async fn test_page_alias(
 pub async fn test_pin_create(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
 ) -> HttpResponse {
     if let Err(res) = verify_admin_only(&req, &server, &auth_state).await {
         return res;
@@ -618,7 +618,7 @@ pub async fn test_pin_create(
 pub async fn test_pin_remove(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
 ) -> HttpResponse {
     if let Err(res) = verify_admin_only(&req, &server, &auth_state).await {
         return res;
@@ -638,7 +638,7 @@ pub async fn test_pin_remove(
 pub async fn test_pin_qr(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     query: web::Query<TestPageQuery>,
 ) -> HttpResponse {
     if let Err(res) = authenticate_caller(&req, &server, &auth_state, query.pin.as_deref()).await {
@@ -665,7 +665,7 @@ pub async fn test_pin_qr(
 pub async fn test_runner(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     query: web::Query<TestPageQuery>,
 ) -> HttpResponse {
     if let Err(res) = authenticate_caller(&req, &server, &auth_state, query.pin.as_deref()).await {
@@ -679,7 +679,7 @@ pub async fn test_runner(
 pub async fn test_stopped(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     query: web::Query<TestPageQuery>,
 ) -> HttpResponse {
     if let Err(res) = authenticate_caller(&req, &server, &auth_state, query.pin.as_deref()).await {
@@ -693,7 +693,7 @@ pub async fn test_stopped(
 pub async fn test_ping(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     query: web::Query<TestPageQuery>,
 ) -> HttpResponse {
     if let Err(res) = authenticate_caller(&req, &server, &auth_state, query.pin.as_deref()).await {
@@ -707,7 +707,7 @@ pub async fn test_ping(
 pub async fn test_feature_check(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     query: web::Query<TestPageQuery>,
 ) -> HttpResponse {
     if let Err(res) = authenticate_caller(&req, &server, &auth_state, query.pin.as_deref()).await {
@@ -715,7 +715,7 @@ pub async fn test_feature_check(
     }
 
     let markup = maud::html! {
-        span class="fig-data" { "all systems operational" }
+        span class="twig-data" { "all systems operational" }
     };
     HttpResponse::Ok().body(markup.into_string())
 }

@@ -1,6 +1,6 @@
 # Web UI
 
-Fig provides a web interface for browsing namespaces and repositories,
+Twig provides a web interface for browsing namespaces and repositories,
 managing your account, and (when enabled) using admin tools.
 
 ## Authentication
@@ -50,7 +50,7 @@ repositories; only the namespace owner can create repositories.
 
 ### Repository (`/{namespace}/{repo}`)
 
-The repository page offers tabs according to available content and `.fig.toml`
+The repository page offers tabs according to available content and `.twig.toml`
 configuration:
 
 - **Documentation** — rendered Markdown, including README files and links
@@ -62,7 +62,7 @@ configuration:
   `#paper-01.md--introduction`) so any position is directly linkable.
 - **Content** — browse files and folders; open file content.
 - **Commits** — recent commit history with short hash, author, date, and message.
-- **Config** — view `.fig.toml` when present.
+- **Config** — view `.twig.toml` when present.
 - **Present** — navigate configured Markdown slides when `[present].files` is
   set.
 - **License** — display the repository license or fallback license content.
@@ -71,7 +71,7 @@ The config can choose which tabs to display and which repository files to omit
 from the browser. Repositories with `private = true` require a logged-in user
 for the web UI.
 
-When `.fig.toml` cannot be parsed, the repository page shows a compiler-style
+When `.twig.toml` cannot be parsed, the repository page shows a compiler-style
 diagnostic with the offending line instead of silently ignoring the file; the
 rest of the UI keeps working with default settings.
 
@@ -81,7 +81,7 @@ Available to signed-in users:
 
 - Update the account email.
 - Move an owned repository to another namespace you own.
-- Delete repositories explicitly marked `deleteable = true` in `.fig.toml`.
+- Delete repositories explicitly marked `deleteable = true` in `.twig.toml`.
 - Delete an owned namespace only after its repositories have been removed.
 
 ### Tree and admin tools
@@ -91,7 +91,7 @@ show the following optional tools:
 
 #### Database data (`/tree/data`)
 
-Enabled only when `ADMIN_USER` names a Fig account. It shows read-only database
+Enabled only when `ADMIN_USER` names a Twig account. It shows read-only database
 tables and their rows in pages of 50.
 
 #### Endpoint test suite (`/_test`)

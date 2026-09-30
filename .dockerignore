@@ -29,8 +29,8 @@ AGENTS.md
 LICENSE
 README.md
 docker.just
-fig.db
-fig.db-wal
+twig.db
+twig.db-wal
 justfile
 skills
 tests

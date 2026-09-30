@@ -1,13 +1,13 @@
 # Git Backend
 
-Fig serves repositories over Git smart HTTP and works with standard Git
+Twig serves repositories over Git smart HTTP and works with standard Git
 commands. The web UI and Git endpoints use the same namespace/repository paths.
 
 ## Authentication
 
-Git writes use **HTTP Basic Authentication** with your Fig username and
+Git writes use **HTTP Basic Authentication** with your Twig username and
 password. Reads of public repositories do not require credentials; repositories
-marked `private = true` in `.fig.toml` require credentials for reads as well.
+marked `private = true` in `.twig.toml` require credentials for reads as well.
 
 | Operation | Public repository | Private repository |
 |-----------|-------------------|-------------------|
@@ -17,7 +17,7 @@ marked `private = true` in `.fig.toml` require credentials for reads as well.
 ## Clone and fetch
 
 ```sh
-git clone http://your-fig-server/namespace/repo
+git clone http://your-twig-server/namespace/repo
 cd repo
 git fetch origin
 ```
@@ -28,7 +28,7 @@ you can use a credential helper to store them.
 ## Push
 
 ```sh
-git remote add origin http://your-fig-server/namespace/repo
+git remote add origin http://your-twig-server/namespace/repo
 git push -u origin main
 ```
 
@@ -38,13 +38,13 @@ missing namespace (owned by the pushing user) and repository.
 
 ## Account and repository setup
 
-1. Get a one-time signup invite from the Fig administrator using the invite
+1. Get a one-time signup invite from the Twig administrator using the invite
    page.
-2. Sign up at `http://your-fig-server/auth/signup` with the invite, username,
+2. Sign up at `http://your-twig-server/auth/signup` with the invite, username,
    email address, and password.
-3. Log in and create a namespace at `http://your-fig-server/auth/namespace`,
+3. Log in and create a namespace at `http://your-twig-server/auth/namespace`,
    or let your first authenticated push create it.
-4. Create a repository in the web UI at `http://your-fig-server/namespace`
+4. Create a repository in the web UI at `http://your-twig-server/namespace`
    (the account needs an email), or push to a new repository path in your
    namespace.
 
@@ -54,19 +54,19 @@ and optionally `branch` as form fields; the branch defaults to `main`.
 
 ## Repository configuration
 
-Fig reads `.fig.toml` from the repository's current commit. Set `private = true`
+Twig reads `.twig.toml` from the repository's current commit. Set `private = true`
 to require authenticated access for reads. Other options control which files
 appear in the browser, which repository tabs are shown, whether the repository
 can be deleted from Settings, and which Markdown files appear in the
 presentation view. New UI-created repositories include a commented
 configuration template. The schema is available at
-`/assets/fig.schema.json`.
+`/assets/twig.schema.json`.
 
 ## Troubleshooting
 
 ### Authentication failed
 
-Check your Fig username and password. For pushes, confirm that you own the
+Check your Twig username and password. For pushes, confirm that you own the
 namespace. If Git has cached old credentials, clear or update them using your
 credential helper.
 

@@ -6,14 +6,14 @@ use serde::Deserialize;
 use super::session_auth::get_username_from_request;
 use super::{render_error, render_error_with_action, render_success};
 use crate::{
-    auth::FigContext,
+    auth::TwigContext,
     config,
     git::{self, repo::bare_init},
 };
 
 async fn user_has_namespace_access(
     req: &HttpRequest,
-    auth_state: &web::Data<FigContext>,
+    auth_state: &web::Data<TwigContext>,
     namespace: &str,
 ) -> bool {
     let Some(user_id) = auth_state.user_id_from_request(req).await else {
@@ -85,17 +85,17 @@ fn render_namespace(
     let namespace_href = format!("/{namespace}");
 
     maud::html! {
-        div class="fig-pagehead" {
-            nav class="fig-crumbs fig-crumbs--page" aria-label="Breadcrumb" {
+        div class="twig-pagehead" {
+            nav class="twig-crumbs twig-crumbs--page" aria-label="Breadcrumb" {
                 a href="/" { "Namespaces" }
-                span class="fig-crumb-sep" aria-hidden="true" { "/" }
-                h1 class="fig-crumb-current" aria-current="page" { (namespace) }
+                span class="twig-crumb-sep" aria-hidden="true" { "/" }
+                h1 class="twig-crumb-current" aria-current="page" { (namespace) }
             }
             @if has_access {
-                div class="fig-cluster" {
+                div class="twig-cluster" {
                     button
                         type="button"
-                        class="fig-btn fig-btn--primary"
+                        class="twig-btn twig-btn--primary"
                         hx-get=(format!("/{namespace}/create-repo-form"))
                         hx-target="#create-repo-container"
                         hx-swap="innerHTML"
@@ -107,19 +107,19 @@ fn render_namespace(
         }
 
 
-        div class="fig-stack" {
-            form class="fig-search" role="search" method="GET" action=(namespace_href) {
-                label class="fig-sr" for="repo-search" { "Search repositories" }
+        div class="twig-stack" {
+            form class="twig-search" role="search" method="GET" action=(namespace_href) {
+                label class="twig-sr" for="repo-search" { "Search repositories" }
                 input
-                    class="fig-input fig-input--mono"
+                    class="twig-input twig-input--mono"
                     id="repo-search"
                     type="search"
                     name="q"
                     value=(search_query)
                     placeholder="Search repositories...";
-                button type="submit" class="fig-btn fig-btn--ghost" { "Search" }
+                button type="submit" class="twig-btn twig-btn--ghost" { "Search" }
                 @if !search_query.is_empty() {
-                    a class="fig-btn fig-btn--quiet" href=(namespace_href) { "Clear" }
+                    a class="twig-btn twig-btn--quiet" href=(namespace_href) { "Clear" }
                 }
             }
 
@@ -127,34 +127,34 @@ fn render_namespace(
                 div id="create-repo-container" {}
             }
 
-            section class="fig-panel fig-panel--flush" {
-                div class="fig-panel-body" {
+            section class="twig-panel twig-panel--flush" {
+                div class="twig-panel-body" {
                     @if repos.is_empty() {
                         @if search_query.is_empty() {
-                            div class="fig-empty fig-empty--void" {
-                                p class="fig-eyebrow" { "NO REPOSITORIES" }
-                                p class="fig-empty-body" { "No repositories yet. Click 'Create repo' to add one!" }
+                            div class="twig-empty twig-empty--void" {
+                                p class="twig-eyebrow" { "NO REPOSITORIES" }
+                                p class="twig-empty-body" { "No repositories yet. Click 'Create repo' to add one!" }
                             }
                         } @else {
-                            div class="fig-empty fig-empty--filtered" {
-                                p class="fig-eyebrow" { "NO MATCHES" }
-                                p class="fig-empty-body" { "No repositories found matching your search." }
-                                div class="fig-empty-actions" {
-                                    a class="fig-btn fig-btn--ghost" href=(namespace_href) { "Clear search" }
+                            div class="twig-empty twig-empty--filtered" {
+                                p class="twig-eyebrow" { "NO MATCHES" }
+                                p class="twig-empty-body" { "No repositories found matching your search." }
+                                div class="twig-empty-actions" {
+                                    a class="twig-btn twig-btn--ghost" href=(namespace_href) { "Clear search" }
                                 }
                             }
                         }
                     } @else {
-                        div class="fig-colhead" {
+                        div class="twig-colhead" {
                             span { "Repository" }
                             span { "Last Commit" }
                         }
-                        div class="fig-list" {
+                        div class="twig-list" {
                             @for repo in repos {
-                                a class="fig-row" href=(format!("{namespace}/{}", repo.name)) {
-                                    span class="fig-row-id" { (repo.name) }
-                                    span class="fig-row-meta" {
-                                        span class="fig-sr" { "Last commit: " }
+                                a class="twig-row" href=(format!("{namespace}/{}", repo.name)) {
+                                    span class="twig-row-id" { (repo.name) }
+                                    span class="twig-row-meta" {
+                                        span class="twig-sr" { "Last commit: " }
                                         @match repo.last_commit_date {
                                             Some(date) => { (format_date(&date)) }
                                             None => { "No commits" }
@@ -174,7 +174,7 @@ fn render_namespace(
 pub async fn handler(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     params: web::Path<Params>,
     query: web::Query<SearchQuery>,
 ) -> AwResult<maud::Markup> {
@@ -212,22 +212,22 @@ pub async fn handler(
 /// Renders the create-repository panel swapped into `#create-repo-container`.
 fn render_create_repo_form(namespace: &str) -> maud::Markup {
     maud::html! {
-        section class="fig-panel" aria-labelledby="create-repo-heading" {
-            header class="fig-panel-head" {
-                h2 id="create-repo-heading" class="fig-eyebrow" { "Create Repository" }
-                div class="fig-panel-action" {
+        section class="twig-panel" aria-labelledby="create-repo-heading" {
+            header class="twig-panel-head" {
+                h2 id="create-repo-heading" class="twig-eyebrow" { "Create Repository" }
+                div class="twig-panel-action" {
                     button
                         type="button"
-                        class="fig-btn fig-btn--quiet"
+                        class="twig-btn twig-btn--quiet"
                         onclick="document.getElementById('create-repo-container').innerHTML = ''"
                     {
                         "Cancel"
                     }
                 }
             }
-            div class="fig-panel-body" {
+            div class="twig-panel-body" {
                 form
-                    class="fig-form fig-form--narrow"
+                    class="twig-form twig-form--narrow"
                     hx-post=(format!("/{namespace}/create-repo"))
                     hx-target="#create-repo-result"
                     "hx-status:4xx"="swap:innerHTML target:#create-repo-result"
@@ -235,10 +235,10 @@ fn render_create_repo_form(namespace: &str) -> maud::Markup {
                     hx-swap="innerHTML"
                     "hx-on:htmx:after:request"="if(ctx.response.status >= 200 && ctx.response.status < 300) { setTimeout(() => { document.getElementById('create-repo-container').innerHTML = ''; window.location.reload(); }, 1500); }"
                 {
-                    div class="fig-field" {
-                        label class="fig-label" for="repo_name" { "Repository Name" }
+                    div class="twig-field" {
+                        label class="twig-label" for="repo_name" { "Repository Name" }
                         input
-                            class="fig-input fig-input--mono"
+                            class="twig-input twig-input--mono"
                             type="text"
                             name="repo_name"
                             id="repo_name"
@@ -246,18 +246,18 @@ fn render_create_repo_form(namespace: &str) -> maud::Markup {
                             minlength="1"
                             placeholder="Enter repository name (e.g., my-project)";
                     }
-                    div class="fig-field" {
-                        label class="fig-label" for="branch" { "Default Branch" }
+                    div class="twig-field" {
+                        label class="twig-label" for="branch" { "Default Branch" }
                         input
-                            class="fig-input fig-input--mono"
+                            class="twig-input twig-input--mono"
                             type="text"
                             name="branch"
                             id="branch"
                             value="main"
                             placeholder="main";
                     }
-                    div class="fig-form-actions" {
-                        button type="submit" class="fig-btn fig-btn--primary" { "Create Repository" }
+                    div class="twig-form-actions" {
+                        button type="submit" class="twig-btn twig-btn--primary" { "Create Repository" }
                     }
                 }
                 div id="create-repo-result" aria-live="polite" {}
@@ -278,7 +278,7 @@ pub async fn create_repo_form_handler(
 pub async fn create_repo_handler(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     params: web::Path<Params>,
     form: web::Form<CreateRepoForm>,
 ) -> impl Responder {
@@ -420,12 +420,14 @@ mod tests {
         let trail = &html[..index_of(&html, "</nav>")];
 
         assert!(
-            trail.contains("<nav class=\"fig-crumbs fig-crumbs--page\" aria-label=\"Breadcrumb\">"),
+            trail.contains(
+                "<nav class=\"twig-crumbs twig-crumbs--page\" aria-label=\"Breadcrumb\">"
+            ),
             "{html}"
         );
         assert!(trail.contains("<a href=\"/\">Namespaces</a>"), "{html}");
         assert!(
-            trail.contains("<span class=\"fig-crumb-sep\" aria-hidden=\"true\">/</span>"),
+            trail.contains("<span class=\"twig-crumb-sep\" aria-hidden=\"true\">/</span>"),
             "the separator is decorative: {html}"
         );
         assert!(
@@ -444,16 +446,16 @@ mod tests {
         let html = render_namespace("Acme-Corp", "", false, &[]).into_string();
 
         assert!(
-            html.contains("<h1 class=\"fig-crumb-current\" aria-current=\"page\">Acme-Corp</h1>"),
+            html.contains("<h1 class=\"twig-crumb-current\" aria-current=\"page\">Acme-Corp</h1>"),
             "the trail's final segment is the heading, never uppercased: {html}"
         );
         assert_eq!(html.matches("<h1").count(), 1, "one h1 per page: {html}");
         assert!(
-            !html.contains("fig-eyebrow\">NAMESPACE"),
+            !html.contains("twig-eyebrow\">NAMESPACE"),
             "the identifier is not restated as a title block: {html}"
         );
         assert!(
-            index_of(&html, "class=\"fig-pagehead\"") < index_of(&html, "fig-crumbs"),
+            index_of(&html, "class=\"twig-pagehead\"") < index_of(&html, "twig-crumbs"),
             "the trail is the page head: {html}"
         );
     }
@@ -470,8 +472,8 @@ mod tests {
     fn test_namespace_head_action_is_gated_on_namespace_access() {
         let member = render_namespace("acme", "", true, &[]).into_string();
         for wiring in [
-            "<div class=\"fig-cluster\">",
-            "class=\"fig-btn fig-btn--primary\"",
+            "<div class=\"twig-cluster\">",
+            "class=\"twig-btn twig-btn--primary\"",
             "hx-get=\"/acme/create-repo-form\"",
             "hx-target=\"#create-repo-container\"",
             "hx-swap=\"innerHTML\"",
@@ -482,7 +484,7 @@ mod tests {
         }
 
         let visitor = render_namespace("acme", "", false, &[]).into_string();
-        for wiring in ["fig-cluster", "hx-get", "create-repo-container"] {
+        for wiring in ["twig-cluster", "hx-get", "create-repo-container"] {
             assert!(
                 !visitor.contains(wiring),
                 "visitors without access get no create affordance, found {wiring}: {visitor}"
@@ -494,47 +496,47 @@ mod tests {
     fn test_namespace_search_cluster_uses_the_field_primitives() {
         let unfiltered = render_namespace("acme", "", false, &[]).into_string();
         for part in [
-            "<form class=\"fig-search\" role=\"search\" method=\"GET\" action=\"/acme\">",
-            "<label class=\"fig-sr\" for=\"repo-search\">Search repositories</label>",
-            "class=\"fig-input fig-input--mono\" id=\"repo-search\"",
+            "<form class=\"twig-search\" role=\"search\" method=\"GET\" action=\"/acme\">",
+            "<label class=\"twig-sr\" for=\"repo-search\">Search repositories</label>",
+            "class=\"twig-input twig-input--mono\" id=\"repo-search\"",
             "placeholder=\"Search repositories...\"",
-            "<button type=\"submit\" class=\"fig-btn fig-btn--ghost\">Search</button>",
+            "<button type=\"submit\" class=\"twig-btn twig-btn--ghost\">Search</button>",
         ] {
             assert!(unfiltered.contains(part), "missing {part}: {unfiltered}");
         }
         assert!(
-            !unfiltered.contains("fig-btn--quiet"),
+            !unfiltered.contains("twig-btn--quiet"),
             "Clear only appears while a query is active: {unfiltered}"
         );
 
-        let filtered = render_namespace("acme", "fig", false, &[]).into_string();
-        assert!(filtered.contains("value=\"fig\""), "{filtered}");
+        let filtered = render_namespace("acme", "twig", false, &[]).into_string();
+        assert!(filtered.contains("value=\"twig\""), "{filtered}");
         assert!(
-            filtered.contains("<a class=\"fig-btn fig-btn--quiet\" href=\"/acme\">Clear</a>"),
+            filtered.contains("<a class=\"twig-btn twig-btn--quiet\" href=\"/acme\">Clear</a>"),
             "{filtered}"
         );
     }
 
     #[test]
     fn test_namespace_rows_keep_last_commit_labelled_when_stacked() {
-        let repos = [repo("fig", Some(5)), repo("fresh", None)];
+        let repos = [repo("twig", Some(5)), repo("fresh", None)];
         let html = render_namespace("acme", "", true, &repos).into_string();
 
         assert!(
             html.contains(
-                "<div class=\"fig-colhead\"><span>Repository</span><span>Last Commit</span></div>"
+                "<div class=\"twig-colhead\"><span>Repository</span><span>Last Commit</span></div>"
             ),
             "{html}"
         );
-        assert!(html.contains("<div class=\"fig-list\">"), "{html}");
+        assert!(html.contains("<div class=\"twig-list\">"), "{html}");
         assert!(
             html.contains(
-                "<a class=\"fig-row\" href=\"acme/fig\"><span class=\"fig-row-id\">fig</span>"
+                "<a class=\"twig-row\" href=\"acme/twig\"><span class=\"twig-row-id\">twig</span>"
             ),
             "{html}"
         );
         assert_eq!(
-            html.matches("<span class=\"fig-sr\">Last commit: </span>")
+            html.matches("<span class=\"twig-sr\">Last commit: </span>")
                 .count(),
             repos.len(),
             "every stacked row labels its metadata: {html}"
@@ -544,18 +546,18 @@ mod tests {
             html.contains("No commits"),
             "repos without commits keep their value: {html}"
         );
-        assert!(!html.contains("fig-empty"), "{html}");
+        assert!(!html.contains("twig-empty"), "{html}");
     }
 
     #[test]
     fn test_namespace_empty_states_preserve_their_messages() {
         let void = render_namespace("acme", "", true, &[]).into_string();
         assert!(
-            void.contains("class=\"fig-empty fig-empty--void\""),
+            void.contains("class=\"twig-empty twig-empty--void\""),
             "{void}"
         );
         assert!(
-            void.contains("<p class=\"fig-eyebrow\">NO REPOSITORIES</p>"),
+            void.contains("<p class=\"twig-eyebrow\">NO REPOSITORIES</p>"),
             "{void}"
         );
         assert!(
@@ -565,11 +567,11 @@ mod tests {
 
         let filtered = render_namespace("acme", "zzz", true, &[]).into_string();
         assert!(
-            filtered.contains("class=\"fig-empty fig-empty--filtered\""),
+            filtered.contains("class=\"twig-empty twig-empty--filtered\""),
             "{filtered}"
         );
         assert!(
-            filtered.contains("<p class=\"fig-eyebrow\">NO MATCHES</p>"),
+            filtered.contains("<p class=\"twig-eyebrow\">NO MATCHES</p>"),
             "{filtered}"
         );
         assert!(
@@ -578,22 +580,22 @@ mod tests {
         );
         assert!(
             filtered
-                .contains("<a class=\"fig-btn fig-btn--ghost\" href=\"/acme\">Clear search</a>"),
+                .contains("<a class=\"twig-btn twig-btn--ghost\" href=\"/acme\">Clear search</a>"),
             "a filtered empty state offers Clear, never a creation prompt: {filtered}"
         );
         assert!(
-            !filtered.contains("fig-colhead"),
+            !filtered.contains("twig-colhead"),
             "no column header without rows: {filtered}"
         );
     }
 
     #[test]
-    fn test_namespace_uses_only_fig_design_system_classes() {
-        let repos = [repo("fig", Some(2))];
+    fn test_namespace_uses_only_twig_design_system_classes() {
+        let repos = [repo("twig", Some(2))];
         for (query, has_access, listed) in [
             ("", true, &repos[..]),
             ("", false, &[][..]),
-            ("fig", true, &repos[..]),
+            ("twig", true, &repos[..]),
             ("zzz", false, &[][..]),
         ] {
             let html = render_namespace("acme", query, has_access, listed).into_string();
@@ -601,7 +603,7 @@ mod tests {
             assert!(!classes.is_empty(), "{html}");
             for class in classes {
                 assert!(
-                    class.starts_with("fig-"),
+                    class.starts_with("twig-"),
                     "non design-system class {class:?}: {html}"
                 );
             }
@@ -634,7 +636,7 @@ mod tests {
         let html = render_create_repo_form("acme").into_string();
         assert!(
             html.contains(
-                "<button type=\"button\" class=\"fig-btn fig-btn--quiet\" onclick=\"document.getElementById('create-repo-container').innerHTML = ''\">Cancel</button>"
+                "<button type=\"button\" class=\"twig-btn twig-btn--quiet\" onclick=\"document.getElementById('create-repo-container').innerHTML = ''\">Cancel</button>"
             ),
             "{html}"
         );
@@ -648,22 +650,22 @@ mod tests {
     fn test_create_repo_form_is_a_panel_that_keeps_its_field_contract() {
         let html = render_create_repo_form("acme").into_string();
         for part in [
-            "<section class=\"fig-panel\" aria-labelledby=\"create-repo-heading\">",
-            "<h2 id=\"create-repo-heading\" class=\"fig-eyebrow\">Create Repository</h2>",
-            "class=\"fig-form fig-form--narrow\"",
-            "<label class=\"fig-label\" for=\"repo_name\">Repository Name</label>",
+            "<section class=\"twig-panel\" aria-labelledby=\"create-repo-heading\">",
+            "<h2 id=\"create-repo-heading\" class=\"twig-eyebrow\">Create Repository</h2>",
+            "class=\"twig-form twig-form--narrow\"",
+            "<label class=\"twig-label\" for=\"repo_name\">Repository Name</label>",
             "name=\"repo_name\" id=\"repo_name\" required minlength=\"1\"",
             "placeholder=\"Enter repository name (e.g., my-project)\"",
-            "<label class=\"fig-label\" for=\"branch\">Default Branch</label>",
+            "<label class=\"twig-label\" for=\"branch\">Default Branch</label>",
             "name=\"branch\" id=\"branch\" value=\"main\"",
-            "<button type=\"submit\" class=\"fig-btn fig-btn--primary\">Create Repository</button>",
+            "<button type=\"submit\" class=\"twig-btn twig-btn--primary\">Create Repository</button>",
         ] {
             assert!(html.contains(part), "missing {part}: {html}");
         }
 
         for class in classes_in(&html) {
             assert!(
-                class.starts_with("fig-"),
+                class.starts_with("twig-"),
                 "non design-system class {class:?}: {html}"
             );
         }
@@ -763,7 +765,7 @@ mod tests {
         assert!(!html.contains("<!DOCTYPE html>"), "{html}");
         assert!(
             html.contains(
-                "<a class=\"fig-btn fig-btn--ghost\" href=\"/settings\">Go to Account</a>"
+                "<a class=\"twig-btn twig-btn--ghost\" href=\"/settings\">Go to Account</a>"
             ),
             "{html}"
         );

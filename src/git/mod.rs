@@ -2,7 +2,7 @@ use std::path::Path;
 
 use actix_web::{HttpRequest, HttpResponse, web};
 
-use crate::auth::{FigContext, User, extract_basic_auth, verify_password};
+use crate::auth::{TwigContext, User, extract_basic_auth, verify_password};
 use crate::config;
 use crate::git::repo::bare_init;
 pub mod bare;
@@ -14,7 +14,7 @@ pub async fn git_handler(
     body: web::Bytes,
     path: web::Path<(String, String, String)>, // (namespace,repo, endpoint)
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
 ) -> HttpResponse {
     let (namespace, repo, endpoint) = path.into_inner();
 
@@ -128,7 +128,7 @@ fn build_response(headers: &str, body: Vec<u8>) -> actix_web::HttpResponse {
 async fn authenticate_git_request(
     req: &HttpRequest,
     server: &config::Server,
-    auth_state: &web::Data<FigContext>,
+    auth_state: &web::Data<TwigContext>,
     namespace: &str,
     repo: &str,
     kind: &crate::git_backend::GitRequestKind,
@@ -187,7 +187,7 @@ struct AuthResult {
 
 async fn is_authenticated(
     req: &actix_web::HttpRequest,
-    auth_state: &web::Data<FigContext>,
+    auth_state: &web::Data<TwigContext>,
     namespace_name: &str,
 ) -> Result<Option<AuthResult>, HttpResponse> {
     // Extract basic auth credentials
@@ -291,7 +291,7 @@ async fn is_authenticated(
 /// The reserved ticket repository is created alongside it so the tracker is
 /// available immediately, without waiting for someone to push to it.
 async fn ensure_namespace_exists(
-    auth_state: &web::Data<FigContext>,
+    auth_state: &web::Data<TwigContext>,
     user: &User,
     namespace_name: &str,
 ) -> Result<(), String> {
@@ -338,7 +338,7 @@ fn ensure_repo_exists(project_root: &str, namespace: &str, repo_name: &str) -> R
     std::fs::create_dir_all(&repo_path)
         .map_err(|e| format!("Failed to create repo directory: {e}"))?;
 
-    bare_init(&repo_path, "main", "Fig", "fig@localhost")
+    bare_init(&repo_path, "main", "Twig", "twig@localhost")
         .map_err(|e| format!("Failed to initialize bare repo: {e}"))?;
 
     Ok(())

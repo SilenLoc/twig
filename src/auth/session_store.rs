@@ -128,7 +128,7 @@ mod tests {
 
     #[tokio::test]
     async fn sql_session_store_saves_loads_updates_and_deletes_sessions() {
-        let db_path = format!("/tmp/test_fig_actix_session_{}.db", uuid::Uuid::new_v4());
+        let db_path = format!("/tmp/test_twig_actix_session_{}.db", uuid::Uuid::new_v4());
         let db = Database::new(&db_path);
         db.init_tables().await.expect("initialize tables");
         let store = SqlSessionStore::new(db);

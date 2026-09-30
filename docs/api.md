@@ -1,10 +1,10 @@
 # API
 
-Fig exposes a small set of HTTP endpoints for scripts and integrations.
+Twig exposes a small set of HTTP endpoints for scripts and integrations.
 
 ## Version
 
-`GET /api/version` returns the version of the running Fig application as JSON:
+`GET /api/version` returns the version of the running Twig application as JSON:
 
 ```json
 {"version":"0.1.104"}

@@ -8,10 +8,10 @@ use pulldown_cmark::{CowStr, Event, HeadingLevel, Options, Parser, Tag, TagEnd, 
 use serde::Deserialize;
 
 use crate::{
-    auth::FigContext,
+    auth::TwigContext,
     config,
     git::bare::{
-        Commit, Depth, FigConfig, FigConfigWithRaw, PresentConfig, RepoHandle, TreeEntry,
+        Commit, Depth, PresentConfig, RepoHandle, TreeEntry, TwigConfig, TwigConfigWithRaw,
         is_safe_repo_path,
     },
     md,
@@ -25,8 +25,8 @@ use super::session_auth::get_username_from_request;
 /// and `preventDefault` runs only when a slide actually changes.
 const PRESENT_SCRIPT: &str = r"(function(){
 var c=document.getElementById('present-container');
-if(!c||c.dataset.figPresent)return;
-c.dataset.figPresent='1';
+if(!c||c.dataset.twigPresent)return;
+c.dataset.twigPresent='1';
 var isFull=function(){return document.fullscreenElement===c;};
 var sync=function(){
 var f=c.querySelector('#fullscreen-toggle');
@@ -51,16 +51,16 @@ sync();
 
 /// Reading text sizes, in percent, from the default through to double size.
 /// The A−/A+ buttons step through them one entry at a time; the active size
-/// lives in `data-fig-text-size` on the owning container, which the stylesheet
+/// lives in `data-twig-text-size` on the owning container, which the stylesheet
 /// turns into a larger type scale for the framed content only. Shared by the
 /// presentation deck and the paper reader.
 const TEXT_SIZES: [u16; 11] = [100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200];
-const PRESENT_TEXT_SIZE_KEY: &str = "fig-present-text-size";
-const PAPER_TEXT_SIZE_KEY: &str = "fig-paper-text-size";
+const PRESENT_TEXT_SIZE_KEY: &str = "twig-present-text-size";
+const PAPER_TEXT_SIZE_KEY: &str = "twig-paper-text-size";
 
 /// Mirrors the active size back to the browser so it survives a reload.
 fn text_size_persist(key: &str) -> String {
-    format!("try {{ localStorage.setItem('{key}', String(data.figTextSize)); }} catch (_) {{}}")
+    format!("try {{ localStorage.setItem('{key}', String(data.twigTextSize)); }} catch (_) {{}}")
 }
 
 fn text_size_list() -> String {
@@ -72,10 +72,10 @@ fn text_size_list() -> String {
 }
 
 /// Restores a previously chosen size on load; the expression runs against the
-/// owning container, where `data.figTextSize` is the shared state.
+/// owning container, where `data.twigTextSize` is the shared state.
 fn text_size_restore(key: &str) -> String {
     format!(
-        "try {{ let size = localStorage.getItem('{key}'); if ([{}].includes(size)) data.figTextSize = Number(size); }} catch (_) {{}}",
+        "try {{ let size = localStorage.getItem('{key}'); if ([{}].includes(size)) data.twigTextSize = Number(size); }} catch (_) {{}}",
         text_size_list()
     )
 }
@@ -90,13 +90,13 @@ fn text_size_step(increase: bool, key: &str) -> String {
         (first, '-', "Math.max")
     };
     format!(
-        "data.figTextSize = {clamp}({bound}, data.figTextSize {operator} {step}); {}",
+        "data.twigTextSize = {clamp}({bound}, data.twigTextSize {operator} {step}); {}",
         text_size_persist(key)
     )
 }
 
 /// Paper font choices. The active choice lives on `#paper-container` as
-/// `data-fig-paper-font`; the stylesheet swaps the reading family from it.
+/// `data-twig-paper-font`; the stylesheet swaps the reading family from it.
 const PAPER_FONTS: [(&str, &str); 3] = [("sans", "Sans"), ("serif", "Serif"), ("mono", "Mono")];
 
 /// Paper toolbar and reading-position wiring, scoped to `#paper-container`:
@@ -107,30 +107,30 @@ const PAPER_FONTS: [(&str, &str); 3] = [("sans", "Sans"), ("serif", "Serif"), ("
 /// nothing at the document level.
 const PAPER_SCRIPT: &str = r"(function(){
 var c=document.getElementById('paper-container');
-if(!c||c.dataset.figPaper)return;
-c.dataset.figPaper='1';
+if(!c||c.dataset.twigPaper)return;
+c.dataset.twigPaper='1';
 var fonts=['sans','serif','mono'];
 var apply=function(font){
 if(fonts.indexOf(font)<0)font='sans';
-c.dataset.figPaperFont=font;
-c.querySelectorAll('[data-fig-font]').forEach(function(b){
-b.setAttribute('aria-pressed',String(b.dataset.figFont===font));
+c.dataset.twigPaperFont=font;
+c.querySelectorAll('[data-twig-font]').forEach(function(b){
+b.setAttribute('aria-pressed',String(b.dataset.twigFont===font));
 });
 };
-try{apply(localStorage.getItem('fig-paper-font')||'sans');}catch(_){apply('sans');}
+try{apply(localStorage.getItem('twig-paper-font')||'sans');}catch(_){apply('sans');}
 c.addEventListener('click',function(e){
-var b=e.target.closest?e.target.closest('[data-fig-font]'):null;
+var b=e.target.closest?e.target.closest('[data-twig-font]'):null;
 if(!b||!c.contains(b))return;
-apply(b.dataset.figFont);
-try{localStorage.setItem('fig-paper-font',b.dataset.figFont);}catch(_){}
+apply(b.dataset.twigFont);
+try{localStorage.setItem('twig-paper-font',b.dataset.twigFont);}catch(_){}
 });
-var pages=[].slice.call(c.querySelectorAll('.fig-paper-page'));
+var pages=[].slice.call(c.querySelectorAll('.twig-paper-page'));
 var track=function(page){
 if(!page||!page.id)return;
 var hash=location.hash.slice(1);
 if(hash&&hash!==page.id){
 var el=document.getElementById(hash);
-if(el&&el!==page&&el.closest('.fig-paper-page')===page)return;
+if(el&&el!==page&&el.closest('.twig-paper-page')===page)return;
 }
 if(location.hash!=='#'+page.id){
 try{history.replaceState(null,'','#'+page.id);}catch(_){}
@@ -217,7 +217,7 @@ struct PresentSlide {
 /// title. Each handler borrows this to build only its own tab's body.
 struct RepoContext {
     handle: RepoHandle,
-    fig_result: FigConfigWithRaw,
+    twig_result: TwigConfigWithRaw,
     namespace: String,
     repo: String,
     username: Option<String>,
@@ -232,8 +232,8 @@ struct TabFrame<'a> {
     repo: &'a str,
     username: Option<&'a str>,
     page_title: &'a str,
-    fig_error: Option<&'a str>,
-    fig_filename: Option<&'a str>,
+    twig_error: Option<&'a str>,
+    twig_filename: Option<&'a str>,
     tabs_config: &'a [String],
     has_config: bool,
     has_present: bool,
@@ -247,11 +247,11 @@ impl RepoContext {
             repo: &self.repo,
             username: self.username.as_deref(),
             page_title: &self.page_title,
-            fig_error: self.fig_result.error.as_deref(),
-            fig_filename: self.fig_result.filename.as_deref(),
-            tabs_config: &self.fig_result.config.tabs,
-            has_config: self.fig_result.raw.is_some(),
-            has_present: !self.fig_result.config.present.files.is_empty(),
+            twig_error: self.twig_result.error.as_deref(),
+            twig_filename: self.twig_result.filename.as_deref(),
+            tabs_config: &self.twig_result.config.tabs,
+            has_config: self.twig_result.raw.is_some(),
+            has_present: !self.twig_result.config.present.files.is_empty(),
             has_paper: !self.paper_pages.is_empty(),
         }
     }
@@ -263,7 +263,7 @@ impl RepoContext {
 async fn open_repo(
     req: &HttpRequest,
     server: &config::Server,
-    auth_state: &web::Data<FigContext>,
+    auth_state: &web::Data<TwigContext>,
     namespace: &str,
     repo: &str,
 ) -> Result<RepoContext, Markup> {
@@ -283,16 +283,16 @@ async fn open_repo(
         }
     };
 
-    let fig_result = handle.load_config_with_raw();
-    if fig_result.config.private && username.is_none() {
+    let twig_result = handle.load_config_with_raw();
+    if twig_result.config.private && username.is_none() {
         return Err(render_repo_auth_error(req, &page_title));
     }
 
-    let paper_pages = load_paper_pages(&handle, &fig_result.config);
+    let paper_pages = load_paper_pages(&handle, &twig_result.config);
 
     Ok(RepoContext {
         handle,
-        fig_result,
+        twig_result,
         namespace: namespace.to_string(),
         repo: repo.to_string(),
         username,
@@ -303,7 +303,7 @@ async fn open_repo(
 
 fn markdown_files(ctx: &RepoContext) -> Vec<String> {
     ctx.handle
-        .list_files(Some(&ctx.fig_result.config))
+        .list_files(Some(&ctx.twig_result.config))
         .unwrap_or_default()
         .markdown_files
 }
@@ -323,7 +323,7 @@ fn markdown_body_from(ctx: &RepoContext, files: &[String]) -> Markup {
 fn content_body(ctx: &RepoContext) -> Markup {
     let entries = ctx
         .handle
-        .list_dir("", Some(&ctx.fig_result.config))
+        .list_dir("", Some(&ctx.twig_result.config))
         .unwrap_or_default();
     render_content_view(&ctx.namespace, &ctx.repo, "", &entries, None)
 }
@@ -335,8 +335,8 @@ fn commits_body(ctx: &RepoContext) -> Result<Markup, git2::Error> {
 
 fn config_body(ctx: &RepoContext) -> Markup {
     render_config_view(
-        ctx.fig_result.raw.as_deref(),
-        ctx.fig_result.filename.as_deref(),
+        ctx.twig_result.raw.as_deref(),
+        ctx.twig_result.filename.as_deref(),
     )
 }
 
@@ -348,7 +348,7 @@ fn license_body(ctx: &RepoContext) -> Markup {
 fn present_body(ctx: &RepoContext) -> Markup {
     let slides = load_present_slides(
         &ctx.handle,
-        &ctx.fig_result.config.present,
+        &ctx.twig_result.config.present,
         &ctx.namespace,
         &ctx.repo,
     );
@@ -357,7 +357,7 @@ fn present_body(ctx: &RepoContext) -> Markup {
 
 fn paper_body(ctx: &RepoContext) -> Markup {
     let dir = ctx
-        .fig_result
+        .twig_result
         .config
         .paper
         .as_ref()
@@ -384,7 +384,7 @@ fn tab_body(ctx: &RepoContext, tab: &str) -> Result<Markup, git2::Error> {
 async fn respond_tab(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     namespace: &str,
     repo: &str,
     tab: &str,
@@ -427,8 +427,8 @@ fn render_tab_shell(frame: &TabFrame<'_>, active: &str, body: &Markup) -> Markup
         (tab_nav(frame, active))
         // A broken configuration is shown on every tab, outside #tab-content, so
         // it survives htmx swaps until the file is fixed.
-        @if let Some(error) = frame.fig_error {
-            (render_config_error(frame.fig_filename.unwrap_or(".fig.toml"), error))
+        @if let Some(error) = frame.twig_error {
+            (render_config_error(frame.twig_filename.unwrap_or(".twig.toml"), error))
         }
         div id="tab-content" aria-live="polite" {
             (body)
@@ -478,7 +478,7 @@ fn resolved_default_tab<'a>(tabs_config: &'a [String], markdown_files: &[String]
 pub async fn handler(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     params: web::Path<Params>,
 ) -> AwResult<Markup> {
     let ctx = match open_repo(&req, &server, &auth_state, &params.namespace, &params.repo).await {
@@ -489,7 +489,7 @@ pub async fn handler(
     // The default tab needs the markdown list either way; reuse it when the
     // default turns out to be Documentation.
     let files = markdown_files(&ctx);
-    let tab = resolved_default_tab(&ctx.fig_result.config.tabs, &files);
+    let tab = resolved_default_tab(&ctx.twig_result.config.tabs, &files);
     let body = if tab == "markdown" {
         markdown_body_from(&ctx, &files)
     } else {
@@ -513,7 +513,7 @@ pub async fn handler(
 pub async fn markdown_tab_handler(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     params: web::Path<Params>,
 ) -> AwResult<Markup> {
     respond_tab(
@@ -531,7 +531,7 @@ pub async fn markdown_tab_handler(
 pub async fn content_tab_handler(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     params: web::Path<Params>,
 ) -> AwResult<Markup> {
     respond_tab(
@@ -549,7 +549,7 @@ pub async fn content_tab_handler(
 pub async fn commits_tab_handler(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     params: web::Path<Params>,
 ) -> AwResult<Markup> {
     respond_tab(
@@ -567,7 +567,7 @@ pub async fn commits_tab_handler(
 pub async fn config_tab_handler(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     params: web::Path<Params>,
 ) -> AwResult<Markup> {
     respond_tab(
@@ -585,7 +585,7 @@ pub async fn config_tab_handler(
 pub async fn present_tab_handler(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     params: web::Path<Params>,
 ) -> AwResult<Markup> {
     respond_tab(
@@ -603,7 +603,7 @@ pub async fn present_tab_handler(
 pub async fn paper_tab_handler(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     params: web::Path<Params>,
 ) -> AwResult<Markup> {
     respond_tab(
@@ -621,7 +621,7 @@ pub async fn paper_tab_handler(
 pub async fn license_tab_handler(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     params: web::Path<Params>,
 ) -> AwResult<Markup> {
     respond_tab(
@@ -653,7 +653,7 @@ pub async fn tab_handler(params: web::Path<TabParams>) -> HttpResponse {
 pub async fn markdown_handler(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     params: web::Path<MarkdownParams>,
 ) -> AwResult<Markup> {
     let file_path = &params.file_path;
@@ -705,7 +705,7 @@ fn page_in_dir(page: &str, dir: &str) -> bool {
 /// outside the configured paper directory. The headline ids are computed from
 /// the page's own anchor.
 fn open_paper_page(ctx: &RepoContext, page: &str) -> Option<(Option<String>, Vec<PaperHeading>)> {
-    let paper = ctx.fig_result.config.paper.as_ref()?;
+    let paper = ctx.twig_result.config.paper.as_ref()?;
     if !paper.is_configured()
         || !is_safe_repo_path(page)
         || !page_in_dir(page, paper.dir.trim_matches('/'))
@@ -737,7 +737,7 @@ fn open_paper_page(ctx: &RepoContext, page: &str) -> Option<(Option<String>, Vec
 pub async fn paper_handler(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     params: web::Path<PaperParams>,
 ) -> AwResult<Markup> {
     let ctx = match open_repo(&req, &server, &auth_state, &params.namespace, &params.repo).await {
@@ -768,7 +768,7 @@ pub async fn paper_handler(
 pub async fn content_handler(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     params: web::Path<ContentParams>,
 ) -> AwResult<Markup> {
     let path = params.path.trim_matches('/').to_string();
@@ -787,7 +787,7 @@ pub async fn content_handler(
 
     let entries = ctx
         .handle
-        .list_dir(&path, Some(&ctx.fig_result.config))
+        .list_dir(&path, Some(&ctx.twig_result.config))
         .unwrap_or_default();
     let file_bytes = if path.is_empty() || !entries.is_empty() {
         None
@@ -809,7 +809,7 @@ pub async fn content_handler(
 pub async fn slide_handler(
     req: HttpRequest,
     server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     params: web::Path<SlideParams>,
 ) -> AwResult<Markup> {
     let namespace = &params.namespace;
@@ -834,12 +834,12 @@ pub async fn slide_handler(
         }
     };
 
-    let fig_result = handle.load_config_with_raw();
-    if fig_result.config.private && username.is_none() {
+    let twig_result = handle.load_config_with_raw();
+    if twig_result.config.private && username.is_none() {
         return Ok(render_repo_auth_error(&req, &page_title));
     }
 
-    let present_slides = load_present_slides(&handle, &fig_result.config.present, namespace, repo);
+    let present_slides = load_present_slides(&handle, &twig_result.config.present, namespace, repo);
 
     if index >= present_slides.len() {
         let content = render_empty("NOT FOUND", "Slide not found");
@@ -915,7 +915,7 @@ fn resolve_relative_path(base_dir: &str, link: &str) -> String {
     segments.join("/")
 }
 
-/// Rewrites a markdown link destination into a Fig URL. Returns `None` when the
+/// Rewrites a markdown link destination into a Twig URL. Returns `None` when the
 /// destination is absolute, external or a bare fragment and must be left alone.
 fn rewrite_markdown_link(
     namespace: &str,
@@ -940,7 +940,7 @@ fn rewrite_markdown_link(
     }
 }
 
-/// Rewrites a link tag's destination into a Fig URL, returning every other tag
+/// Rewrites a link tag's destination into a Twig URL, returning every other tag
 /// unchanged. Shared by the Documentation view and presentations so relative
 /// repository links resolve the same way in both.
 fn fix_link_tag<'a>(
@@ -1062,9 +1062,9 @@ fn render_slide_markdown(
 /// the meaning never rests on colour alone.
 fn render_empty(eyebrow: &str, body: &str) -> Markup {
     maud::html! {
-        div class="fig-empty" {
-            p class="fig-eyebrow" { (eyebrow) }
-            p class="fig-empty-body" { (body) }
+        div class="twig-empty" {
+            p class="twig-eyebrow" { (eyebrow) }
+            p class="twig-empty-body" { (body) }
         }
     }
 }
@@ -1076,10 +1076,10 @@ fn render_git_error(e: &git2::Error) -> Markup {
     let klass = format!("{klass:?}");
     let message = e.message();
     maud::html! {
-        div class="fig-notice fig-notice--danger" role="alert" {
-            p class="fig-eyebrow" { "ERROR" }
-            p class="fig-notice-body" { (message) }
-            p class="fig-notice-body fig-mono fig-ink-tertiary" { (code) " / " (klass) }
+        div class="twig-notice twig-notice--danger" role="alert" {
+            p class="twig-eyebrow" { "ERROR" }
+            p class="twig-notice-body" { (message) }
+            p class="twig-notice-body twig-mono twig-ink-tertiary" { (code) " / " (klass) }
         }
     }
 }
@@ -1103,13 +1103,13 @@ fn render_not_found_for_request(
 /// name as its highlighted final segment, so the tabs follow it directly.
 fn render_repo_crumbs(namespace: &str, repo: &str) -> Markup {
     maud::html! {
-        div class="fig-pagehead" {
-            nav class="fig-crumbs fig-crumbs--page" aria-label="Breadcrumb" {
+        div class="twig-pagehead" {
+            nav class="twig-crumbs twig-crumbs--page" aria-label="Breadcrumb" {
                 a href="/" { "Namespaces" }
-                span class="fig-crumb-sep" aria-hidden="true" { "/" }
+                span class="twig-crumb-sep" aria-hidden="true" { "/" }
                 a href=(format!("/{namespace}")) { (namespace) }
-                span class="fig-crumb-sep" aria-hidden="true" { "/" }
-                h1 class="fig-crumb-current" aria-current="page" { (repo) }
+                span class="twig-crumb-sep" aria-hidden="true" { "/" }
+                h1 class="twig-crumb-current" aria-current="page" { (repo) }
             }
         }
     }
@@ -1163,11 +1163,11 @@ fn render_tabs(
     }
 
     maud::html! {
-        nav id="tab-nav" class="fig-tabs" aria-label="Repository views" hx-swap-oob="true" {
+        nav id="tab-nav" class="twig-tabs" aria-label="Repository views" hx-swap-oob="true" {
             @for (tab_id, tab_label) in all_tabs {
                 @let href = format!("/{namespace}/{repo}/{tab_id}");
                 a
-                    class="fig-tab"
+                    class="twig-tab"
                     href=(href)
                     aria-current=[(tab_id == active_tab).then_some("page")]
                     hx-get=(href)
@@ -1215,11 +1215,11 @@ fn get_default_markdown_file(markdown_files: &[String]) -> Option<&str> {
 
 fn render_commits_view(commits: &[Commit]) -> Markup {
     maud::html! {
-        div class="fig-stack" {
+        div class="twig-stack" {
             @if commits.is_empty() {
                 (render_empty("NO COMMITS", "This repository has no commits yet."))
             } @else {
-                ol class="fig-commits" {
+                ol class="twig-commits" {
                     @for commit in commits {
                         (render_commit(commit))
                     }
@@ -1229,30 +1229,30 @@ fn render_commits_view(commits: &[Commit]) -> Markup {
     }
 }
 
-fn render_config_view(fig_content: Option<&str>, fig_filename: Option<&str>) -> Markup {
-    let config_filename = fig_filename.unwrap_or(".fig.toml");
+fn render_config_view(twig_content: Option<&str>, twig_filename: Option<&str>) -> Markup {
+    let config_filename = twig_filename.unwrap_or(".twig.toml");
 
     maud::html! {
-        div class="fig-stack" {
-            h2 class="fig-section" { "Configuration" }
-            p class="fig-hint" {
-                "Repository configuration from " code class="fig-mono" { (config_filename) }
+        div class="twig-stack" {
+            h2 class="twig-section" { "Configuration" }
+            p class="twig-hint" {
+                "Repository configuration from " code class="twig-mono" { (config_filename) }
             }
-            @if let Some(content) = fig_content {
-                pre class="fig-code" tabindex="0" aria-label=(format!("{config_filename} contents")) {
+            @if let Some(content) = twig_content {
+                pre class="twig-code" tabindex="0" aria-label=(format!("{config_filename} contents")) {
                     code { (content) }
                 }
             } @else {
                 (render_empty(
                     "NO CONFIGURATION",
-                    "No configuration file found. Create a .fig.toml file in the repository root to configure ignore patterns."
+                    "No configuration file found. Create a .twig.toml file in the repository root to configure ignore patterns."
                 ))
             }
         }
     }
 }
 
-/// A parse failure in `.fig.toml`, presented like a compiler diagnostic: the
+/// A parse failure in `.twig.toml`, presented like a compiler diagnostic: the
 /// offending file, the TOML error with its line context, and a help hint.
 /// Reaching this is the exceptional path, so the extra formatting costs
 /// nothing on a healthy repository.
@@ -1262,13 +1262,13 @@ fn render_config_error(filename: &str, error: &str) -> Markup {
     );
 
     maud::html! {
-        div class="fig-notice fig-notice--danger fig-config-error" role="alert" {
-            p class="fig-eyebrow" { "CONFIG ERROR" }
-            p class="fig-notice-body" {
-                code class="fig-mono" { (filename) }
+        div class="twig-notice twig-notice--danger twig-config-error" role="alert" {
+            p class="twig-eyebrow" { "CONFIG ERROR" }
+            p class="twig-notice-body" {
+                code class="twig-mono" { (filename) }
                 " could not be parsed. Continuing with default settings."
             }
-            pre class="fig-code" tabindex="0" aria-label=(format!("{filename} parse error")) {
+            pre class="twig-code" tabindex="0" aria-label=(format!("{filename} parse error")) {
                 code { (diagnostic) }
             }
         }
@@ -1277,9 +1277,9 @@ fn render_config_error(filename: &str, error: &str) -> Markup {
 
 fn render_license_view(license_content: Option<&str>) -> Markup {
     maud::html! {
-        div class="fig-stack" {
+        div class="twig-stack" {
             @if let Some(content) = license_content {
-                div class="fig-md fig-md--boxed" {
+                div class="twig-md twig-md--boxed" {
                     (maud::PreEscaped(content))
                 }
             } @else {
@@ -1327,7 +1327,7 @@ fn breadcrumb_segments(path: &str) -> Vec<(String, String, bool)> {
 fn render_content_breadcrumbs(namespace: &str, repo: &str, path: &str) -> Markup {
     let segments = breadcrumb_segments(path);
     maud::html! {
-        nav class="fig-crumbs fig-crumbs--path" aria-label="File path" {
+        nav class="twig-crumbs twig-crumbs--path" aria-label="File path" {
             @if segments.is_empty() {
                 span aria-current="page" { (repo) }
             } @else {
@@ -1342,7 +1342,7 @@ fn render_content_breadcrumbs(namespace: &str, repo: &str, path: &str) -> Markup
                 }
             }
             @for (segment, acc_path, is_last) in segments {
-                span class="fig-crumb-sep" aria-hidden="true" { "/" }
+                span class="twig-crumb-sep" aria-hidden="true" { "/" }
                 @if is_last {
                     span aria-current="page" { (segment) }
                 } @else {
@@ -1383,13 +1383,13 @@ fn render_content_view(
 fn render_content_row(href: &str, push: &str, entry: &TreeEntry) -> Markup {
     maud::html! {
         a
-            class=(if entry.is_dir { "fig-row" } else { "fig-row fig-row--file" })
+            class=(if entry.is_dir { "twig-row" } else { "twig-row twig-row--file" })
             href=(href)
             hx-get=(href)
             hx-target="#tab-content"
             hx-push-url=(push)
         {
-            span class="fig-row-id" {
+            span class="twig-row-id" {
                 (entry.name)
                 @if entry.is_dir { "/" }
             }
@@ -1399,24 +1399,24 @@ fn render_content_row(href: &str, push: &str, entry: &TreeEntry) -> Markup {
 
 fn render_content_dir(namespace: &str, repo: &str, path: &str, entries: &[TreeEntry]) -> Markup {
     maud::html! {
-        div class="fig-stack" {
+        div class="twig-stack" {
             (render_content_breadcrumbs(namespace, repo, path))
 
             @if entries.is_empty() && path.is_empty() {
                 (render_empty("NO FILES", "No files in this repository."))
             } @else {
-                div class="fig-panel fig-panel--flush" {
-                    div class="fig-list" {
+                div class="twig-panel twig-panel--flush" {
+                    div class="twig-list" {
                         @if !path.is_empty() {
                             @let (href, push) = content_urls(namespace, repo, parent_path(path));
                             a
-                                class="fig-row"
+                                class="twig-row"
                                 href=(href)
                                 hx-get=(href)
                                 hx-target="#tab-content"
                                 hx-push-url=(push)
                             {
-                                span class="fig-row-id" { ".." }
+                                span class="twig-row-id" { ".." }
                             }
                         }
                         @for entry in entries {
@@ -1434,7 +1434,7 @@ fn render_content_file(namespace: &str, repo: &str, path: &str, bytes: &[u8]) ->
     let is_binary = bytes.contains(&0);
 
     maud::html! {
-        div class="fig-stack" {
+        div class="twig-stack" {
             (render_content_breadcrumbs(namespace, repo, path))
 
             @if is_binary {
@@ -1445,11 +1445,11 @@ fn render_content_file(namespace: &str, repo: &str, path: &str, bytes: &[u8]) ->
             } @else {
                 @let text = String::from_utf8_lossy(bytes).into_owned();
                 @if crate::md::is_markdown(path) {
-                    div class="fig-md fig-md--boxed" {
+                    div class="twig-md twig-md--boxed" {
                         (maud::PreEscaped(markdown_to_html(&text, namespace, repo, parent_path(path))))
                     }
                 } @else {
-                    pre class="fig-code" tabindex="0" aria-label=(format!("{path} contents")) {
+                    pre class="twig-code" tabindex="0" aria-label=(format!("{path} contents")) {
                         code { (text) }
                     }
                 }
@@ -1483,7 +1483,7 @@ fn load_present_slides(
 
 /// The configured paper pages, sorted for reading. Empty when `[paper]` is
 /// absent, unconfigured, or its directory is missing from HEAD.
-fn load_paper_pages(handle: &RepoHandle, config: &FigConfig) -> Vec<String> {
+fn load_paper_pages(handle: &RepoHandle, config: &TwigConfig) -> Vec<String> {
     let Some(paper) = config.paper.as_ref().filter(|paper| paper.is_configured()) else {
         return Vec::new();
     };
@@ -1506,7 +1506,7 @@ fn render_slide_nav_button(id: &str, label: &str, target: Option<&str>) -> Marku
         @if let Some(href) = target {
             button
                 id=(id)
-                class="fig-btn fig-btn--quiet"
+                class="twig-btn twig-btn--quiet"
                 type="button"
                 hx-get=(href)
                 hx-target="#present-container"
@@ -1515,7 +1515,7 @@ fn render_slide_nav_button(id: &str, label: &str, target: Option<&str>) -> Marku
                 (label)
             }
         } @else {
-            button id=(id) class="fig-btn fig-btn--quiet" type="button" disabled {
+            button id=(id) class="twig-btn twig-btn--quiet" type="button" disabled {
                 (label)
             }
         }
@@ -1536,50 +1536,50 @@ fn render_slide_content(
         .then(|| format!("/{namespace}/{repo}/slide/{}", current_index + 1));
 
     maud::html! {
-        header class="fig-present-bar" {
-            p class="fig-eyebrow" { "PRESENTATION" }
-            div class="fig-present-tools" {
-                span class="fig-present-count" aria-live="polite" {
+        header class="twig-present-bar" {
+            p class="twig-eyebrow" { "PRESENTATION" }
+            div class="twig-present-tools" {
+                span class="twig-present-count" aria-live="polite" {
                     (slide_counter(current_index, slide_count))
                 }
-                button id="decrease-text-size" class="fig-btn fig-btn--quiet" type="button"
+                button id="decrease-text-size" class="twig-btn twig-btn--quiet" type="button"
                     aria-label="Decrease presentation font size" title="Decrease font size"
                     "hx-on:click"=(text_size_step(false, PRESENT_TEXT_SIZE_KEY))
-                    "hx-live:disabled"=(format!("data.figTextSize === {}", TEXT_SIZES[0]))
+                    "hx-live:disabled"=(format!("data.twigTextSize === {}", TEXT_SIZES[0]))
                 {
                     "A−"
                 }
-                span id="present-text-size" class="fig-present-count" aria-live="polite"
-                    "hx-live:text"="data.figTextSize + '%'" { "100%" }
-                button id="increase-text-size" class="fig-btn fig-btn--quiet" type="button"
+                span id="present-text-size" class="twig-present-count" aria-live="polite"
+                    "hx-live:text"="data.twigTextSize + '%'" { "100%" }
+                button id="increase-text-size" class="twig-btn twig-btn--quiet" type="button"
                     aria-label="Increase presentation font size" title="Increase font size"
                     "hx-on:click"=(text_size_step(true, PRESENT_TEXT_SIZE_KEY))
                     "hx-live:disabled"=(format!(
-                        "data.figTextSize === {}",
+                        "data.twigTextSize === {}",
                         TEXT_SIZES[TEXT_SIZES.len() - 1]
                     ))
                 {
                     "A+"
                 }
-                button id="fullscreen-toggle" class="fig-btn fig-btn--quiet" type="button" {
+                button id="fullscreen-toggle" class="twig-btn twig-btn--quiet" type="button" {
                     "Fullscreen"
                 }
                 (super::render_theme_toggle())
             }
         }
 
-        div id="slides-wrapper" class="fig-present-stage" {
-            article class="fig-md fig-md--slide" aria-live="polite" {
+        div id="slides-wrapper" class="twig-present-stage" {
+            article class="twig-md twig-md--slide" aria-live="polite" {
                 (maud::PreEscaped(&slide.html))
             }
         }
 
-        nav class="fig-present-controls" aria-label="Slide navigation" {
+        nav class="twig-present-controls" aria-label="Slide navigation" {
             (render_slide_nav_button("prev-slide", "\u{2190} Previous", prev.as_deref()))
-            div class="fig-ticks" role="group" aria-label="Go to slide" {
+            div class="twig-ticks" role="group" aria-label="Go to slide" {
                 @for i in 0..slide_count {
                     button
-                        class="fig-tick"
+                        class="twig-tick"
                         type="button"
                         aria-label=(format!("Slide {} of {slide_count}", i + 1))
                         aria-current=[(i == current_index).then_some("true")]
@@ -1598,15 +1598,15 @@ fn render_present_view(namespace: &str, repo: &str, slides: &[PresentSlide]) -> 
     if slides.is_empty() {
         return render_empty(
             "NO SLIDES",
-            "No presentation slides configured. Add a [present] section with files to your .fig.toml.",
+            "No presentation slides configured. Add a [present] section with files to your .twig.toml.",
         );
     }
 
     maud::html! {
         section
             id="present-container"
-            class="fig-present"
-            data-fig-text-size=(TEXT_SIZES[0])
+            class="twig-present"
+            data-twig-text-size=(TEXT_SIZES[0])
             hx-live=(text_size_restore(PRESENT_TEXT_SIZE_KEY))
             tabindex="-1"
             aria-roledescription="carousel"
@@ -1625,14 +1625,14 @@ fn render_paper_page(namespace: &str, repo: &str, page: &str, anchor: &str) -> M
     maud::html! {
         article
             id=(anchor)
-            class="fig-paper-page"
-            data-fig-paper-page=(page)
+            class="twig-paper-page"
+            data-twig-paper-page=(page)
             aria-label=(format!("Paper page: {page}"))
             hx-get=(format!("/{namespace}/{repo}/paper/{page}"))
             hx-trigger="revealed"
             hx-swap="innerHTML"
         {
-            p class="fig-hint fig-paper-pending" { "Loading…" }
+            p class="twig-hint twig-paper-pending" { "Loading…" }
         }
     }
 }
@@ -1773,40 +1773,40 @@ fn paper_headings(page_anchor: &str, markdown: &str) -> Vec<PaperHeading> {
 }
 
 /// The paper toolbar: page count, the shared A−/A+ zoom, and the reading font
-/// switch. The zoom state is the same `data-fig-text-size` contract the
+/// switch. The zoom state is the same `data-twig-text-size` contract the
 /// presentation uses, so both remember their own scale. The toolbar pins below
 /// the masthead while reading a long paper.
 fn render_paper_toolbar(page_count: usize) -> Markup {
     maud::html! {
-        header class="fig-paper-bar" {
-            p class="fig-eyebrow" { "PAPER" }
-            div class="fig-paper-tools" {
-                span class="fig-paper-count" { (format!("{page_count} pages")) }
-                button id="paper-decrease-text-size" class="fig-btn fig-btn--quiet" type="button"
+        header class="twig-paper-bar" {
+            p class="twig-eyebrow" { "PAPER" }
+            div class="twig-paper-tools" {
+                span class="twig-paper-count" { (format!("{page_count} pages")) }
+                button id="paper-decrease-text-size" class="twig-btn twig-btn--quiet" type="button"
                     aria-label="Decrease paper font size" title="Decrease font size"
                     "hx-on:click"=(text_size_step(false, PAPER_TEXT_SIZE_KEY))
-                    "hx-live:disabled"=(format!("data.figTextSize === {}", TEXT_SIZES[0]))
+                    "hx-live:disabled"=(format!("data.twigTextSize === {}", TEXT_SIZES[0]))
                 {
                     "A−"
                 }
-                span id="paper-text-size" class="fig-paper-count" aria-live="polite"
-                    "hx-live:text"="data.figTextSize + '%'" { "100%" }
-                button id="paper-increase-text-size" class="fig-btn fig-btn--quiet" type="button"
+                span id="paper-text-size" class="twig-paper-count" aria-live="polite"
+                    "hx-live:text"="data.twigTextSize + '%'" { "100%" }
+                button id="paper-increase-text-size" class="twig-btn twig-btn--quiet" type="button"
                     aria-label="Increase paper font size" title="Increase font size"
                     "hx-on:click"=(text_size_step(true, PAPER_TEXT_SIZE_KEY))
                     "hx-live:disabled"=(format!(
-                        "data.figTextSize === {}",
+                        "data.twigTextSize === {}",
                         TEXT_SIZES[TEXT_SIZES.len() - 1]
                     ))
                 {
                     "A+"
                 }
-                div class="fig-paper-fonts" role="group" aria-label="Paper font" {
+                div class="twig-paper-fonts" role="group" aria-label="Paper font" {
                     @for (value, label) in PAPER_FONTS {
                         button
-                            class="fig-btn fig-btn--quiet fig-paper-font"
+                            class="twig-btn twig-btn--quiet twig-paper-font"
                             type="button"
-                            data-fig-font=(value)
+                            data-twig-font=(value)
                             aria-pressed=(if value == "sans" { "true" } else { "false" })
                         {
                             (label)
@@ -1826,7 +1826,7 @@ fn render_paper_view(namespace: &str, repo: &str, dir: &str, pages: &[String]) -
     if pages.is_empty() {
         return render_empty(
             "NO PAGES",
-            "No paper pages found. Add a [paper] section with a dir to your .fig.toml and put Markdown files in it.",
+            "No paper pages found. Add a [paper] section with a dir to your .twig.toml and put Markdown files in it.",
         );
     }
 
@@ -1835,15 +1835,15 @@ fn render_paper_view(namespace: &str, repo: &str, dir: &str, pages: &[String]) -
     maud::html! {
         section
             id="paper-container"
-            class="fig-paper"
-            data-fig-text-size=(TEXT_SIZES[0])
-            data-fig-paper-font="sans"
+            class="twig-paper"
+            data-twig-text-size=(TEXT_SIZES[0])
+            data-twig-paper-font="sans"
             hx-live=(text_size_restore(PAPER_TEXT_SIZE_KEY))
             tabindex="-1"
             aria-label="Paper"
         {
             (render_paper_toolbar(pages.len()))
-            div id="paper-body" class="fig-paper-body" {
+            div id="paper-body" class="twig-paper-body" {
                 @for (page, anchor) in pages.iter().zip(&anchors) {
                     (render_paper_page(namespace, repo, page, anchor))
                 }
@@ -1868,7 +1868,7 @@ fn render_paper_content_only(
 
     maud::html! {
         @if let Some(html) = html_content {
-            div class="fig-md fig-md--prose" {
+            div class="twig-md twig-md--prose" {
                 (maud::PreEscaped(html))
             }
         } @else {
@@ -1885,16 +1885,16 @@ fn render_markdown_view(
     markdown_files: &[String],
 ) -> Markup {
     maud::html! {
-        div class="fig-rail-shell" {
+        div class="twig-rail-shell" {
             // A one-file repository gets no rail at all; its only entry would
             // point at the document already on screen (DESIGN.md 5.10).
             @if markdown_files.len() > 1 {
-                nav class="fig-rail fig-rail--files" aria-label="Markdown files" {
-                    p class="fig-eyebrow" { "MARKDOWN FILES" }
+                nav class="twig-rail twig-rail--files" aria-label="Markdown files" {
+                    p class="twig-eyebrow" { "MARKDOWN FILES" }
                     @for file in markdown_files {
                         @let href = format!("/{namespace}/{repo}/md/{file}");
                         a
-                            class="fig-rail-item"
+                            class="twig-rail-item"
                             href=(href)
                             aria-current=[(file == current_file).then_some("page")]
                             hx-get=(href)
@@ -1906,7 +1906,7 @@ fn render_markdown_view(
                 }
             }
 
-            div class="fig-rail-body" {
+            div class="twig-rail-body" {
                 div id="markdown-view" aria-live="polite" {
                     (render_markdown_content_only(namespace, repo, current_file, content))
                 }
@@ -1927,7 +1927,7 @@ fn render_markdown_content_only(
 
     maud::html! {
         @if let Some(html) = html_content {
-            div class="fig-md fig-md--prose" {
+            div class="twig-md twig-md--prose" {
                 (maud::PreEscaped(html))
             }
         } @else {
@@ -1942,17 +1942,17 @@ fn render_commit(commit: &Commit) -> Markup {
     let date = commit.date();
     let commit_message = commit.message();
     maud::html! {
-        li class="fig-commit" {
-            div class="fig-commit-meta" {
-                code class="fig-commit-hash" {
+        li class="twig-commit" {
+            div class="twig-commit-meta" {
+                code class="twig-commit-hash" {
                     (hash.chars().take(7).collect::<String>())
                 }
-                span class="fig-commit-author" { (author) }
-                time class="fig-commit-date" datetime=(date.to_rfc3339()) {
+                span class="twig-commit-author" { (author) }
+                time class="twig-commit-date" datetime=(date.to_rfc3339()) {
                     (date.format("%Y-%m-%d %H:%M"))
                 }
             }
-            p class="fig-commit-msg" { (commit_message) }
+            p class="twig-commit-msg" { (commit_message) }
         }
     }
 }
@@ -1969,8 +1969,8 @@ mod tests {
             repo: "my-project",
             username: None,
             page_title: "acme/my-project",
-            fig_error: None,
-            fig_filename: None,
+            twig_error: None,
+            twig_filename: None,
             tabs_config: &[],
             has_config: false,
             has_present: false,
@@ -2018,7 +2018,7 @@ mod tests {
     }
 
     fn tab_labels(html: &str) -> Vec<String> {
-        html.match_indices("class=\"fig-tab\"")
+        html.match_indices("class=\"twig-tab\"")
             .map(|(start, _)| {
                 let rest = &html[start..];
                 let open = rest.find('>').expect("tab tag must be closed");
@@ -2203,7 +2203,7 @@ mod tests {
 
         assert!(
             html.contains(
-                r#"<nav id="tab-nav" class="fig-tabs" aria-label="Repository views" hx-swap-oob="true">"#
+                r#"<nav id="tab-nav" class="twig-tabs" aria-label="Repository views" hx-swap-oob="true">"#
             ),
             "the tab bar keeps its OOB swap identity: {html}"
         );
@@ -2325,16 +2325,16 @@ mod tests {
 
         let crumbs = index_of(
             &html,
-            r#"<nav class="fig-crumbs fig-crumbs--page" aria-label="Breadcrumb">"#,
+            r#"<nav class="twig-crumbs twig-crumbs--page" aria-label="Breadcrumb">"#,
         );
         let tabs = index_of(&html, "id=\"tab-nav\"");
         assert!(crumbs < tabs, "the trail, then the tabs: {html}");
         assert!(
-            !html.contains("fig-optic-rule"),
+            !html.contains("twig-optic-rule"),
             "the tab bar's own rule closes the head; no second rule: {html}"
         );
         assert!(
-            html.contains(r#"<h1 class="fig-crumb-current" aria-current="page">my-project</h1>"#),
+            html.contains(r#"<h1 class="twig-crumb-current" aria-current="page">my-project</h1>"#),
             "the trail's final segment is the page heading, rendered verbatim: {html}"
         );
         assert_eq!(count_of(&html, "<h1"), 1, "exactly one h1 per page: {html}");
@@ -2397,18 +2397,18 @@ mod tests {
         );
         let html = render_commit(&commit).into_string();
 
-        assert!(html.starts_with(r#"<li class="fig-commit">"#), "{html}");
+        assert!(html.starts_with(r#"<li class="twig-commit">"#), "{html}");
         assert!(
-            html.contains(r#"<code class="fig-commit-hash">a1b2c3d</code>"#),
+            html.contains(r#"<code class="twig-commit-hash">a1b2c3d</code>"#),
             "the hash stays abbreviated to seven characters: {html}"
         );
         assert!(
-            html.contains(r#"<span class="fig-commit-author">silen</span>"#),
+            html.contains(r#"<span class="twig-commit-author">silen</span>"#),
             "{html}"
         );
         assert!(
             html.contains(&format!(
-                r#"<time class="fig-commit-date" datetime="{}">"#,
+                r#"<time class="twig-commit-date" datetime="{}">"#,
                 date.to_rfc3339()
             )),
             "the machine timestamp travels with the readable one: {html}"
@@ -2418,7 +2418,7 @@ mod tests {
             "{html}"
         );
         assert!(
-            html.contains(r#"<p class="fig-commit-msg">Rewrite the theme layer</p>"#),
+            html.contains(r#"<p class="twig-commit-msg">Rewrite the theme layer</p>"#),
             "{html}"
         );
     }
@@ -2426,7 +2426,7 @@ mod tests {
     #[test]
     fn test_commits_view_falls_back_to_an_empty_state() {
         let html = render_commits_view(&[]).into_string();
-        assert!(html.contains("fig-empty"), "{html}");
+        assert!(html.contains("twig-empty"), "{html}");
         assert!(html.contains(">NO COMMITS<"), "{html}");
         assert!(!html.contains("<ol"), "no empty list is rendered: {html}");
     }
@@ -2437,16 +2437,16 @@ mod tests {
         let html = render_content_dir("acme", "my-project", "", &entries).into_string();
 
         assert!(
-            html.contains(r#"<a class="fig-row" href="/acme/my-project/content/src""#),
+            html.contains(r#"<a class="twig-row" href="/acme/my-project/content/src""#),
             "directories keep the primary identifier treatment: {html}"
         );
         assert!(
-            html.contains(r#"<span class="fig-row-id">src/</span>"#),
+            html.contains(r#"<span class="twig-row-id">src/</span>"#),
             "the trailing slash is the whole directory affordance: {html}"
         );
         assert!(
             html.contains(
-                r#"<a class="fig-row fig-row--file" href="/acme/my-project/content/README.md""#
+                r#"<a class="twig-row twig-row--file" href="/acme/my-project/content/README.md""#
             ),
             "files drop to the secondary identifier treatment: {html}"
         );
@@ -2455,8 +2455,8 @@ mod tests {
             2,
             "one htmx row per entry; the root trail is the current page, not a link: {html}"
         );
-        assert!(html.contains("fig-panel fig-panel--flush"), "{html}");
-        assert!(html.contains("class=\"fig-list\""), "{html}");
+        assert!(html.contains("twig-panel twig-panel--flush"), "{html}");
+        assert!(html.contains("class=\"twig-list\""), "{html}");
     }
 
     #[test]
@@ -2468,7 +2468,7 @@ mod tests {
             "the parent row climbs back to the tab route: {html}"
         );
         assert!(
-            html.contains(r#"<span class="fig-row-id">..</span>"#),
+            html.contains(r#"<span class="twig-row-id">..</span>"#),
             "{html}"
         );
     }
@@ -2477,11 +2477,13 @@ mod tests {
     fn test_content_breadcrumbs_mark_the_final_segment_as_current() {
         let html = render_content_breadcrumbs("acme", "my-project", "src/git").into_string();
         assert!(
-            html.starts_with(r#"<nav class="fig-crumbs fig-crumbs--path" aria-label="File path">"#),
+            html.starts_with(
+                r#"<nav class="twig-crumbs twig-crumbs--path" aria-label="File path">"#
+            ),
             "{html}"
         );
         assert!(
-            html.contains(r#"<span class="fig-crumb-sep" aria-hidden="true">/</span>"#),
+            html.contains(r#"<span class="twig-crumb-sep" aria-hidden="true">/</span>"#),
             "separators are decorative: {html}"
         );
         assert!(
@@ -2507,7 +2509,7 @@ mod tests {
         let html = render_markdown_view("acme", "my-project", "README.md", Some("# Hi"), &one)
             .into_string();
         assert!(
-            !html.contains("fig-rail-item"),
+            !html.contains("twig-rail-item"),
             "a single markdown file gets no rail: {html}"
         );
         assert!(
@@ -2519,7 +2521,9 @@ mod tests {
         let html = render_markdown_view("acme", "my-project", "README.md", Some("# Hi"), &many)
             .into_string();
         assert!(
-            html.contains(r#"<nav class="fig-rail fig-rail--files" aria-label="Markdown files">"#),
+            html.contains(
+                r#"<nav class="twig-rail twig-rail--files" aria-label="Markdown files">"#
+            ),
             "{html}"
         );
         assert!(
@@ -2534,13 +2538,13 @@ mod tests {
     fn test_markdown_content_reports_a_missing_file() {
         let html =
             render_markdown_content_only("acme", "my-project", "README.md", None).into_string();
-        assert!(html.contains("fig-empty"), "{html}");
+        assert!(html.contains("twig-empty"), "{html}");
         assert!(html.contains("File not found or empty."), "{html}");
 
         let html = render_markdown_content_only("acme", "my-project", "README.md", Some("# Hi"))
             .into_string();
         assert!(
-            html.contains(r#"<div class="fig-md fig-md--prose">"#),
+            html.contains(r#"<div class="twig-md twig-md--prose">"#),
             "{html}"
         );
     }
@@ -2551,7 +2555,7 @@ mod tests {
         let html = render_present_view("acme", "my-project", &deck).into_string();
 
         assert!(
-            html.contains(r#"<section id="present-container" class="fig-present" "#)
+            html.contains(r#"<section id="present-container" class="twig-present" "#)
                 && html.contains(
                     r#"tabindex="-1" aria-roledescription="carousel" aria-label="Presentation">"#
                 ),
@@ -2592,13 +2596,13 @@ mod tests {
         let html = render_slide_content("acme", "my-project", 0, &deck).into_string();
 
         assert!(
-            html.contains("fig-theme-toggle"),
+            html.contains("twig-theme-toggle"),
             "the theme switch must remain accessible in fullscreen and after slide swaps: {html}"
         );
         for control in [
-            r#"id="decrease-text-size" class="fig-btn fig-btn--quiet" type="button" aria-label="Decrease presentation font size" title="Decrease font size""#,
-            r#"id="increase-text-size" class="fig-btn fig-btn--quiet" type="button" aria-label="Increase presentation font size" title="Increase font size""#,
-            r#"<span id="present-text-size" class="fig-present-count" aria-live="polite" hx-live:text="data.figTextSize + '%'">100%</span>"#,
+            r#"id="decrease-text-size" class="twig-btn twig-btn--quiet" type="button" aria-label="Decrease presentation font size" title="Decrease font size""#,
+            r#"id="increase-text-size" class="twig-btn twig-btn--quiet" type="button" aria-label="Increase presentation font size" title="Increase font size""#,
+            r#"<span id="present-text-size" class="twig-present-count" aria-live="polite" hx-live:text="data.twigTextSize + '%'">100%</span>"#,
         ] {
             assert!(
                 html.contains(control),
@@ -2607,16 +2611,16 @@ mod tests {
         }
         assert!(
             html.contains(
-                r#"<button id="prev-slide" class="fig-btn fig-btn--quiet" type="button" disabled>"#
+                r#"<button id="prev-slide" class="twig-btn twig-btn--quiet" type="button" disabled>"#
             ),
             "the first slide disables Previous rather than swapping in a span: {html}"
         );
         assert!(
-            html.contains(r#"<button id="next-slide" class="fig-btn fig-btn--quiet" type="button" hx-get="/acme/my-project/slide/1""#),
+            html.contains(r#"<button id="next-slide" class="twig-btn twig-btn--quiet" type="button" hx-get="/acme/my-project/slide/1""#),
             "{html}"
         );
         assert!(
-            html.contains(r#"<div class="fig-ticks" role="group" aria-label="Go to slide">"#),
+            html.contains(r#"<div class="twig-ticks" role="group" aria-label="Go to slide">"#),
             "{html}"
         );
         for i in 1..=3 {
@@ -2631,14 +2635,14 @@ mod tests {
             "one tick is current: {html}"
         );
         assert!(
-            html.contains(r#"<button id="fullscreen-toggle" class="fig-btn fig-btn--quiet" type="button">Fullscreen</button>"#),
+            html.contains(r#"<button id="fullscreen-toggle" class="twig-btn twig-btn--quiet" type="button">Fullscreen</button>"#),
             "fullscreen is a real button with a visible label: {html}"
         );
 
         let last = render_slide_content("acme", "my-project", 2, &deck).into_string();
         assert!(
             last.contains(
-                r#"<button id="next-slide" class="fig-btn fig-btn--quiet" type="button" disabled>"#
+                r#"<button id="next-slide" class="twig-btn twig-btn--quiet" type="button" disabled>"#
             ),
             "the last slide disables Next: {last}"
         );
@@ -2654,11 +2658,11 @@ mod tests {
     #[test]
     fn test_present_view_without_slides_states_the_condition() {
         let html = render_present_view("acme", "my-project", &[]).into_string();
-        assert!(html.contains("fig-empty"), "{html}");
+        assert!(html.contains("twig-empty"), "{html}");
         assert!(html.contains(">NO SLIDES<"), "{html}");
         assert!(
             html.contains(
-                "No presentation slides configured. Add a [present] section with files to your .fig.toml."
+                "No presentation slides configured. Add a [present] section with files to your .twig.toml."
             ),
             "{html}"
         );
@@ -2672,7 +2676,7 @@ mod tests {
 
         assert!(
             html.contains(
-                r#"<section id="paper-container" class="fig-paper" data-fig-text-size="100" data-fig-paper-font="sans""#
+                r#"<section id="paper-container" class="twig-paper" data-twig-text-size="100" data-twig-paper-font="sans""#
             ),
             "the paper keeps the shared zoom state: {html}"
         );
@@ -2683,7 +2687,7 @@ mod tests {
 
         for (page, anchor) in pages.iter().zip(["paper-01.md", "paper-02.md"]) {
             let expected = format!(
-                r#"<article id="{anchor}" class="fig-paper-page" data-fig-paper-page="{page}""#
+                r#"<article id="{anchor}" class="twig-paper-page" data-twig-paper-page="{page}""#
             );
             assert!(
                 html.contains(&expected),
@@ -2704,14 +2708,14 @@ mod tests {
         );
 
         for control in [
-            r#"id="paper-decrease-text-size" class="fig-btn fig-btn--quiet" type="button" aria-label="Decrease paper font size" title="Decrease font size""#,
-            r#"id="paper-increase-text-size" class="fig-btn fig-btn--quiet" type="button" aria-label="Increase paper font size" title="Increase font size""#,
+            r#"id="paper-decrease-text-size" class="twig-btn twig-btn--quiet" type="button" aria-label="Decrease paper font size" title="Decrease font size""#,
+            r#"id="paper-increase-text-size" class="twig-btn twig-btn--quiet" type="button" aria-label="Increase paper font size" title="Increase font size""#,
         ] {
             assert!(html.contains(control), "missing zoom control: {html}");
         }
         for font in ["sans", "serif", "mono"] {
             assert!(
-                html.contains(&format!(r#"data-fig-font="{font}""#)),
+                html.contains(&format!(r#"data-twig-font="{font}""#)),
                 "missing font choice {font}: {html}"
             );
         }
@@ -2847,13 +2851,13 @@ mod tests {
     fn test_config_error_is_a_diagnostic_with_a_help_hint() {
         let error =
             "TOML parse error at line 2, column 1\n  |\n2 | bad = = valid\n  | ^\ninvalid key";
-        let html = render_config_error(".fig.toml", error).into_string();
+        let html = render_config_error(".twig.toml", error).into_string();
 
         assert!(html.contains("role=\"alert\""), "{html}");
-        assert!(html.contains("fig-notice fig-notice--danger"), "{html}");
+        assert!(html.contains("twig-notice twig-notice--danger"), "{html}");
         assert!(html.contains(">CONFIG ERROR<"), "{html}");
         assert!(
-            html.contains(r#"<code class="fig-mono">.fig.toml</code>"#),
+            html.contains(r#"<code class="twig-mono">.twig.toml</code>"#),
             "the offending file is named: {html}"
         );
         assert!(
@@ -2861,7 +2865,7 @@ mod tests {
             "{html}"
         );
         assert!(
-            html.contains("--&gt; .fig.toml"),
+            html.contains("--&gt; .twig.toml"),
             "the pointer is escaped, not interpreted as markup: {html}"
         );
         assert!(html.contains("help: fix the syntax"), "{html}");
@@ -2870,7 +2874,7 @@ mod tests {
             "the parser's own explanation survives: {html}"
         );
         assert!(
-            html.contains(r#"tabindex="0" aria-label=".fig.toml parse error""#),
+            html.contains(r#"tabindex="0" aria-label=".twig.toml parse error""#),
             "the diagnostic stays keyboard-scrollable: {html}"
         );
     }
@@ -2878,13 +2882,13 @@ mod tests {
     #[test]
     fn test_tab_content_shows_a_config_error_on_every_tab() {
         let frame = TabFrame {
-            fig_error: Some("TOML parse error at line 1, column 1"),
-            fig_filename: Some(".fig.toml"),
+            twig_error: Some("TOML parse error at line 1, column 1"),
+            twig_filename: Some(".twig.toml"),
             ..base_frame()
         };
         let html = render_tab_shell(&frame, "commits", &maud::html! {}).into_string();
 
-        let error = index_of(&html, "fig-config-error");
+        let error = index_of(&html, "twig-config-error");
         let tabs = index_of(&html, "id=\"tab-nav\"");
         let content = index_of(&html, "id=\"tab-content\"");
         assert!(
@@ -2899,22 +2903,22 @@ mod tests {
 
     #[test]
     fn test_config_and_license_views_render_code_and_empty_states() {
-        let html = render_config_view(Some("[present]\nfiles = []"), Some(".fig")).into_string();
+        let html = render_config_view(Some("[present]\nfiles = []"), Some(".twig")).into_string();
         assert!(
-            html.contains(r#"<pre class="fig-code" tabindex="0" aria-label=".fig contents">"#),
+            html.contains(r#"<pre class="twig-code" tabindex="0" aria-label=".twig contents">"#),
             "code blocks are keyboard scrollable and named: {html}"
         );
 
         let html = render_config_view(None, None).into_string();
         assert!(html.contains(">NO CONFIGURATION<"), "{html}");
         assert!(
-            html.contains("Create a .fig.toml file in the repository root"),
+            html.contains("Create a .twig.toml file in the repository root"),
             "the original guidance survives: {html}"
         );
 
         let html = render_license_view(Some("<p>MIT</p>")).into_string();
         assert!(
-            html.contains(r#"<div class="fig-md fig-md--boxed"><p>MIT</p></div>"#),
+            html.contains(r#"<div class="twig-md twig-md--boxed"><p>MIT</p></div>"#),
             "{html}"
         );
 
@@ -2930,7 +2934,7 @@ mod tests {
             html.contains("Path not found."),
             "the rejection wording is preserved verbatim: {html}"
         );
-        assert!(html.contains("fig-empty"), "{html}");
+        assert!(html.contains("twig-empty"), "{html}");
 
         let html = render_content_file("acme", "my-project", "logo.png", &[0, 1, 2]).into_string();
         assert!(html.contains(">BINARY FILE<"), "{html}");
@@ -2942,7 +2946,7 @@ mod tests {
         let html =
             render_content_file("acme", "my-project", "main.rs", b"fn main() {}").into_string();
         assert!(
-            html.contains(r#"<pre class="fig-code" tabindex="0" aria-label="main.rs contents">"#),
+            html.contains(r#"<pre class="twig-code" tabindex="0" aria-label="main.rs contents">"#),
             "{html}"
         );
         assert!(
@@ -2950,7 +2954,7 @@ mod tests {
             "the filename remains in the inner breadcrumb: {html}"
         );
         assert!(
-            !html.contains(r#"<h2 class="fig-section">main.rs</h2>"#),
+            !html.contains(r#"<h2 class="twig-section">main.rs</h2>"#),
             "the file is not repeated as a title: {html}"
         );
         assert!(html.contains("fn main() {}"), "{html}");
@@ -2958,7 +2962,7 @@ mod tests {
         let html =
             render_content_file("acme", "my-project", "docs/a.md", b"[b](c.md)").into_string();
         assert!(
-            html.contains(r#"<div class="fig-md fig-md--boxed">"#),
+            html.contains(r#"<div class="twig-md twig-md--boxed">"#),
             "markdown files keep the boxed markdown surface: {html}"
         );
         assert!(
@@ -2972,7 +2976,7 @@ mod tests {
         let error = git2::Error::from_str("could not find repository");
         let html = render_git_error(&error).into_string();
         assert!(html.contains("role=\"alert\""), "{html}");
-        assert!(html.contains("fig-notice fig-notice--danger"), "{html}");
+        assert!(html.contains("twig-notice twig-notice--danger"), "{html}");
         assert!(html.contains(">ERROR<"), "{html}");
         assert!(html.contains("could not find repository"), "{html}");
         assert!(
@@ -3017,7 +3021,7 @@ mod tests {
             ("commits tab", render_commits_view(&commits).into_string()),
             (
                 "config tab",
-                render_config_view(Some("[present]"), Some(".fig.toml")).into_string(),
+                render_config_view(Some("[present]"), Some(".twig.toml")).into_string(),
             ),
             (
                 "license tab",
@@ -3055,7 +3059,7 @@ mod tests {
             ),
             (
                 "config error",
-                render_config_error(".fig.toml", "TOML parse error at line 1, column 1")
+                render_config_error(".twig.toml", "TOML parse error at line 1, column 1")
                     .into_string(),
             ),
             (
@@ -3079,7 +3083,7 @@ mod tests {
         let html = render_repo_auth_error(&req, "acme/secret").into_string();
         assert!(html.contains("Not logged in. Please log in first."));
         assert!(html.contains("href=\"/auth/login\""));
-        assert!(html.contains("<title>acme/secret · Fig</title>"));
+        assert!(html.contains("<title>acme/secret · Twig</title>"));
 
         let htmx_req = actix_web::test::TestRequest::default()
             .insert_header(("HX-Request", "true"))
@@ -3090,7 +3094,7 @@ mod tests {
     }
 
     #[test]
-    fn test_repo_markup_uses_only_fig_design_system_classes() {
+    fn test_repo_markup_uses_only_twig_design_system_classes() {
         for (surface, html) in representative_markup() {
             let classes = classes_in(&html);
             assert!(
@@ -3099,7 +3103,7 @@ mod tests {
             );
             for class in classes {
                 assert!(
-                    class.starts_with("fig-"),
+                    class.starts_with("twig-"),
                     "non design-system class {class:?} in {surface}: {html}"
                 );
             }
@@ -3115,7 +3119,7 @@ mod tests {
             );
             assert!(
                 !html.contains("<style"),
-                "presentation CSS lives in fig.css, not in {surface}: {html}"
+                "presentation CSS lives in twig.css, not in {surface}: {html}"
             );
             for class in classes_in(&html) {
                 for outgoing in ["tf-", "markdown-body", "white-", "lh-copy", "no-underline"] {

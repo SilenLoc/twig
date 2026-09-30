@@ -92,7 +92,7 @@ fn init_logging(config: &config::Server) {
 /// are ready, storing the resulting session token in `dev_session` so the
 /// auto-login middleware can pick it up for local browsing.
 fn spawn_database_init(
-    auth_state: web::Data<auth::FigContext>,
+    auth_state: web::Data<auth::TwigContext>,
     config: web::Data<config::Server>,
     dev_session: web::Data<tokio::sync::OnceCell<String>>,
 ) {
@@ -167,7 +167,9 @@ pub(crate) fn configure_routes(cfg: &mut web::ServiceConfig) {
         .service(view::settings::settings_page)
         .service(view::settings::update_email)
         .service(view::settings::move_repo)
+        .service(view::settings::rename_repo)
         .service(view::settings::delete_repo)
+        .service(view::settings::rename_namespace)
         .service(view::settings::delete_namespace)
         .service(view::namespace::handler)
         .service(view::namespace::create_repo_form_handler)
@@ -216,7 +218,7 @@ fn main() -> std::io::Result<()> {
 
         let db = Database::new(&db_path);
 
-        let auth_state = web::Data::new(auth::FigContext::new(db, api_key));
+        let auth_state = web::Data::new(auth::TwigContext::new(db, api_key));
         let dev_session_token: web::Data<tokio::sync::OnceCell<String>> =
             web::Data::new(tokio::sync::OnceCell::new());
 
@@ -300,7 +302,7 @@ mod tests {
             ("127.0.0.1".to_string(), 8080),
             "info".to_string(),
             "/srv/git".to_string(),
-            "fig.db".to_string(),
+            "twig.db".to_string(),
             "key".to_string(),
             false,
             0.25,
@@ -320,7 +322,7 @@ mod tests {
             ("127.0.0.1".to_string(), 8080),
             "info".to_string(),
             "/srv/git".to_string(),
-            "fig.db".to_string(),
+            "twig.db".to_string(),
             "key".to_string(),
             false,
             1.0,

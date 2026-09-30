@@ -1,0 +1,1841 @@
+/* Twig — warm minimal design system: autumn mulberry fields, blush-rose interaction.
+   Raw colour values appear only in the :root token blocks below; every other
+   rule references var(--twig-*). */
+
+/* ---- 1. Tokens ---------------------------------------------------------- */
+
+:root {
+    color-scheme: dark;
+
+    /* Fields — warm mulberry, kept off pure black so the page reads autumnal */
+    --twig-void: #150d0f;
+    --twig-surface-0: #1f1418;
+    --twig-surface-1: #291a1f;
+    --twig-surface-2: #342228;
+    --twig-surface-3: #3f2a31;
+
+    /* Ink — blush cream rather than cool white */
+    --twig-ink-primary: #f8ece8;
+    --twig-ink-secondary: #d8bcb8;
+    --twig-ink-tertiary: #bfa19c;
+
+    /* Rules */
+    --twig-rule: #4a3239;
+    --twig-rule-strong: #a1787c;
+
+    /* Accent — interaction only, unambiguously blush rose */
+    --twig-accent-700: #cf7f8b;
+    --twig-accent-500: #eeaab0;
+    --twig-accent-300: #f6c9cb;
+    --twig-accent-100: #fce9e6;
+
+    /* Signals — autumn harvest hues, held off the accent so status never
+       reads as interaction */
+    --twig-signal-danger: #e5806a;
+    --twig-signal-ok: #9cbd6e;
+    --twig-signal-warn: #dda15e;
+
+    /* Families */
+    --twig-sans: "Space Grotesk", "Helvetica Neue", Arial, system-ui, sans-serif;
+    --twig-mono:
+        ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas,
+        "Liberation Mono", "DejaVu Sans Mono", monospace;
+    --twig-serif: Georgia, Cambria, "Times New Roman", Times, serif;
+
+    /* Type scale */
+    --twig-t-h1: clamp(1.5rem, 1rem + 1.75vw, 2.25rem);
+    --twig-t-h2: clamp(1.25rem, 1.05rem + 0.6vw, 1.5rem);
+    --twig-t-h3: 1.0625rem;
+    --twig-t-body-lg: 1.125rem;
+    --twig-t-body: 1rem;
+    --twig-t-body-sm: 0.875rem;
+    --twig-t-data-lg: 0.9375rem;
+    --twig-t-data: 0.8125rem;
+    --twig-t-label: 0.75rem;
+    --twig-t-eyebrow: 0.6875rem;
+    --twig-t-wordmark: 1rem;
+
+    /* Spacing — base 4px */
+    --twig-space-1: 4px;
+    --twig-space-2: 8px;
+    --twig-space-3: 12px;
+    --twig-space-4: 16px;
+    --twig-space-5: 20px;
+    --twig-space-6: 24px;
+    --twig-space-8: 32px;
+    --twig-space-10: 40px;
+    --twig-space-12: 48px;
+    --twig-space-16: 64px;
+    --twig-space-20: 80px;
+    --twig-space-24: 96px;
+
+    /* Measures */
+    --twig-page-max: 76rem;
+    --twig-measure-prose: 42rem;
+    --twig-measure-form: 26rem;
+    --twig-measure-slide: 50rem;
+    --twig-measure-slide-fs: 60rem;
+    --twig-control-h: 2.75rem;
+
+    /* Rail widths apply from 768px; below that the rail is a horizontal scroller */
+    --twig-rail-docs: 13rem;
+    --twig-rail-files: 11rem;
+
+    /* Responsive steps, overridden at the two authoritative breakpoints */
+    --twig-gutter: var(--twig-space-4);
+    --twig-masthead-h: 56px;
+    --twig-panel-pad: var(--twig-space-5);
+    --twig-row-h: 68px;
+    --twig-nav-gap: var(--twig-space-3);
+
+    /* Motion */
+    --twig-dur-micro: 90ms;
+    --twig-dur-standard: 160ms;
+    --twig-dur-deliberate: 320ms;
+    --twig-ease-out: cubic-bezier(0.2, 0, 0, 1);
+    --twig-ease-emphasis: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:root[data-twig-theme="light"] {
+    color-scheme: light;
+
+    /* Warm paper and dark mulberry ink stay legible on projected displays. */
+    --twig-void: #ffffff;
+    --twig-surface-0: #faf7f4;
+    --twig-surface-1: #ffffff;
+    --twig-surface-2: #f3eae7;
+    --twig-surface-3: #ece0dc;
+
+    --twig-ink-primary: #29191f;
+    --twig-ink-secondary: #49383e;
+    --twig-ink-tertiary: #66545b;
+
+    --twig-rule: #d6c6c5;
+    --twig-rule-strong: #8d7078;
+
+    --twig-accent-700: #70283e;
+    --twig-accent-500: #973b55;
+    --twig-accent-300: #ac4b63;
+    --twig-accent-100: #f9e9e8;
+
+    --twig-signal-danger: #a33930;
+    --twig-signal-ok: #346538;
+    --twig-signal-warn: #845013;
+}
+
+@media (min-width: 48rem) {
+    :root {
+        --twig-gutter: var(--twig-space-6);
+        --twig-masthead-h: 64px;
+        --twig-panel-pad: var(--twig-space-6);
+        --twig-row-h: 56px;
+        --twig-nav-gap: var(--twig-space-6);
+    }
+}
+
+@media (min-width: 80rem) {
+    :root {
+        --twig-gutter: var(--twig-space-8);
+        --twig-rail-docs: 15rem;
+        --twig-rail-files: 13rem;
+    }
+}
+
+/* ---- 2. Base ------------------------------------------------------------ */
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    border-radius: 0;
+}
+
+html {
+    background-color: var(--twig-surface-0);
+    -webkit-text-size-adjust: 100%;
+}
+
+body.twig-shell {
+    margin: 0;
+    min-block-size: 100dvh;
+    background-color: var(--twig-surface-0);
+    color: var(--twig-ink-primary);
+    font-family: var(--twig-sans);
+    font-size: var(--twig-t-body);
+    font-weight: 400;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+    background-color: var(--twig-accent-500);
+    color: var(--twig-void);
+}
+
+/* t.css ships dotted focus outlines at `a:focus` (0,1,1) and `.link:focus` (0,2,0).
+   :is() gives this ring (0,2,0) so it wins; :where() would score 0 and lose. */
+:is(a, button, input, select, textarea, [tabindex]):focus:not(:focus-visible) {
+    outline: none;
+}
+
+:is(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--twig-accent-500);
+    outline-offset: 2px;
+    border-radius: 0;
+}
+
+/* ---- 3. Shell, page column, masthead ------------------------------------ */
+
+.twig-skip {
+    position: fixed;
+    z-index: 20;
+    inset-block-start: var(--twig-space-4);
+    inset-inline-start: var(--twig-space-4);
+    display: inline-flex;
+    align-items: center;
+    min-block-size: var(--twig-control-h);
+    padding-inline: var(--twig-space-5);
+    background-color: var(--twig-surface-0);
+    border: 1px solid var(--twig-rule-strong);
+    color: var(--twig-ink-primary);
+    font-size: var(--twig-t-label);
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    text-decoration: none;
+}
+
+.twig-skip:not(:focus) {
+    clip-path: inset(50%);
+    block-size: 1px;
+    inline-size: 1px;
+    min-block-size: 0;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.twig-skip:hover {
+    color: var(--twig-ink-primary);
+}
+
+.twig-page {
+    inline-size: 100%;
+    max-inline-size: var(--twig-page-max);
+    margin-inline: auto;
+    padding-inline: var(--twig-gutter);
+}
+
+.twig-masthead {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 10;
+    background-color: var(--twig-surface-0);
+}
+
+.twig-masthead > .twig-page {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--twig-space-3);
+    min-block-size: var(--twig-masthead-h);
+}
+
+.twig-wordmark {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    min-block-size: var(--twig-control-h);
+    color: var(--twig-ink-primary);
+    font-size: var(--twig-t-wordmark);
+    font-weight: 500;
+    line-height: 1;
+    letter-spacing: 0.38em;
+    text-transform: uppercase;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: color var(--twig-dur-micro) linear;
+}
+
+.twig-wordmark:hover {
+    color: var(--twig-accent-500);
+}
+
+.twig-nav {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--twig-nav-gap);
+    min-inline-size: 0;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+}
+
+.twig-nav::-webkit-scrollbar {
+    display: none;
+}
+
+/* Masthead nav items are inline text links (Section 8 target-size exception):
+   full 44px height, natural text width, so every item stays visible at 375px. */
+.twig-nav .twig-btn {
+    padding-inline: 0;
+}
+
+.twig-nav form {
+    display: flex;
+    margin: 0;
+}
+
+.twig-theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 var(--twig-control-h);
+    inline-size: var(--twig-control-h);
+    padding-inline: 0;
+    letter-spacing: 0;
+}
+
+.twig-theme-icon {
+    display: none;
+    inline-size: 1.25rem;
+    block-size: 1.25rem;
+    flex: 0 0 auto;
+}
+
+.twig-theme-toggle .twig-theme-dark,
+:root[data-twig-theme="light"] .twig-theme-toggle .twig-theme-light {
+    display: block;
+}
+
+:root[data-twig-theme="light"] .twig-theme-toggle .twig-theme-dark,
+.twig-theme-toggle .twig-theme-light {
+    display: none;
+}
+
+.twig-nav-user {
+    min-inline-size: 0;
+    overflow: hidden;
+    color: var(--twig-ink-tertiary);
+    font-family: var(--twig-mono);
+    font-size: var(--twig-t-data);
+    letter-spacing: 0.01em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* A flat hairline, not a painted band: the rule separates zones and says
+   nothing else. */
+.twig-optic-rule {
+    position: sticky;
+    inset-block-start: var(--twig-masthead-h);
+    z-index: 10;
+    block-size: 1px;
+    background-color: var(--twig-rule);
+}
+
+.twig-optic-rule--column {
+    position: static;
+    margin-block-end: var(--twig-space-10);
+}
+
+.twig-main {
+    display: block;
+    padding-block-end: var(--twig-space-24);
+}
+
+.twig-auth-login {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-block-size: calc(100dvh - var(--twig-masthead-h) - 1px);
+    margin-block-end: calc(-1 * var(--twig-space-24));
+    padding-block: var(--twig-space-10);
+}
+
+.twig-auth-login > #auth-content {
+    inline-size: 100%;
+}
+
+@media (min-width: 48rem) {
+    .twig-optic-rule--column {
+        margin-block-end: var(--twig-space-12);
+    }
+}
+
+/* ---- 4. Spatial primitives ---------------------------------------------- */
+
+.twig-stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--twig-space-6);
+    min-inline-size: 0;
+}
+
+.twig-stack--tight {
+    gap: var(--twig-space-3);
+}
+
+.twig-stack--loose {
+    gap: var(--twig-space-8);
+}
+
+.twig-cluster {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--twig-space-4);
+    min-inline-size: 0;
+}
+
+.twig-cluster--tight {
+    gap: var(--twig-space-2);
+}
+
+.twig-bento {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1px;
+    background-color: var(--twig-rule);
+}
+
+.twig-bento > .twig-panel {
+    border: 0;
+}
+
+@media (min-width: 48rem) {
+    .twig-bento {
+        grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr));
+    }
+}
+
+/* ---- 5. Type primitives -------------------------------------------------- */
+
+/* Utility page names (Namespaces, Settings, Information, the auth titles) are
+   wayfinding, not identity: they sit back as a quiet caption so the content
+   below them owns the fold. Pages named after a git identifier carry that name
+   in the trail instead — see .twig-crumb-current. */
+.twig-display-xl {
+    margin: 0;
+    color: var(--twig-ink-tertiary);
+    font-size: var(--twig-t-label);
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    overflow-wrap: anywhere;
+}
+
+.twig-title,
+.twig-section,
+.twig-subsection {
+    margin: 0;
+    color: var(--twig-ink-primary);
+    overflow-wrap: anywhere;
+}
+
+.twig-title {
+    font-size: var(--twig-t-h1);
+    font-weight: 500;
+    line-height: 1.08;
+    letter-spacing: -0.03em;
+}
+
+.twig-section {
+    font-size: var(--twig-t-h2);
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+}
+
+.twig-subsection {
+    font-size: var(--twig-t-h3);
+    font-weight: 600;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+}
+
+.twig-eyebrow {
+    margin: 0;
+    color: var(--twig-ink-tertiary);
+    font-size: var(--twig-t-eyebrow);
+    font-weight: 500;
+    line-height: 1.25;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+}
+
+.twig-label {
+    display: block;
+    color: var(--twig-ink-tertiary);
+    font-size: var(--twig-t-label);
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.twig-body,
+.twig-body-lg,
+.twig-body-sm {
+    margin: 0;
+    color: var(--twig-ink-primary);
+    font-weight: 400;
+}
+
+.twig-body {
+    font-size: var(--twig-t-body);
+    line-height: 1.7;
+}
+
+.twig-body-lg {
+    font-size: var(--twig-t-body-lg);
+    line-height: 1.65;
+    letter-spacing: -0.005em;
+}
+
+.twig-body-sm {
+    font-size: var(--twig-t-body-sm);
+    line-height: 1.55;
+}
+
+.twig-data,
+.twig-data-lg {
+    font-family: var(--twig-mono);
+    font-variant-numeric: tabular-nums;
+}
+
+.twig-table-scroll {
+    max-inline-size: 100%;
+    overflow-x: auto;
+}
+
+.twig-table {
+    inline-size: 100%;
+    border-collapse: collapse;
+    text-align: start;
+}
+
+.twig-table th,
+.twig-table td {
+    padding: var(--twig-space-3) var(--twig-space-4);
+    border-block-end: 1px solid var(--twig-rule);
+    text-align: start;
+    vertical-align: top;
+}
+
+.twig-table th {
+    color: var(--twig-ink-tertiary);
+    font-size: var(--twig-t-eyebrow);
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.twig-table td {
+    max-inline-size: 32rem;
+    overflow-wrap: anywhere;
+}
+
+.twig-data {
+    font-size: var(--twig-t-data);
+    font-weight: 400;
+    line-height: 1.6;
+    letter-spacing: 0.01em;
+}
+
+.twig-data-lg {
+    font-size: var(--twig-t-data-lg);
+    font-weight: 500;
+    line-height: 1.4;
+    letter-spacing: 0.005em;
+}
+
+/* ---- 6. Page head -------------------------------------------------------- */
+
+/* Never a hero: one quiet line that names the page — a caption title or the
+   trail — with the page's single action pulled alongside it. */
+.twig-pagehead {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--twig-space-4);
+    padding-block: var(--twig-space-6) var(--twig-space-4);
+}
+
+/* A trail above the head has already opened the page. */
+.twig-crumbs--page + .twig-pagehead {
+    padding-block-start: var(--twig-space-2);
+}
+
+/* ---- 7. Panel, column header, technical row ------------------------------ */
+
+.twig-panel {
+    background-color: var(--twig-surface-1);
+    border: 1px solid var(--twig-rule);
+    min-inline-size: 0;
+}
+
+.twig-panel--danger {
+    border-inline-start: 2px solid var(--twig-signal-danger);
+}
+
+.twig-panel-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--twig-space-4);
+    padding: var(--twig-panel-pad);
+    padding-block-end: var(--twig-space-4);
+}
+
+.twig-panel-action {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--twig-space-2);
+}
+
+.twig-panel-body {
+    padding: var(--twig-panel-pad);
+    min-inline-size: 0;
+}
+
+.twig-panel-head + .twig-panel-body {
+    padding-block-start: 0;
+}
+
+.twig-panel--flush > .twig-panel-body {
+    padding: 0;
+}
+
+.twig-colhead {
+    display: none;
+    align-items: center;
+    gap: var(--twig-space-4);
+    min-block-size: 36px;
+    padding-inline: var(--twig-space-4);
+    background-color: var(--twig-surface-3);
+    border-block-end: 1px solid var(--twig-rule-strong);
+    border-inline-start: 2px solid transparent;
+    color: var(--twig-ink-tertiary);
+    font-size: var(--twig-t-eyebrow);
+    font-weight: 500;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+}
+
+.twig-colhead > :first-child {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+}
+
+.twig-colhead > :not(:first-child) {
+    flex: 0 0 9.375rem;
+    text-align: end;
+}
+
+.twig-list {
+    display: block;
+    min-inline-size: 0;
+}
+
+.twig-row {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: var(--twig-space-1);
+    min-block-size: var(--twig-row-h);
+    padding-block: var(--twig-space-3);
+    padding-inline: var(--twig-space-4);
+    border-block-end: 1px solid var(--twig-rule);
+    border-inline-start: 2px solid transparent;
+    color: var(--twig-ink-primary);
+    text-decoration: none;
+    transition:
+        background-color var(--twig-dur-micro) linear,
+        border-color var(--twig-dur-micro) linear,
+        color var(--twig-dur-micro) linear;
+}
+
+.twig-row:last-child {
+    border-block-end: 0;
+}
+
+.twig-row:hover {
+    background-color: var(--twig-surface-2);
+    border-inline-start-color: var(--twig-accent-500);
+    color: var(--twig-ink-primary);
+}
+
+.twig-row:active {
+    border-inline-start-color: var(--twig-accent-700);
+}
+
+.twig-row:focus-visible {
+    border-inline-start-color: transparent;
+}
+
+.twig-row[aria-busy="true"] {
+    color: var(--twig-ink-tertiary);
+    cursor: progress;
+}
+
+.twig-row--form {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--twig-space-4);
+}
+
+.twig-row--form:hover {
+    background-color: transparent;
+    border-inline-start-color: transparent;
+}
+
+.twig-row-id {
+    min-inline-size: 0;
+    color: var(--twig-ink-primary);
+    font-family: var(--twig-mono);
+    font-size: var(--twig-t-data-lg);
+    font-weight: 500;
+    line-height: 1.4;
+    letter-spacing: 0.005em;
+    overflow-wrap: anywhere;
+}
+
+.twig-row--file .twig-row-id {
+    color: var(--twig-ink-secondary);
+    font-weight: 400;
+}
+
+.twig-row-meta {
+    color: var(--twig-ink-tertiary);
+    font-family: var(--twig-mono);
+    font-size: var(--twig-t-data);
+    line-height: 1.6;
+    letter-spacing: 0.01em;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+}
+
+@media (min-width: 48rem) {
+    .twig-colhead {
+        display: flex;
+    }
+
+    .twig-row {
+        flex-direction: row;
+        align-items: center;
+        gap: var(--twig-space-4);
+    }
+
+    .twig-row-id {
+        flex: 1 1 auto;
+    }
+
+    .twig-row-meta {
+        flex: 0 0 9.375rem;
+        text-align: end;
+    }
+
+    .twig-row--form .twig-row-meta {
+        flex: 0 0 auto;
+    }
+}
+
+/* ---- 8. Tabs ------------------------------------------------------------- */
+
+.twig-tabs {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    margin-block-end: var(--twig-space-6);
+    border-block-end: 1px solid var(--twig-rule);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    min-inline-size: 0;
+}
+
+.twig-tabs::-webkit-scrollbar {
+    display: none;
+}
+
+.twig-tab {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    min-block-size: var(--twig-control-h);
+    margin-block-end: -1px;
+    padding-inline: var(--twig-space-4);
+    border-block-end: 2px solid transparent;
+    color: var(--twig-ink-secondary);
+    font-size: var(--twig-t-label);
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    text-decoration: none;
+    white-space: nowrap;
+    transition:
+        color var(--twig-dur-micro) linear,
+        border-color var(--twig-dur-micro) linear;
+}
+
+.twig-tab:hover {
+    color: var(--twig-ink-primary);
+    border-block-end-color: var(--twig-rule-strong);
+}
+
+.twig-tab[aria-current="page"] {
+    color: var(--twig-ink-primary);
+    border-block-end-color: var(--twig-accent-500);
+}
+
+/* ---- 9. Buttons ---------------------------------------------------------- */
+
+.twig-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--twig-space-2);
+    min-block-size: var(--twig-control-h);
+    padding-inline: var(--twig-space-5);
+    background-color: transparent;
+    border: 1px solid transparent;
+    color: var(--twig-ink-primary);
+    font-family: var(--twig-sans);
+    font-size: var(--twig-t-label);
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+        background-color var(--twig-dur-micro) linear,
+        border-color var(--twig-dur-micro) linear,
+        color var(--twig-dur-micro) linear;
+}
+
+.twig-btn:hover {
+    color: var(--twig-ink-primary);
+}
+
+.twig-btn--primary {
+    background-color: var(--twig-ink-primary);
+    border-color: var(--twig-ink-primary);
+    color: var(--twig-void);
+}
+
+.twig-btn--primary:hover {
+    background-color: var(--twig-accent-500);
+    border-color: var(--twig-accent-500);
+    color: var(--twig-void);
+}
+
+.twig-btn--primary:active {
+    background-color: var(--twig-accent-700);
+    border-color: var(--twig-accent-700);
+    color: var(--twig-void);
+}
+
+.twig-btn--ghost {
+    border-color: var(--twig-rule-strong);
+    color: var(--twig-ink-primary);
+}
+
+.twig-btn--ghost:hover {
+    border-color: var(--twig-accent-500);
+    color: var(--twig-accent-500);
+}
+
+.twig-btn--ghost:active {
+    background-color: var(--twig-surface-2);
+    border-color: var(--twig-accent-700);
+    color: var(--twig-accent-700);
+}
+
+.twig-btn--quiet {
+    padding-inline: var(--twig-space-4);
+    color: var(--twig-ink-secondary);
+}
+
+.twig-btn--quiet:hover {
+    color: var(--twig-ink-primary);
+}
+
+.twig-btn--quiet:active {
+    color: var(--twig-accent-500);
+}
+
+.twig-btn--danger {
+    border-color: var(--twig-signal-danger);
+    color: var(--twig-signal-danger);
+}
+
+.twig-btn--danger:hover {
+    background-color: var(--twig-signal-danger);
+    border-color: var(--twig-signal-danger);
+    color: var(--twig-void);
+}
+
+.twig-btn--danger:active {
+    background-color: var(--twig-signal-danger);
+    border-color: var(--twig-ink-primary);
+    color: var(--twig-void);
+}
+
+.twig-btn--block {
+    display: flex;
+    inline-size: 100%;
+}
+
+.twig-btn:disabled {
+    background-color: transparent;
+    border-color: var(--twig-rule);
+    color: var(--twig-ink-tertiary);
+    cursor: not-allowed;
+}
+
+.twig-btn[aria-busy="true"] {
+    cursor: progress;
+}
+
+/* ---- 10. Fields ---------------------------------------------------------- */
+
+.twig-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--twig-space-5);
+    min-inline-size: 0;
+}
+
+.twig-form--narrow {
+    max-inline-size: var(--twig-measure-form);
+    margin-inline: auto;
+}
+
+.twig-form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--twig-space-4);
+    margin-block-start: var(--twig-space-1);
+}
+
+.twig-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--twig-space-2);
+    min-inline-size: 0;
+}
+
+.twig-input {
+    inline-size: 100%;
+    min-inline-size: 0;
+    min-block-size: var(--twig-control-h);
+    padding-inline: var(--twig-space-4);
+    appearance: none;
+    background-color: var(--twig-surface-0);
+    border: 1px solid var(--twig-rule-strong);
+    color: var(--twig-ink-primary);
+    font-family: var(--twig-sans);
+    font-size: var(--twig-t-body);
+    line-height: 1.2;
+    transition: border-color var(--twig-dur-micro) linear;
+}
+
+.twig-input--mono {
+    font-family: var(--twig-mono);
+    letter-spacing: 0.01em;
+}
+
+.twig-input::placeholder {
+    color: var(--twig-ink-tertiary);
+    opacity: 1;
+}
+
+.twig-input:hover {
+    border-color: var(--twig-ink-tertiary);
+}
+
+.twig-input:focus {
+    border-color: var(--twig-accent-500);
+}
+
+.twig-input:disabled {
+    background-color: var(--twig-surface-1);
+    border-color: var(--twig-rule);
+    color: var(--twig-ink-tertiary);
+}
+
+.twig-input[aria-invalid="true"] {
+    border-color: var(--twig-signal-danger);
+}
+
+.twig-hint {
+    margin: 0;
+    color: var(--twig-ink-tertiary);
+    font-size: var(--twig-t-body-sm);
+    line-height: 1.55;
+}
+
+.twig-search {
+    display: flex;
+    align-items: center;
+    gap: var(--twig-space-2);
+    min-inline-size: 0;
+}
+
+.twig-search .twig-input {
+    flex: 1 1 auto;
+}
+
+.twig-search .twig-btn {
+    flex: 0 0 auto;
+}
+
+/* ---- 11. Rail ------------------------------------------------------------ */
+
+.twig-rail-shell {
+    display: flex;
+    flex-direction: column;
+    gap: var(--twig-space-6);
+    min-inline-size: 0;
+}
+
+.twig-rail {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 0;
+    border-block-end: 1px solid var(--twig-rule);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    min-inline-size: 0;
+}
+
+.twig-rail .twig-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    padding-inline-end: var(--twig-space-3);
+}
+
+.twig-rail-item {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    min-block-size: var(--twig-control-h);
+    margin-block-end: -1px;
+    padding-inline: var(--twig-space-3);
+    border-block-end: 2px solid transparent;
+    color: var(--twig-ink-secondary);
+    font-size: var(--twig-t-body-sm);
+    text-decoration: none;
+    white-space: nowrap;
+    transition:
+        background-color var(--twig-dur-micro) linear,
+        border-color var(--twig-dur-micro) linear,
+        color var(--twig-dur-micro) linear;
+}
+
+.twig-rail-item:hover {
+    background-color: var(--twig-surface-2);
+    color: var(--twig-ink-primary);
+}
+
+.twig-rail-item[aria-current="page"] {
+    background-color: var(--twig-surface-2);
+    border-block-end-color: var(--twig-accent-500);
+    color: var(--twig-ink-primary);
+}
+
+.twig-rail--files .twig-rail-item {
+    font-family: var(--twig-mono);
+    font-size: var(--twig-t-data);
+    letter-spacing: 0.01em;
+}
+
+.twig-rail-body {
+    min-inline-size: 0;
+}
+
+@media (min-width: 48rem) {
+    .twig-rail-shell {
+        flex-direction: row;
+        align-items: flex-start;
+    }
+
+    .twig-rail {
+        position: sticky;
+        inset-block-start: calc(var(--twig-masthead-h) + var(--twig-space-6));
+        flex-direction: column;
+        flex: 0 0 var(--twig-rail-docs);
+        inline-size: var(--twig-rail-docs);
+        max-block-size: calc(
+            100dvh - var(--twig-masthead-h) - var(--twig-space-12)
+        );
+        border-block-end: 0;
+        border-inline-end: 1px solid var(--twig-rule);
+        overflow: auto;
+        min-block-size: 0;
+    }
+
+    .twig-rail--files {
+        flex-basis: var(--twig-rail-files);
+        inline-size: var(--twig-rail-files);
+    }
+
+    .twig-rail .twig-eyebrow {
+        display: block;
+        margin-block-start: var(--twig-space-6);
+        margin-block-end: var(--twig-space-2);
+        padding-inline: var(--twig-space-3);
+    }
+
+    .twig-rail .twig-eyebrow:first-child {
+        margin-block-start: 0;
+    }
+
+    .twig-rail-item {
+        inline-size: 100%;
+        margin-block-end: 0;
+        border-block-end: 0;
+        border-inline-start: 2px solid transparent;
+    }
+
+    .twig-rail-item[aria-current="page"] {
+        border-inline-start-color: var(--twig-accent-500);
+    }
+
+    .twig-rail-body {
+        flex: 1 1 auto;
+    }
+}
+
+/* ---- 12. Breadcrumbs ----------------------------------------------------- */
+
+.twig-crumbs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-block-end: var(--twig-space-6);
+    color: var(--twig-ink-secondary);
+    font-family: var(--twig-mono);
+    font-size: var(--twig-t-data);
+    letter-spacing: 0.01em;
+    overflow-wrap: anywhere;
+}
+
+.twig-crumbs a {
+    color: var(--twig-ink-tertiary);
+    text-decoration: none;
+    transition: color var(--twig-dur-micro) linear;
+}
+
+.twig-crumbs a:hover {
+    color: var(--twig-ink-primary);
+}
+
+.twig-crumbs a:active {
+    color: var(--twig-accent-500);
+}
+
+.twig-crumbs [aria-current="page"] {
+    color: var(--twig-ink-secondary);
+}
+
+.twig-crumb-sep {
+    margin-inline: var(--twig-space-2);
+    color: var(--twig-rule-strong);
+}
+
+/* The trail belongs to the head it opens, so it carries no gap of its own;
+   the 44px touch rows already hold the lines apart. */
+.twig-crumbs--page {
+    margin-block-end: 0;
+    font-family: var(--twig-sans);
+}
+
+.twig-crumbs--page > * {
+    display: inline-flex;
+    align-items: center;
+    min-block-size: var(--twig-control-h);
+}
+
+/* A page named after a git identifier is headed here rather than by a title
+   block: the final segment is the h1, set like the same name in a list row. */
+.twig-crumbs .twig-crumb-current {
+    margin: 0;
+    color: var(--twig-ink-primary);
+    font-family: var(--twig-mono);
+    font-size: var(--twig-t-data-lg);
+    font-weight: 500;
+    letter-spacing: 0.005em;
+    overflow-wrap: anywhere;
+}
+
+.twig-crumbs--path {
+    padding-block-start: var(--twig-space-3);
+    padding-block-end: 0;
+}
+
+/* ---- 13. Notice ---------------------------------------------------------- */
+
+.twig-notice {
+    display: flex;
+    flex-direction: column;
+    gap: var(--twig-space-2);
+    margin-block-start: var(--twig-space-4);
+    padding-block: var(--twig-space-4);
+    padding-inline: var(--twig-space-5);
+    background-color: var(--twig-surface-2);
+    border-inline-start: 2px solid var(--twig-accent-500);
+}
+
+.twig-notice-body {
+    margin: 0;
+    color: var(--twig-ink-primary);
+    font-size: var(--twig-t-body-sm);
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+}
+
+.twig-notice-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--twig-space-4);
+    margin-block-start: var(--twig-space-2);
+}
+
+.twig-notice > .twig-code {
+    margin-block-start: var(--twig-space-2);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.twig-notice--danger {
+    border-inline-start-color: var(--twig-signal-danger);
+}
+
+.twig-notice--danger > .twig-eyebrow {
+    color: var(--twig-signal-danger);
+}
+
+.twig-notice--success {
+    border-inline-start-color: var(--twig-signal-ok);
+}
+
+.twig-notice--success > .twig-eyebrow {
+    color: var(--twig-signal-ok);
+}
+
+.twig-notice--warning {
+    border-inline-start-color: var(--twig-signal-warn);
+}
+
+.twig-notice--warning > .twig-eyebrow {
+    color: var(--twig-signal-warn);
+}
+
+.twig-notice--info {
+    border-inline-start-color: var(--twig-accent-500);
+}
+
+.twig-notice--info > .twig-eyebrow {
+    color: var(--twig-accent-500);
+}
+
+/* ---- 14. Empty state ----------------------------------------------------- */
+
+.twig-empty {
+    display: flex;
+    flex-direction: column;
+    gap: var(--twig-space-3);
+    padding-block: var(--twig-space-12);
+    padding-inline: var(--twig-space-5);
+    background-color: var(--twig-surface-1);
+}
+
+.twig-empty-body {
+    margin: 0;
+    color: var(--twig-ink-secondary);
+    font-size: var(--twig-t-body-sm);
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+}
+
+.twig-empty > .twig-code,
+.twig-empty > .twig-empty-actions {
+    margin-block-start: var(--twig-space-2);
+}
+
+.twig-empty-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--twig-space-4);
+}
+
+/* ---- 15. Code surface ---------------------------------------------------- */
+
+.twig-code,
+.twig-md pre {
+    display: block;
+    margin: 0;
+    padding: var(--twig-space-5);
+    background-color: var(--twig-surface-3);
+    border: 1px solid var(--twig-rule);
+    color: var(--twig-ink-primary);
+    font-family: var(--twig-mono);
+    font-size: var(--twig-t-data);
+    line-height: 1.6;
+    letter-spacing: 0.01em;
+    white-space: pre;
+    overflow-x: auto;
+    min-inline-size: 0;
+    tab-size: 2;
+}
+
+/* ---- 16. Markdown surface ------------------------------------------------ */
+
+.twig-md {
+    color: var(--twig-ink-primary);
+    font-size: var(--twig-t-body);
+    line-height: 1.7;
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+}
+
+.twig-md--prose {
+    max-inline-size: var(--twig-measure-prose);
+}
+
+.twig-md--slide {
+    max-inline-size: var(--twig-measure-slide);
+}
+
+.twig-md--boxed {
+    padding: var(--twig-space-6);
+    background-color: var(--twig-surface-1);
+    border: 1px solid var(--twig-rule);
+}
+
+.twig-md > * {
+    margin-block: 0;
+}
+
+.twig-md > * + * {
+    margin-block-start: var(--twig-space-6);
+}
+
+.twig-md > * + :is(h1, h2, h3, h4, h5, h6) {
+    margin-block-start: var(--twig-space-10);
+}
+
+.twig-md :is(h1, h2, h3) {
+    color: var(--twig-ink-primary);
+}
+
+.twig-md h1 {
+    font-size: var(--twig-t-h1);
+    font-weight: 500;
+    line-height: 1.08;
+    letter-spacing: -0.03em;
+}
+
+.twig-md h2 {
+    padding-block-end: var(--twig-space-3);
+    border-block-end: 1px solid var(--twig-rule);
+    font-size: var(--twig-t-h2);
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+}
+
+.twig-md h3 {
+    font-size: var(--twig-t-h3);
+    font-weight: 600;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+}
+
+.twig-md :is(h4, h5, h6) {
+    color: var(--twig-ink-tertiary);
+    font-size: var(--twig-t-label);
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.twig-md a {
+    color: var(--twig-accent-500);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.2em;
+    transition: color var(--twig-dur-micro) linear;
+}
+
+.twig-md a:hover {
+    color: var(--twig-accent-300);
+    text-decoration-thickness: 2px;
+}
+
+.twig-md a:active {
+    color: var(--twig-accent-700);
+}
+
+.twig-md strong {
+    color: var(--twig-ink-primary);
+    font-weight: 600;
+}
+
+.twig-md em {
+    color: var(--twig-ink-primary);
+    font-style: italic;
+}
+
+.twig-md :is(ul, ol) {
+    padding-inline-start: var(--twig-space-6);
+}
+
+.twig-md li::marker {
+    color: var(--twig-ink-tertiary);
+}
+
+.twig-md li + li {
+    margin-block-start: var(--twig-space-2);
+}
+
+.twig-md code {
+    padding: 2px 6px;
+    background-color: var(--twig-surface-3);
+    color: var(--twig-ink-primary);
+    font-family: var(--twig-mono);
+    font-size: 0.875em;
+}
+
+.twig-md pre code {
+    padding: 0;
+    background-color: transparent;
+    font-size: inherit;
+}
+
+.twig-md blockquote {
+    margin-inline: 0;
+    padding-inline-start: var(--twig-space-5);
+    border-inline-start: 2px solid var(--twig-rule-strong);
+    color: var(--twig-ink-secondary);
+    font-style: normal;
+}
+
+.twig-md hr {
+    margin-block: var(--twig-space-10);
+    block-size: 1px;
+    border: 0;
+    background-color: var(--twig-rule);
+}
+
+.twig-md table {
+    display: block;
+    border-collapse: collapse;
+    overflow-x: auto;
+    min-inline-size: 0;
+}
+
+.twig-md :is(th, td) {
+    padding: var(--twig-space-3);
+    border: 1px solid var(--twig-rule);
+    text-align: start;
+}
+
+.twig-md th {
+    background-color: var(--twig-surface-3);
+    color: var(--twig-ink-tertiary);
+    font-size: var(--twig-t-eyebrow);
+    font-weight: 500;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+}
+
+.twig-md td {
+    color: var(--twig-ink-primary);
+    font-size: var(--twig-t-body-sm);
+}
+
+.twig-md tr {
+    background-color: transparent;
+}
+
+.twig-md img {
+    max-inline-size: 100%;
+    block-size: auto;
+}
+
+/* ---- 17. Commit row ------------------------------------------------------ */
+
+.twig-commits {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-block-start: 1px solid var(--twig-rule);
+}
+
+.twig-commit {
+    display: flex;
+    flex-direction: column;
+    gap: var(--twig-space-2);
+    padding-block: var(--twig-space-4);
+    border-block-end: 1px solid var(--twig-rule);
+}
+
+.twig-commit-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--twig-space-4);
+}
+
+.twig-commit-hash,
+.twig-commit-author,
+.twig-commit-date {
+    font-family: var(--twig-mono);
+    font-size: var(--twig-t-data);
+    line-height: 1.6;
+    letter-spacing: 0.01em;
+    font-variant-numeric: tabular-nums;
+}
+
+.twig-commit-hash {
+    padding: 0;
+    background-color: transparent;
+    color: var(--twig-ink-primary);
+}
+
+.twig-commit-author,
+.twig-commit-date {
+    color: var(--twig-ink-tertiary);
+}
+
+.twig-commit-msg {
+    margin: 0;
+    color: var(--twig-ink-primary);
+    font-size: var(--twig-t-body-lg);
+    font-weight: 500;
+    line-height: 1.65;
+    letter-spacing: -0.01em;
+    overflow-wrap: anywhere;
+}
+
+/* ---- 18. Presentation and paper ------------------------------------------ */
+
+.twig-present,
+.twig-paper {
+    display: flex;
+    flex-direction: column;
+    gap: var(--twig-space-6);
+    min-block-size: 50dvh;
+}
+
+.twig-present-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--twig-space-4);
+}
+
+/* The paper toolbar pins below the masthead so the page count, zoom, and font
+   switch stay reachable down a long read. */
+.twig-paper-bar {
+    position: sticky;
+    inset-block-start: var(--twig-masthead-h);
+    z-index: 5;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--twig-space-4);
+    padding-block: var(--twig-space-3);
+    background-color: var(--twig-surface-0);
+    border-block-end: 1px solid var(--twig-rule);
+}
+
+.twig-present-tools,
+.twig-paper-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--twig-space-4);
+}
+
+/* Readers and presentation viewers can enlarge the copy. The scale is a
+   multiplier on the type tokens and lives on the framed body, so the toolbar
+   keeps the base scale. The presentation deck and the paper reader share it. */
+.twig-present-stage,
+.twig-paper-body {
+    --twig-present-scale: 1;
+    --twig-t-h1: calc(clamp(1.5rem, 1rem + 1.75vw, 2.25rem) * var(--twig-present-scale));
+    --twig-t-h2: calc(clamp(1.25rem, 1.05rem + 0.6vw, 1.5rem) * var(--twig-present-scale));
+    --twig-t-h3: calc(1.0625rem * var(--twig-present-scale));
+    --twig-t-body-lg: calc(1.125rem * var(--twig-present-scale));
+    --twig-t-body: calc(1rem * var(--twig-present-scale));
+    --twig-t-body-sm: calc(0.875rem * var(--twig-present-scale));
+    --twig-t-data-lg: calc(0.9375rem * var(--twig-present-scale));
+    --twig-t-data: calc(0.8125rem * var(--twig-present-scale));
+    --twig-t-label: calc(0.75rem * var(--twig-present-scale));
+    --twig-t-eyebrow: calc(0.6875rem * var(--twig-present-scale));
+}
+
+:is(.twig-present, .twig-paper)[data-twig-text-size="110"] :is(.twig-present-stage, .twig-paper-body) {
+    --twig-present-scale: 1.1;
+}
+
+:is(.twig-present, .twig-paper)[data-twig-text-size="120"] :is(.twig-present-stage, .twig-paper-body) {
+    --twig-present-scale: 1.2;
+}
+
+:is(.twig-present, .twig-paper)[data-twig-text-size="130"] :is(.twig-present-stage, .twig-paper-body) {
+    --twig-present-scale: 1.3;
+}
+
+:is(.twig-present, .twig-paper)[data-twig-text-size="140"] :is(.twig-present-stage, .twig-paper-body) {
+    --twig-present-scale: 1.4;
+}
+
+:is(.twig-present, .twig-paper)[data-twig-text-size="150"] :is(.twig-present-stage, .twig-paper-body) {
+    --twig-present-scale: 1.5;
+}
+
+:is(.twig-present, .twig-paper)[data-twig-text-size="160"] :is(.twig-present-stage, .twig-paper-body) {
+    --twig-present-scale: 1.6;
+}
+
+:is(.twig-present, .twig-paper)[data-twig-text-size="170"] :is(.twig-present-stage, .twig-paper-body) {
+    --twig-present-scale: 1.7;
+}
+
+:is(.twig-present, .twig-paper)[data-twig-text-size="180"] :is(.twig-present-stage, .twig-paper-body) {
+    --twig-present-scale: 1.8;
+}
+
+:is(.twig-present, .twig-paper)[data-twig-text-size="190"] :is(.twig-present-stage, .twig-paper-body) {
+    --twig-present-scale: 1.9;
+}
+
+:is(.twig-present, .twig-paper)[data-twig-text-size="200"] :is(.twig-present-stage, .twig-paper-body) {
+    --twig-present-scale: 2;
+}
+
+.twig-present-count,
+.twig-paper-count {
+    color: var(--twig-ink-tertiary);
+    font-family: var(--twig-mono);
+    font-size: var(--twig-t-data);
+    letter-spacing: 0.01em;
+    font-variant-numeric: tabular-nums;
+}
+
+/* The paper reader scrolls as one continuous column of lazily loaded pages. */
+.twig-paper-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--twig-space-16);
+    inline-size: 100%;
+    max-inline-size: var(--twig-measure-prose);
+    margin-inline: auto;
+    padding-block: var(--twig-space-8);
+    min-inline-size: 0;
+}
+
+.twig-paper-page {
+    min-inline-size: 0;
+    scroll-margin-block-start: var(--twig-paper-sticky-offset);
+}
+
+.twig-paper-page + .twig-paper-page {
+    padding-block-start: var(--twig-space-16);
+    border-block-start: 1px solid var(--twig-rule);
+}
+
+.twig-paper-pending {
+    min-block-size: 30dvh;
+}
+
+.twig-paper[data-twig-paper-font="serif"] .twig-paper-body {
+    font-family: var(--twig-serif);
+}
+
+.twig-paper[data-twig-paper-font="mono"] .twig-paper-body {
+    font-family: var(--twig-mono);
+}
+
+/* Deep links to a page or a heading clear the masthead plus the pinned paper
+   toolbar, so the target is never hidden under the chrome. */
+.twig-paper {
+    --twig-paper-sticky-offset: calc(var(--twig-masthead-h) + 4rem);
+}
+
+#paper-body :is(h1, h2, h3, h4, h5, h6) {
+    scroll-margin-block-start: var(--twig-paper-sticky-offset);
+}
+
+.twig-present-stage {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1 1 auto;
+    padding: var(--twig-space-8);
+    overflow-y: auto;
+    min-block-size: 0;
+    min-inline-size: 0;
+}
+
+.twig-present-stage > * {
+    inline-size: 100%;
+    transition: opacity var(--twig-dur-deliberate) var(--twig-ease-emphasis);
+}
+
+.twig-present-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--twig-space-4);
+}
+
+.twig-ticks {
+    display: flex;
+    align-items: center;
+    gap: var(--twig-space-1);
+}
+
+/* content-box keeps the visible mark 2px while the padded hit area reaches 44px */
+.twig-tick {
+    box-sizing: content-box;
+    inline-size: 24px;
+    block-size: 2px;
+    padding-block: 21px;
+    padding-inline: 0;
+    border: 0;
+    background-color: var(--twig-rule-strong);
+    background-clip: content-box;
+    cursor: pointer;
+    transition: background-color var(--twig-dur-micro) linear;
+}
+
+.twig-tick:hover {
+    background-color: var(--twig-ink-secondary);
+}
+
+.twig-tick[aria-current="true"] {
+    background-color: var(--twig-accent-500);
+}
+
+.twig-present:fullscreen {
+    min-block-size: 100dvh;
+    background-color: var(--twig-surface-0);
+}
+
+.twig-present:fullscreen .twig-present-stage {
+    padding: var(--twig-space-16);
+}
+
+.twig-present:fullscreen .twig-md--slide {
+    max-inline-size: var(--twig-measure-slide-fs);
+    font-size: var(--twig-t-body-lg);
+}
+
+/* ---- 19. htmx swap contract ---------------------------------------------- */
+
+.htmx-swapping {
+    opacity: 0;
+    transition: opacity var(--twig-dur-micro) linear;
+}
+
+.htmx-settling {
+    opacity: 0;
+}
+
+:where(.twig-notice, [aria-live], [aria-live] > *) {
+    transition: opacity var(--twig-dur-standard) var(--twig-ease-out);
+}
+
+.htmx-request {
+    cursor: progress;
+}
+
+:is(
+    .twig-btn--ghost,
+    .twig-btn--quiet,
+    .twig-tab,
+    .twig-row,
+    .twig-rail-item
+).htmx-request {
+    color: var(--twig-ink-tertiary);
+}
+
+[aria-busy="true"] {
+    cursor: progress;
+}
+
+/* ---- 20. Utilities ------------------------------------------------------- */
+
+.twig-sr {
+    position: absolute;
+    clip-path: inset(50%);
+    block-size: 1px;
+    inline-size: 1px;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.twig-break {
+    overflow-wrap: anywhere;
+}
+
+.twig-nowrap {
+    white-space: nowrap;
+}
+
+.twig-mono {
+    font-family: var(--twig-mono);
+    font-variant-numeric: tabular-nums;
+}
+
+.twig-ink-secondary {
+    color: var(--twig-ink-secondary);
+}
+
+.twig-ink-tertiary {
+    color: var(--twig-ink-tertiary);
+}
+
+.twig-prose {
+    max-inline-size: var(--twig-measure-prose);
+}
+
+.twig-scroll-x {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    min-inline-size: 0;
+}
+
+/* ---- 21. Reduced motion -------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 1ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 1ms !important;
+        scroll-behavior: auto !important;
+    }
+}

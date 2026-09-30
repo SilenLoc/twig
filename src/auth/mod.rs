@@ -124,13 +124,13 @@ fn base64_decode(input: &str) -> Option<String> {
     String::from_utf8(decoded).ok()
 }
 
-pub struct FigContext {
+pub struct TwigContext {
     db: Database,
     api_key: String,
     initialized: AtomicBool,
 }
 
-impl FigContext {
+impl TwigContext {
     pub fn new(db: Database, api_key: String) -> Self {
         Self {
             db,
@@ -228,7 +228,7 @@ impl FigContext {
 /// `admin`/`admin` user (and an `admin` namespace) if they do not already
 /// exist, then returns a fresh session token for that user so local
 /// inspection never has to go through signup/login manually.
-pub async fn seed_dev_admin(ctx: &FigContext, project_root: &str) -> Result<String, String> {
+pub async fn seed_dev_admin(ctx: &TwigContext, project_root: &str) -> Result<String, String> {
     let db = ctx.db();
 
     let user = if let Some(user) = db.get_user_by_username("admin").await? {
@@ -257,7 +257,7 @@ pub async fn seed_dev_admin(ctx: &FigContext, project_root: &str) -> Result<Stri
 mod tests {
     use super::*;
 
-    impl FigContext {
+    impl TwigContext {
         // only for testing
         pub fn is_initialized(&self) -> bool {
             self.initialized.load(Ordering::SeqCst)
@@ -349,19 +349,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_fig_context_validate_api_key() {
-        let db = Database::new("/tmp/test_fig_ctx_validate.db");
-        let ctx = FigContext::new(db, "my-api-key".to_string());
+    async fn test_twig_context_validate_api_key() {
+        let db = Database::new("/tmp/test_twig_ctx_validate.db");
+        let ctx = TwigContext::new(db, "my-api-key".to_string());
         assert!(ctx.validate_api_key("my-api-key"));
         assert!(!ctx.validate_api_key("wrong-key"));
     }
 
     #[tokio::test]
-    async fn test_fig_context_test_pin() {
-        let db_path = format!("/tmp/test_fig_ctx_pin_{}.db", Uuid::new_v4());
+    async fn test_twig_context_test_pin() {
+        let db_path = format!("/tmp/test_twig_ctx_pin_{}.db", Uuid::new_v4());
         let db = Database::new(&db_path);
         db.init_tables().await.expect("init tables");
-        let ctx = FigContext::new(db, "key".to_string());
+        let ctx = TwigContext::new(db, "key".to_string());
         assert_eq!(ctx.get_test_pin().await, None);
         assert!(!ctx.validate_test_pin("123456").await);
 
@@ -379,9 +379,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_fig_context_initialized_flag() {
-        let db = Database::new("/tmp/test_fig_ctx_flag.db");
-        let ctx = FigContext::new(db, "key".to_string());
+    async fn test_twig_context_initialized_flag() {
+        let db = Database::new("/tmp/test_twig_ctx_flag.db");
+        let ctx = TwigContext::new(db, "key".to_string());
         assert!(!ctx.is_initialized());
         ctx.set_initialized();
         assert!(ctx.is_initialized());
@@ -389,11 +389,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_seed_dev_admin_creates_user_namespace_and_session() {
-        let db_path = format!("/tmp/test_fig_seed_dev_admin_{}.db", Uuid::new_v4());
-        let project_root = format!("/tmp/test_fig_seed_dev_admin_root_{}", Uuid::new_v4());
+        let db_path = format!("/tmp/test_twig_seed_dev_admin_{}.db", Uuid::new_v4());
+        let project_root = format!("/tmp/test_twig_seed_dev_admin_root_{}", Uuid::new_v4());
         let db = Database::new(&db_path);
         db.init_tables().await.expect("init tables");
-        let ctx = FigContext::new(db.clone(), "key".to_string());
+        let ctx = TwigContext::new(db.clone(), "key".to_string());
 
         let token = seed_dev_admin(&ctx, &project_root)
             .await
@@ -425,11 +425,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_seed_dev_admin_is_idempotent() {
-        let db_path = format!("/tmp/test_fig_seed_dev_admin_idem_{}.db", Uuid::new_v4());
-        let project_root = format!("/tmp/test_fig_seed_dev_admin_idem_root_{}", Uuid::new_v4());
+        let db_path = format!("/tmp/test_twig_seed_dev_admin_idem_{}.db", Uuid::new_v4());
+        let project_root = format!("/tmp/test_twig_seed_dev_admin_idem_root_{}", Uuid::new_v4());
         let db = Database::new(&db_path);
         db.init_tables().await.expect("init tables");
-        let ctx = FigContext::new(db.clone(), "key".to_string());
+        let ctx = TwigContext::new(db.clone(), "key".to_string());
 
         let token1 = seed_dev_admin(&ctx, &project_root).await.expect("seed 1");
         let token2 = seed_dev_admin(&ctx, &project_root).await.expect("seed 2");

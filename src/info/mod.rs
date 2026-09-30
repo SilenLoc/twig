@@ -39,7 +39,7 @@ pub const ABOUT_PAGE: Page = Page {
     title: "About",
     order: 0,
     section: None,
-    content: r"Fig is a self-hosted Git server and web interface for browsing and
+    content: r"Twig is a self-hosted Git server and web interface for browsing and
 managing repositories. It combines Git smart HTTP, account and namespace
 management, and repository browsing in a single small application.
 

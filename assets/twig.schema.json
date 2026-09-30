@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://fig.silenlocatelli.ch/assets/fig.schema.json",
-  "title": "Fig repository configuration",
-  "description": "Schema for the .fig.toml file at the root of a Fig repository.",
+  "$id": "https://twig.silenlocatelli.ch/assets/twig.schema.json",
+  "title": "Twig repository configuration",
+  "description": "Schema for the .twig.toml file at the root of a Twig repository.",
   "type": "object",
   "additionalProperties": false,
   "properties": {

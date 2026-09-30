@@ -194,6 +194,19 @@ impl Database {
         Ok(result)
     }
 
+    pub async fn rename_namespace(&self, namespace_id: &str, new_name: &str) -> Result<(), String> {
+        let conn = self.conn().await?;
+
+        conn.execute(
+            "UPDATE namespaces SET name = ?1 WHERE id = ?2",
+            turso::params![new_name, namespace_id],
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+
+        Ok(())
+    }
+
     pub async fn delete_namespace(&self, namespace_id: &str) -> Result<(), String> {
         let conn = self.conn().await?;
 
@@ -241,7 +254,7 @@ mod tests {
     use crate::auth::{Namespace, User};
 
     async fn setup_db_with_user() -> (Database, String, String) {
-        let db_path = format!("/tmp/test_fig_namespaces_{}.db", uuid::Uuid::new_v4());
+        let db_path = format!("/tmp/test_twig_namespaces_{}.db", uuid::Uuid::new_v4());
         let db = Database::new(&db_path);
         db.init_tables().await.expect("init tables");
 
@@ -367,6 +380,35 @@ mod tests {
             .await
             .expect("search namespaces");
         assert!(no_result.is_empty());
+
+        // Cleanup
+        let _ = std::fs::remove_file(&db_path);
+    }
+
+    #[tokio::test]
+    async fn test_rename_namespace() {
+        let (db, db_path, user_id) = setup_db_with_user().await;
+        let namespace = test_namespace(&user_id);
+
+        db.create_namespace(&namespace)
+            .await
+            .expect("create namespace");
+        db.rename_namespace(&namespace.id, "renamed")
+            .await
+            .expect("rename namespace");
+
+        assert!(
+            db.get_namespace_by_name(&namespace.name)
+                .await
+                .expect("get old name")
+                .is_none()
+        );
+        let renamed = db
+            .get_namespace_by_name("renamed")
+            .await
+            .expect("get new name")
+            .expect("renamed namespace exists");
+        assert_eq!(renamed.id, namespace.id);
 
         // Cleanup
         let _ = std::fs::remove_file(&db_path);

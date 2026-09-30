@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-#MISE description="Cut a release: bump the patch version in Cargo.toml, then build & push silenloc/fig:<v>"
+#MISE description="Cut a release: bump the patch version in Cargo.toml, then build & push silenloc/twig:<v>"
 # Always run, even if nothing changed: no `sources`/`outputs` markers, which
 # would otherwise let mise cache-skip the task when Cargo.toml is older than
 # the last produced icon index. Releasing must always bump + build + push.
@@ -43,12 +43,12 @@ awk -v new="$nv" '
   { print }
 ' Cargo.toml > Cargo.toml.tmp && mv Cargo.toml.tmp Cargo.toml
 
-# 4. Build the release image and push it as silenloc/fig:<nv> in one pass.
-docker buildx build --provenance=false --push -t "silenloc/fig:$nv" -t "silenloc/fig:latest" .
+# 4. Build the release image and push it as silenloc/twig:<nv> in one pass.
+docker buildx build --provenance=false --push -t "silenloc/twig:$nv" -t "silenloc/twig:latest" .
 
 # 5. Commit the bumped Cargo.toml and push to the default branch.
 git add .
 git commit -m "chore: release $nv"
 git push
 
-echo "bumped Cargo.toml to $nv; released silenloc/fig:$nv"
+echo "bumped Cargo.toml to $nv; released silenloc/twig:$nv"

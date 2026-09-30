@@ -4,7 +4,7 @@ use actix_web::get;
 use actix_web::web;
 use serde::Deserialize;
 
-use crate::auth::FigContext;
+use crate::auth::TwigContext;
 use crate::config;
 use crate::view::session_auth::get_username_from_request;
 
@@ -20,56 +20,56 @@ fn render_index(
     namespaces: &[(crate::auth::Namespace, String)],
 ) -> maud::Markup {
     maud::html! {
-        section class="fig-pagehead" {
+        section class="twig-pagehead" {
             @if username.is_some() {
-                div class="fig-cluster" {
-                    a class="fig-btn fig-btn--primary" href="/auth/namespace" { "Create namespace" }
+                div class="twig-cluster" {
+                    a class="twig-btn twig-btn--primary" href="/auth/namespace" { "Create namespace" }
                 }
             }
         }
 
 
-        div class="fig-stack" {
-            form class="fig-search" role="search" method="GET" action="/" {
-                label class="fig-sr" for="namespace-search" { "Search namespaces" }
+        div class="twig-stack" {
+            form class="twig-search" role="search" method="GET" action="/" {
+                label class="twig-sr" for="namespace-search" { "Search namespaces" }
                 input
-                    class="fig-input fig-input--mono"
+                    class="twig-input twig-input--mono"
                     id="namespace-search"
                     type="search"
                     name="q"
                     value=(search_query)
                     placeholder="Search namespaces...";
-                button type="submit" class="fig-btn fig-btn--ghost" { "Search" }
+                button type="submit" class="twig-btn twig-btn--ghost" { "Search" }
                 @if !search_query.is_empty() {
-                    a class="fig-btn fig-btn--quiet" href="/" { "Clear" }
+                    a class="twig-btn twig-btn--quiet" href="/" { "Clear" }
                 }
             }
 
-            section class="fig-panel fig-panel--flush" {
-                div class="fig-panel-body" aria-live="polite" {
+            section class="twig-panel twig-panel--flush" {
+                div class="twig-panel-body" aria-live="polite" {
                     @if namespaces.is_empty() {
                         @if search_query.is_empty() {
-                            div class="fig-empty fig-empty--void" {
-                                p class="fig-eyebrow" { "NO NAMESPACES" }
-                                p class="fig-empty-body" { "No namespaces yet. Create one to get started!" }
+                            div class="twig-empty twig-empty--void" {
+                                p class="twig-eyebrow" { "NO NAMESPACES" }
+                                p class="twig-empty-body" { "No namespaces yet. Create one to get started!" }
                             }
                         } @else {
-                            div class="fig-empty fig-empty--filtered" {
-                                p class="fig-eyebrow" { "NO MATCHES" }
-                                p class="fig-empty-body" { "No namespaces found matching your search." }
+                            div class="twig-empty twig-empty--filtered" {
+                                p class="twig-eyebrow" { "NO MATCHES" }
+                                p class="twig-empty-body" { "No namespaces found matching your search." }
                             }
                         }
                     } @else {
-                        div class="fig-colhead" {
+                        div class="twig-colhead" {
                             span { "Namespace" }
                             span { "Owner" }
                         }
-                        nav class="fig-list" aria-label="Namespaces" {
+                        nav class="twig-list" aria-label="Namespaces" {
                             @for (namespace, owner) in namespaces {
-                                a class="fig-row" href=(namespace.name) {
-                                    span class="fig-row-id" { (namespace.name) }
-                                    span class="fig-row-meta" {
-                                        span class="fig-sr" { "Owner: " }
+                                a class="twig-row" href=(namespace.name) {
+                                    span class="twig-row-id" { (namespace.name) }
+                                    span class="twig-row-meta" {
+                                        span class="twig-sr" { "Owner: " }
                                         (owner)
                                     }
                                 }
@@ -86,7 +86,7 @@ fn render_index(
 pub async fn index(
     req: HttpRequest,
     _server: web::Data<config::Server>,
-    auth_state: web::Data<FigContext>,
+    auth_state: web::Data<TwigContext>,
     query: web::Query<SearchQuery>,
 ) -> AwResult<maud::Markup> {
     let search_query = query.q.as_deref().unwrap_or("");
@@ -184,13 +184,13 @@ mod tests {
         let html = render("", Some("silen"), &[]);
         assert!(
             html.contains(
-                "<div class=\"fig-cluster\"><a class=\"fig-btn fig-btn--primary\" \
+                "<div class=\"twig-cluster\"><a class=\"twig-btn twig-btn--primary\" \
                  href=\"/auth/namespace\">Create namespace</a></div>"
             ),
             "one primary action, inside the head, pointing at the unchanged URL: {html}"
         );
         assert_eq!(
-            html.matches("fig-btn--primary").count(),
+            html.matches("twig-btn--primary").count(),
             1,
             "a page head offers at most one main action: {html}"
         );
@@ -204,7 +204,7 @@ mod tests {
             "anonymous visitors are not offered namespace creation: {html}"
         );
         assert!(
-            !html.contains("fig-cluster"),
+            !html.contains("twig-cluster"),
             "an empty action row is not rendered: {html}"
         );
     }
@@ -213,7 +213,7 @@ mod tests {
     fn test_search_cluster_preserves_the_get_form_contract() {
         let html = render("ac me", None, &[]);
         for attribute in [
-            "class=\"fig-search\"",
+            "class=\"twig-search\"",
             "role=\"search\"",
             "method=\"GET\"",
             "action=\"/\"",
@@ -228,16 +228,17 @@ mod tests {
             "the active query is echoed back into the field: {html}"
         );
         assert!(
-            html.contains("<label class=\"fig-sr\" for=\"namespace-search\">")
+            html.contains("<label class=\"twig-sr\" for=\"namespace-search\">")
                 && html.contains("id=\"namespace-search\""),
             "the input needs a real label, not just a placeholder: {html}"
         );
         assert!(
-            html.contains("class=\"fig-input fig-input--mono\""),
+            html.contains("class=\"twig-input twig-input--mono\""),
             "namespace names are identifiers, so the field is mono: {html}"
         );
         assert!(
-            html.contains("class=\"fig-btn fig-btn--ghost\"") && html.contains(">Search</button>"),
+            html.contains("class=\"twig-btn twig-btn--ghost\"")
+                && html.contains(">Search</button>"),
             "search is the secondary action: {html}"
         );
     }
@@ -246,7 +247,7 @@ mod tests {
     fn test_clear_returns_to_the_unfiltered_index_only_while_filtering() {
         let filtered = render("acme", None, &[]);
         assert!(
-            filtered.contains("<a class=\"fig-btn fig-btn--quiet\" href=\"/\">Clear</a>"),
+            filtered.contains("<a class=\"twig-btn twig-btn--quiet\" href=\"/\">Clear</a>"),
             "clearing navigates back to the unfiltered index: {filtered}"
         );
         let unfiltered = render("", None, &[]);
@@ -260,21 +261,21 @@ mod tests {
     fn test_namespace_list_is_a_flush_technical_panel() {
         let html = render("", None, &[namespace("acme", "silen")]);
         assert!(
-            html.contains("<section class=\"fig-panel fig-panel--flush\">"),
+            html.contains("<section class=\"twig-panel twig-panel--flush\">"),
             "rows supply their own padding, so the panel body is flush: {html}"
         );
         assert!(
             html.contains(
-                "<div class=\"fig-colhead\"><span>Namespace</span><span>Owner</span></div>"
+                "<div class=\"twig-colhead\"><span>Namespace</span><span>Owner</span></div>"
             ),
             "the column header names both columns: {html}"
         );
         assert!(
-            html.contains("<nav class=\"fig-list\" aria-label=\"Namespaces\">"),
+            html.contains("<nav class=\"twig-list\" aria-label=\"Namespaces\">"),
             "the list of namespace links is a labelled navigation region: {html}"
         );
         assert!(
-            index_of(&html, "aria-live=\"polite\"") < index_of(&html, "fig-list"),
+            index_of(&html, "aria-live=\"polite\"") < index_of(&html, "twig-list"),
             "the swappable list region announces its changes: {html}"
         );
     }
@@ -287,18 +288,18 @@ mod tests {
             &[namespace("acme", "silen"), namespace("hooli", "gavin")],
         );
         assert_eq!(
-            html.matches("class=\"fig-row\"").count(),
+            html.matches("class=\"twig-row\"").count(),
             2,
             "one row per namespace: {html}"
         );
         assert!(
             html.contains(
-                "<span class=\"fig-row-meta\"><span class=\"fig-sr\">Owner: </span>silen</span>"
+                "<span class=\"twig-row-meta\"><span class=\"twig-sr\">Owner: </span>silen</span>"
             ),
             "the stacked metadata line names the value it carries: {html}"
         );
         assert_eq!(
-            html.matches("<span class=\"fig-sr\">Owner: </span>")
+            html.matches("<span class=\"twig-sr\">Owner: </span>")
                 .count(),
             2,
             "every metadata cell is labelled, not just the first: {html}"
@@ -316,7 +317,7 @@ mod tests {
         let html = render("", None, &[namespace("acme", "silen")]);
         assert!(
             html.contains(
-                "<a class=\"fig-row\" href=\"acme\"><span class=\"fig-row-id\">acme</span>"
+                "<a class=\"twig-row\" href=\"acme\"><span class=\"twig-row-id\">acme</span>"
             ),
             "the row is a real link to the namespace, identifier rendered verbatim: {html}"
         );
@@ -326,11 +327,11 @@ mod tests {
     fn test_empty_states_name_their_condition_and_keep_their_copy() {
         let void = render("", None, &[]);
         assert!(
-            void.contains("<div class=\"fig-empty fig-empty--void\">"),
+            void.contains("<div class=\"twig-empty twig-empty--void\">"),
             "an empty list renders an empty state, not zero rows: {void}"
         );
         assert!(
-            void.contains("<p class=\"fig-eyebrow\">NO NAMESPACES</p>"),
+            void.contains("<p class=\"twig-eyebrow\">NO NAMESPACES</p>"),
             "the eyebrow states the condition in words: {void}"
         );
         assert!(
@@ -338,18 +339,18 @@ mod tests {
             "existing copy is preserved verbatim: {void}"
         );
         assert!(
-            index_of(&void, "aria-live=\"polite\"") < index_of(&void, "fig-empty"),
+            index_of(&void, "aria-live=\"polite\"") < index_of(&void, "twig-empty"),
             "the empty state sits inside the live region: {void}"
         );
         assert!(
-            !void.contains("fig-colhead"),
+            !void.contains("twig-colhead"),
             "column headers describe columns that an empty state does not have: {void}"
         );
 
         let filtered = render("zzz", None, &[]);
         assert!(
-            filtered.contains("<div class=\"fig-empty fig-empty--filtered\">")
-                && filtered.contains("<p class=\"fig-eyebrow\">NO MATCHES</p>"),
+            filtered.contains("<div class=\"twig-empty twig-empty--filtered\">")
+                && filtered.contains("<p class=\"twig-eyebrow\">NO MATCHES</p>"),
             "a filtered miss is a different condition than an empty server: {filtered}"
         );
         assert!(
@@ -372,13 +373,13 @@ mod tests {
             let html = render(query, *username, namespaces);
             assert!(
                 !html.contains("style=\""),
-                "every visual decision lives in fig.css: {html}"
+                "every visual decision lives in twig.css: {html}"
             );
             let classes = classes_in(&html);
             assert!(!classes.is_empty(), "markup should carry classes: {html}");
             for class in classes {
                 assert!(
-                    class.starts_with("fig-"),
+                    class.starts_with("twig-"),
                     "non design-system class {class:?}: {html}"
                 );
             }
