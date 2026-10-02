@@ -167,11 +167,10 @@ impl RepoHandle {
     }
 
     pub fn load_config_with_raw(&self) -> TwigConfigWithRaw {
-        if let Ok(Some(content)) = self.read_file(".twig.toml") {
-            return TwigConfigWithRaw::from_source(&content, ".twig.toml");
-        }
-        if let Ok(Some(content)) = self.read_file(".twig") {
-            return TwigConfigWithRaw::from_source(&content, ".twig");
+        for filename in CONFIG_FILENAMES {
+            if let Ok(Some(content)) = self.read_file(filename) {
+                return TwigConfigWithRaw::from_source(&content, filename);
+            }
         }
         TwigConfigWithRaw::default()
     }
@@ -266,6 +265,11 @@ impl RepoHandle {
     }
 }
 
+/// Config filenames, tried in order. `.twig.toml` is the current name and
+/// `.twig` the historic short form; `.fig.toml` and `fig.toml` are read for
+/// repositories created before the rename that never updated their config file.
+const CONFIG_FILENAMES: [&str; 4] = [".twig.toml", ".twig", ".fig.toml", "fig.toml"];
+
 /// Presentation configuration from `.twig.toml`
 #[derive(Debug, Deserialize, Default, Clone)]
 pub struct PresentConfig {
@@ -353,7 +357,7 @@ impl TwigConfigWithRaw {
 
 impl TwigConfig {
     /// Load config from `.twig.toml` file in the repository
-    /// Falls back to `.twig` for backwards compatibility
+    /// Falls back to `.twig`, `.fig.toml` and `fig.toml` for backwards compatibility
     /// Opens and closes the repo each time — prefer `RepoHandle::load_config_with_raw` when possible
     pub fn load(root: &str, namespace: &str, repo: &str) -> Self {
         let Ok(handle) = RepoHandle::open(root, namespace, repo) else {
@@ -653,7 +657,8 @@ pub fn search_repos_with_info(root: &str, namespace: &str, query: &str) -> Vec<R
     repos
 }
 
-/// Check if a repository is configured as private in its `.twig.toml` or `.twig`.
+/// Check if a repository is configured as private in its `.twig.toml`, `.twig`,
+/// `.fig.toml` or `fig.toml`.
 pub fn is_repo_private(root: &str, namespace: &str, repo: &str) -> bool {
     let clean_repo = repo.strip_suffix(".git").unwrap_or(repo);
     if let Ok(handle) = RepoHandle::open(root, namespace, clean_repo)
@@ -707,6 +712,58 @@ mod tests {
             .output()
             .expect("Failed to init bare repo");
         assert!(output.status.success(), "{output:?}");
+    }
+
+    /// Commits the given `(filename, content)` entries as blobs into `repo_path`'s
+    /// `main` branch, using git plumbing so no working tree is required.
+    fn commit_files(repo_path: &Path, files: &[(&str, &str)]) {
+        use std::io::Write;
+        use std::process::Stdio;
+
+        let git_pipe = |args: &[&str], input: &str| -> String {
+            let mut child = Command::new("git")
+                .args(args)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .current_dir(repo_path)
+                .spawn()
+                .unwrap();
+            child
+                .stdin
+                .as_mut()
+                .unwrap()
+                .write_all(input.as_bytes())
+                .unwrap();
+            let out = child.wait_with_output().unwrap();
+            assert!(out.status.success(), "{args:?}: {out:?}");
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+
+        let mut entries = String::new();
+        for (name, content) in files {
+            let blob = git_pipe(&["hash-object", "-w", "--stdin"], content);
+            entries.push_str(&format!("100644 blob {blob}\t{name}\n"));
+        }
+        let root_hash = git_pipe(&["mktree"], &entries);
+
+        let commit = Command::new("git")
+            .args(["commit-tree", &root_hash, "-m", "config"])
+            .env("GIT_AUTHOR_NAME", "Test")
+            .env("GIT_AUTHOR_EMAIL", "t@example.com")
+            .env("GIT_COMMITTER_NAME", "Test")
+            .env("GIT_COMMITTER_EMAIL", "t@example.com")
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        assert!(commit.status.success());
+        let commit_hash = String::from_utf8_lossy(&commit.stdout).trim().to_string();
+
+        let update_ref = Command::new("git")
+            .args(["update-ref", "refs/heads/main", &commit_hash])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        assert!(update_ref.status.success());
     }
 
     #[test]
@@ -972,9 +1029,79 @@ ignore_for_view = ["skills/", "AGENTS.md"]
     }
 
     #[test]
-    fn test_twig_config_config_filename_order() {
-        let config = TwigConfig::default();
-        assert_eq!(config.ignore_for_view.len(), 0);
+    fn test_config_fallback_reads_fig_toml() {
+        let temp = create_temp_dir("config_fig_fallback");
+        let _cleanup = TempDir { path: &temp };
+
+        let repo_path = temp.join("ns").join("old-repo");
+        init_bare_repo(&repo_path, "main");
+        commit_files(&repo_path, &[("fig.toml", "private = true\n")]);
+
+        let handle = RepoHandle::open(temp.to_str().unwrap(), "ns", "old-repo").unwrap();
+        let loaded = handle.load_config_with_raw();
+        assert_eq!(loaded.filename.as_deref(), Some("fig.toml"));
+        assert!(loaded.error.is_none());
+        assert!(loaded.config.private);
+    }
+
+    #[test]
+    fn test_config_fallback_reads_dot_fig_toml() {
+        let temp = create_temp_dir("config_dot_fig_fallback");
+        let _cleanup = TempDir { path: &temp };
+
+        let repo_path = temp.join("ns").join("old-repo");
+        init_bare_repo(&repo_path, "main");
+        commit_files(&repo_path, &[(".fig.toml", "private = true\n")]);
+
+        let handle = RepoHandle::open(temp.to_str().unwrap(), "ns", "old-repo").unwrap();
+        let loaded = handle.load_config_with_raw();
+        assert_eq!(loaded.filename.as_deref(), Some(".fig.toml"));
+        assert!(loaded.config.private);
+    }
+
+    #[test]
+    fn test_config_prefers_current_name_over_fig() {
+        let temp = create_temp_dir("config_prefers_current");
+        let _cleanup = TempDir { path: &temp };
+
+        let repo_path = temp.join("ns").join("both");
+        init_bare_repo(&repo_path, "main");
+        commit_files(
+            &repo_path,
+            &[
+                (".twig.toml", "deleteable = true\n"),
+                (".fig.toml", "private = true\n"),
+                ("fig.toml", "private = true\n"),
+            ],
+        );
+
+        let handle = RepoHandle::open(temp.to_str().unwrap(), "ns", "both").unwrap();
+        let loaded = handle.load_config_with_raw();
+        assert_eq!(loaded.filename.as_deref(), Some(".twig.toml"));
+        assert!(loaded.config.deleteable);
+        assert!(!loaded.config.private, "the .twig.toml file must win");
+    }
+
+    #[test]
+    fn test_config_prefers_twig_short_name_over_fig() {
+        let temp = create_temp_dir("config_prefers_short");
+        let _cleanup = TempDir { path: &temp };
+
+        let repo_path = temp.join("ns").join("short");
+        init_bare_repo(&repo_path, "main");
+        commit_files(
+            &repo_path,
+            &[
+                (".twig", "deleteable = true\n"),
+                (".fig.toml", "private = true\n"),
+            ],
+        );
+
+        let handle = RepoHandle::open(temp.to_str().unwrap(), "ns", "short").unwrap();
+        let loaded = handle.load_config_with_raw();
+        assert_eq!(loaded.filename.as_deref(), Some(".twig"));
+        assert!(loaded.config.deleteable);
+        assert!(!loaded.config.private, "the .twig file must win");
     }
 
     #[test]
