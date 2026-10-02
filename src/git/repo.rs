@@ -186,11 +186,11 @@ pub fn bare_init(
 # Whether the repository is private (read operations require authentication).
 #private = false
 
-[present]
+#[present]
 # Markdown files to include in the presentation view.
 #files = []
 
-[paper]
+#[paper]
 # Directory whose Markdown pages form the long-form Paper view.
 #dir = "paper"
 "#;

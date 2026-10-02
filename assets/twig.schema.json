@@ -32,12 +32,12 @@
       "type": "object",
       "description": "Presentation configuration. Any additional string key becomes a template variable.",
       "additionalProperties": { "type": "string" },
+      "required": ["files"],
       "properties": {
         "files": {
           "type": "array",
           "description": "Markdown files to include in the presentation view.",
-          "items": { "type": "string" },
-          "default": []
+          "items": { "type": "string" }
         }
       }
     },

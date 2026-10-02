@@ -1738,16 +1738,26 @@ body.twig-shell {
     background-color: var(--twig-accent-500);
 }
 
-.twig-present:fullscreen {
+/* Fullscreen is a CSS overlay toggled by the `data-twig-fullscreen` state, not
+   the Fullscreen API: iOS Safari never fires `requestFullscreen` for a section,
+   but a fixed inset overlay works on every touch device. The masthead (10) and
+   skip link (20) sit beneath it, so the deck covers the whole viewport. */
+.twig-present[data-twig-fullscreen="true"] {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
     min-block-size: 100dvh;
+    padding: var(--twig-space-4);
     background-color: var(--twig-surface-0);
+    overflow: auto;
+    overscroll-behavior: contain;
 }
 
-.twig-present:fullscreen .twig-present-stage {
+.twig-present[data-twig-fullscreen="true"] .twig-present-stage {
     padding: var(--twig-space-16);
 }
 
-.twig-present:fullscreen .twig-md--slide {
+.twig-present[data-twig-fullscreen="true"] .twig-md--slide {
     max-inline-size: var(--twig-measure-slide-fs);
     font-size: var(--twig-t-body-lg);
 }

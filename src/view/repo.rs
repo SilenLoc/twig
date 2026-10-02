@@ -19,36 +19,6 @@ use crate::{
 
 use super::session_auth::get_username_from_request;
 
-/// Presentation keyboard and fullscreen wiring, scoped to `#present-container`.
-/// DESIGN.md 5.17 forbids a global key handler: ArrowLeft/ArrowRight are only
-/// claimed while focus is inside the container or the container is fullscreen,
-/// and `preventDefault` runs only when a slide actually changes.
-const PRESENT_SCRIPT: &str = r"(function(){
-var c=document.getElementById('present-container');
-if(!c||c.dataset.twigPresent)return;
-c.dataset.twigPresent='1';
-var isFull=function(){return document.fullscreenElement===c;};
-var sync=function(){
-var f=c.querySelector('#fullscreen-toggle');
-if(f)f.textContent=isFull()?'Exit fullscreen':'Fullscreen';
-};
-c.addEventListener('keydown',function(e){
-if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;
-if(!isFull()&&!c.contains(document.activeElement))return;
-var b=c.querySelector(e.key==='ArrowLeft'?'#prev-slide':'#next-slide');
-if(!b||b.disabled)return;
-e.preventDefault();
-b.click();
-});
-c.addEventListener('click',function(e){
-if(!e.target.closest('#fullscreen-toggle'))return;
-if(isFull()){document.exitFullscreen();}else{c.requestFullscreen();}
-});
-c.addEventListener('fullscreenchange',sync);
-c.addEventListener('htmx:after:swap',function(){c.focus({preventScroll:true});sync();});
-sync();
-})();";
-
 /// Reading text sizes, in percent, from the default through to double size.
 /// The A−/A+ buttons step through them one entry at a time; the active size
 /// lives in `data-twig-text-size` on the owning container, which the stylesheet
@@ -1501,7 +1471,11 @@ fn slide_counter(current_index: usize, slide_count: usize) -> String {
     )
 }
 
-fn render_slide_nav_button(id: &str, label: &str, target: Option<&str>) -> Markup {
+/// A Previous/Next slide control. The button swaps `#present-container` via
+/// htmx on click, and the matching arrow key drives the same request while
+/// focus stays inside the container — a keyboard shortcut without a global
+/// handler, since `keyup` only reaches the container from its own subtree.
+fn render_slide_nav_button(id: &str, label: &str, target: Option<&str>, key: &str) -> Markup {
     maud::html! {
         @if let Some(href) = target {
             button
@@ -1511,6 +1485,7 @@ fn render_slide_nav_button(id: &str, label: &str, target: Option<&str>) -> Marku
                 hx-get=(href)
                 hx-target="#present-container"
                 hx-swap="innerHTML"
+                hx-trigger=(format!("click, keyup[key=='{key}'] from:#present-container"))
             {
                 (label)
             }
@@ -1561,7 +1536,12 @@ fn render_slide_content(
                 {
                     "A+"
                 }
-                button id="fullscreen-toggle" class="twig-btn twig-btn--quiet" type="button" {
+                button id="fullscreen-toggle" class="twig-btn twig-btn--quiet" type="button"
+                    aria-pressed="false"
+                    "hx-on:click"="data.twigFullscreen = !data.twigFullscreen"
+                    "hx-live:text"="data.twigFullscreen ? 'Exit fullscreen' : 'Fullscreen'"
+                    "hx-live:aria-pressed"="data.twigFullscreen"
+                {
                     "Fullscreen"
                 }
                 (super::render_theme_toggle())
@@ -1575,7 +1555,7 @@ fn render_slide_content(
         }
 
         nav class="twig-present-controls" aria-label="Slide navigation" {
-            (render_slide_nav_button("prev-slide", "\u{2190} Previous", prev.as_deref()))
+            (render_slide_nav_button("prev-slide", "\u{2190} Previous", prev.as_deref(), "ArrowLeft"))
             div class="twig-ticks" role="group" aria-label="Go to slide" {
                 @for i in 0..slide_count {
                     button
@@ -1589,7 +1569,7 @@ fn render_slide_content(
                     {}
                 }
             }
-            (render_slide_nav_button("next-slide", "Next \u{2192}", next.as_deref()))
+            (render_slide_nav_button("next-slide", "Next \u{2192}", next.as_deref(), "ArrowRight"))
         }
     }
 }
@@ -1611,10 +1591,12 @@ fn render_present_view(namespace: &str, repo: &str, slides: &[PresentSlide]) -> 
             tabindex="-1"
             aria-roledescription="carousel"
             aria-label="Presentation"
+            data-twig-fullscreen="false"
+            "hx-on:keydown"="if (event.key === 'Escape') data.twigFullscreen = false"
+            "hx-on:htmx:after:swap"="this.focus({ preventScroll: true })"
         {
             (render_slide_content(namespace, repo, 0, slides))
         }
-        script { (maud::PreEscaped(PRESENT_SCRIPT)) }
     }
 }
 
@@ -2557,9 +2539,13 @@ mod tests {
         assert!(
             html.contains(r#"<section id="present-container" class="twig-present" "#)
                 && html.contains(
-                    r#"tabindex="-1" aria-roledescription="carousel" aria-label="Presentation">"#
+                    r#"tabindex="-1" aria-roledescription="carousel" aria-label="Presentation""#
                 ),
             "{html}"
+        );
+        assert!(
+            html.contains(r#"data-twig-fullscreen="false""#),
+            "fullscreen is a CSS overlay state, not the Fullscreen API: {html}"
         );
         assert_eq!(
             count_of(&html, "hx-target=\"#present-container\""),
@@ -2568,25 +2554,30 @@ mod tests {
         );
         assert_eq!(count_of(&html, "hx-swap=\"innerHTML\""), 4, "{html}");
 
+        // Keyboard navigation is declarative htmx scoped to the container, so a
+        // key press only advances the deck while focus is inside it. The first
+        // slide disables Previous, so only the right arrow is wired there; the
+        // left arrow appears once there is a slide to return to.
         assert!(
-            !html.contains("document.onkeydown"),
-            "the global key hijack is gone: {html}"
+            html.contains(r"keyup[key=='ArrowRight'] from:#present-container"),
+            "the right arrow advances the next slide via htmx: {html}"
+        );
+        let middle = render_slide_content("acme", "my-project", 1, &deck).into_string();
+        assert!(
+            middle.contains(r"keyup[key=='ArrowLeft'] from:#present-container"),
+            "the left arrow returns via htmx: {middle}"
         );
         assert!(
             !html.contains("document.addEventListener"),
             "nothing is bound to the document: {html}"
         );
         assert!(
-            html.contains("c.addEventListener('keydown'"),
-            "the key listener is bound to the container: {html}"
+            !html.contains("<script>"),
+            "the presentation carries no inline script: {html}"
         );
         assert!(
-            html.contains("c.contains(document.activeElement)"),
-            "arrow keys act only while the container owns focus: {html}"
-        );
-        assert!(
-            html.contains("document.fullscreenElement===c"),
-            "fullscreen counts as container focus: {html}"
+            !html.contains("requestFullscreen"),
+            "fullscreen no longer depends on the Fullscreen API: {html}"
         );
     }
 
@@ -2635,8 +2626,16 @@ mod tests {
             "one tick is current: {html}"
         );
         assert!(
-            html.contains(r#"<button id="fullscreen-toggle" class="twig-btn twig-btn--quiet" type="button">Fullscreen</button>"#),
-            "fullscreen is a real button with a visible label: {html}"
+            html.contains(
+                r#"<button id="fullscreen-toggle" class="twig-btn twig-btn--quiet" type="button" aria-pressed="false" hx-on:click="data.twigFullscreen = !data.twigFullscreen""#
+            ),
+            "fullscreen is a real toggle button with a visible label: {html}"
+        );
+        assert!(
+            html.contains(
+                r#"hx-live:text="data.twigFullscreen ? 'Exit fullscreen' : 'Fullscreen'""#
+            ),
+            "the fullscreen label reflects the toggle state: {html}"
         );
 
         let last = render_slide_content("acme", "my-project", 2, &deck).into_string();
