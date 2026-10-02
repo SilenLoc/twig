@@ -58,7 +58,7 @@ pub fn render_layout(
                             @match username {
                                 Some(name) => {
                                     span class="twig-nav-user" { (name) }
-                                    a class="twig-btn twig-btn--quiet" href="/_info" { "Information" }
+                                    a class="twig-btn twig-btn--quiet" href="/_info" { "Docs" }
                                     a class="twig-btn twig-btn--quiet" href="/tree" aria-label="Tree" title="Tree" {
                                         svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" {
                                             path d="M5 3v18";
@@ -76,7 +76,7 @@ pub fn render_layout(
                                     }
                                 }
                                 None => {
-                                    a class="twig-btn twig-btn--quiet" href="/_info" { "Information" }
+                                    a class="twig-btn twig-btn--quiet" href="/_info" { "Docs" }
                                     a class="twig-btn twig-btn--quiet" href="/auth/login" { "Login" }
                                     a class="twig-btn twig-btn--quiet" href="/auth/signup" { "Signup" }
                                 }

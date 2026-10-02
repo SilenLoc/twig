@@ -2987,7 +2987,7 @@ dependencies = [
 
 [[package]]
 name = "twig"
-version = "0.1.118"
+version = "0.1.119"
 dependencies = [
  "actix-http",
  "actix-identity",

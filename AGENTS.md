@@ -10,7 +10,7 @@ Twig is a Git server and web UI: Rust, Actix-web, maud templates, Turso/libSQL o
 
 ## Layout
 
-`src/main.rs` wires routes. `src/view/*` holds maud pages (overview `/`, namespace, repo, settings, auth, info `/_info`, Tree/Data, optional Test); `src/auth/*` handles sessions and Argon2 hashing; `src/db/*` is the Turso/libSQL wrapper plus a hand-rolled `MIGRATIONS` array in `migration.rs`; `src/git/*` and `src/git_backend.rs` implement repo operations and smart HTTP; `src/api.rs` serves `GET /api/tree` as MessagePack. `src/info/` compiles the registered Markdown docs via `include_str!` into Information → Docs — when adding a doc file, register it there too.
+`src/main.rs` wires routes. `src/view/*` holds maud pages (overview `/`, namespace, repo, settings, auth, info `/_info`, Tree/Data, optional Test); `src/auth/*` handles sessions and Argon2 hashing; `src/db/*` is the Turso/libSQL wrapper plus a hand-rolled `MIGRATIONS` array in `migration.rs`; `src/git/*` and `src/git_backend.rs` implement repo operations and smart HTTP; `src/api.rs` serves `GET /api/tree` as MessagePack. `src/info/` compiles the registered Markdown docs via `include_str!` into the Docs page at `/_info` — when adding a doc file, register it there too.
 
 ## Rules
 

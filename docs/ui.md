@@ -106,10 +106,12 @@ Enabled only when `TEST_USER` is configured. The configured user can run the
 endpoint checks and create/remove a six-digit session PIN so other users can
 join. Set `TEST_USER=true` to use the username `admin`.
 
-### Information (`/_info`)
+### Docs (`/_info`)
 
-Contains the About and Docs tabs. The Docs tab embeds the Markdown pages from
-the repository's `docs/` directory into the running application.
+Contains the About and Documentation tabs. The Documentation tab embeds the
+Markdown pages from the repository's `docs/` directory into the running
+application. Every page heads with a **Copy page** button that puts that
+page's Markdown source on the clipboard.
 
 ## Authentication pages
 

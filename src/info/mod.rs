@@ -1,4 +1,4 @@
-//! The "Information" section: hardcoded documentation and about content,
+//! The "Docs" section: hardcoded documentation and about content,
 //! shown at `/_info`.
 //!
 //! Everything here is compiled into the binary — plain Rust data plus

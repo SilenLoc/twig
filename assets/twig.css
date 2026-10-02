@@ -413,7 +413,7 @@ body.twig-shell {
 
 /* ---- 5. Type primitives -------------------------------------------------- */
 
-/* Utility page names (Namespaces, Settings, Information, the auth titles) are
+/* Utility page names (Namespaces, Settings, Docs, the auth titles) are
    wayfinding, not identity: they sit back as a quiet caption so the content
    below them owns the fold. Pages named after a git identifier carry that name
    in the trail instead — see .twig-crumb-current. */
@@ -1184,6 +1184,19 @@ body.twig-shell {
     .twig-rail-body {
         flex: 1 1 auto;
     }
+}
+
+/* The per-page copy control: an eyebrow naming what copying yields, with the
+   button pushed to the trailing edge so the prose below starts at the same
+   line every time. */
+.twig-docbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--twig-space-4);
+    padding-block-end: var(--twig-space-4);
+    border-block-end: 1px solid var(--twig-rule);
 }
 
 /* ---- 12. Breadcrumbs ----------------------------------------------------- */

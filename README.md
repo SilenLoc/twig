@@ -62,7 +62,7 @@ configuration reference.
 | [Environment Variables](docs/environment-variables.md) | Runtime configuration |
 
 These Markdown files are also embedded in the application and shown under
-Information → Docs at `/_info`.
+Docs at `/_info`, where each page can be copied as Markdown.
 
 ## Authentication overview
 

@@ -1,7 +1,11 @@
-//! The "Information" page at `/_info`: tabs for bundled documentation and an
+//! The "Docs" page at `/_info`: tabs for bundled documentation and an
 //! about page, both sourced from hardcoded data compiled into the binary
 //! (see `crate::info`). Registered before `view::namespace::handler`, whose
 //! `/{namespace}` pattern would otherwise swallow `/_info`.
+//!
+//! Every page carries a copy button that puts the page's Markdown source on
+//! the clipboard, so a reader can paste a whole doc elsewhere without
+//! scraping the rendered prose.
 //!
 //! There is no editing here — content is fixed at build time. See
 //! `crate::info` to change it.
@@ -13,7 +17,7 @@ use serde::Deserialize;
 use super::render_layout;
 use super::session_auth::get_username_from_request;
 use crate::auth::TwigContext;
-use crate::info::{self, DocPage};
+use crate::info::{self, DocPage, Page};
 
 #[derive(Deserialize)]
 struct Query {
@@ -46,7 +50,7 @@ impl Tab {
 fn render_tabs(active: Tab) -> maud::Markup {
     let tabs = [(Tab::Docs, "Documentation"), (Tab::About, "About")];
     maud::html! {
-        nav class="twig-tabs" aria-label="Information views" {
+        nav class="twig-tabs" aria-label="Docs views" {
             @for (tab, label) in tabs {
                 a
                     class="twig-tab"
@@ -95,6 +99,55 @@ fn render_docs_menu(docs: &[DocPage], active_slug: &str) -> maud::Markup {
     }
 }
 
+/// The toolbar above a page's prose plus the page's Markdown source, held in
+/// a screen-reader-only element the copy script reads. Handing over the source
+/// rather than the rendered HTML keeps the pasted text portable.
+fn render_copy_bar(page: &Page) -> maud::Markup {
+    maud::html! {
+        header class="twig-docbar" {
+            p class="twig-eyebrow" { "MARKDOWN SOURCE" }
+            button
+                class="twig-btn twig-btn--ghost"
+                type="button"
+                data-twig-copy-doc
+                title="Copy this page as Markdown"
+            {
+                "Copy page"
+            }
+        }
+        pre class="twig-sr" data-twig-doc-source { (page.content) }
+    }
+}
+
+/// Copy-to-clipboard wiring for the Docs page, scoped to `#docs-container`:
+/// the button in a page's copy bar copies that page's Markdown source and
+/// falls back to selecting it so a manual copy still works.
+const DOCS_SCRIPT: &str = r"(function(){
+var c=document.getElementById('docs-container');
+if(!c||c.dataset.twigDocsCopy)return;
+c.dataset.twigDocsCopy='1';
+c.addEventListener('click',function(e){
+var b=e.target.closest?e.target.closest('[data-twig-copy-doc]'):null;
+if(!b||!c.contains(b))return;
+var src=c.querySelector('[data-twig-doc-source]');
+if(!src)return;
+var text=src.textContent.replace(/\s+$/,'');
+var done=function(ok){
+b.textContent=ok?'Copied':'Select manually';
+setTimeout(function(){b.textContent='Copy page';},1500);
+if(!ok){
+try{
+var range=document.createRange();range.selectNodeContents(src);
+var sel=window.getSelection();sel.removeAllRanges();sel.addRange(range);
+}catch(_){}
+}
+};
+if(navigator.clipboard&&navigator.clipboard.writeText){
+navigator.clipboard.writeText(text).then(function(){done(true);},function(){done(false);});
+}else{done(false);}
+});
+})();";
+
 /// Renders the Docs tab: the rail of pages (see [`render_docs_menu`]) beside
 /// the selected page's rendered content.
 fn render_docs_tab(requested_slug: Option<&str>) -> maud::Markup {
@@ -110,13 +163,15 @@ fn render_docs_tab(requested_slug: Option<&str>) -> maud::Markup {
     let html = info::render_page_html(&active_page);
 
     maud::html! {
-        div class="twig-rail-shell" {
+        div class="twig-rail-shell" id="docs-container" {
             (render_docs_menu(&docs, active_slug))
             div class="twig-rail-body twig-stack" {
+                (render_copy_bar(&active_page))
                 div class="twig-md twig-md--prose" {
                     (maud::PreEscaped(html))
                 }
             }
+            script { (maud::PreEscaped(DOCS_SCRIPT)) }
         }
     }
 }
@@ -125,11 +180,13 @@ fn render_about_tab() -> maud::Markup {
     let html = info::render_page_html(&info::ABOUT_PAGE);
 
     maud::html! {
-        div class="twig-stack" {
+        div class="twig-stack" id="docs-container" {
             h2 class="twig-title" { (info::ABOUT_PAGE.title) }
+            (render_copy_bar(&info::ABOUT_PAGE))
             div class="twig-md twig-md--prose" {
                 (maud::PreEscaped(html))
             }
+            script { (maud::PreEscaped(DOCS_SCRIPT)) }
         }
     }
 }
@@ -158,7 +215,7 @@ pub async fn index(
     Ok(render_layout(
         &render_page(active, &body),
         username.as_deref(),
-        Some("Information"),
+        Some("Docs"),
     ))
 }
 
@@ -186,6 +243,15 @@ mod tests {
             .unwrap_or_else(|| panic!("expected an anchor for {needle}\n{html}"))
     }
 
+    /// Markdown source as maud escapes it into the page, so a test can assert
+    /// the copy source really carries the page's own words.
+    fn escaped(text: &str) -> String {
+        text.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+    }
+
     #[test]
     fn test_tab_from_query_defaults_to_docs() {
         assert!(matches!(Tab::from_query(None), Tab::Docs));
@@ -202,7 +268,7 @@ mod tests {
     fn test_render_tabs_is_a_labelled_navigation_landmark() {
         let html = render_tabs(Tab::About).into_string();
         assert!(
-            html.starts_with("<nav class=\"twig-tabs\" aria-label=\"Information views\">"),
+            html.starts_with("<nav class=\"twig-tabs\" aria-label=\"Docs views\">"),
             "tabs are a labelled navigation landmark: {html}"
         );
         assert_eq!(html.matches("class=\"twig-tab\"").count(), 2, "{html}");
@@ -294,6 +360,74 @@ mod tests {
             "{html}"
         );
         assert!(html.contains("class=\"twig-md twig-md--prose\""), "{html}");
+    }
+
+    #[test]
+    fn test_every_doc_page_offers_a_copy_button_carrying_its_markdown() {
+        for doc in info::list_doc_pages() {
+            let html = render_docs_tab(Some(doc.slug)).into_string();
+            let buttons = html
+                .split("<button")
+                .filter(|element| element.contains("data-twig-copy-doc"))
+                .count();
+            assert_eq!(
+                buttons, 1,
+                "one copy button per doc page, {} has {buttons}: {html}",
+                doc.slug
+            );
+            assert!(
+                html.contains(&escaped(doc.page.content)),
+                "the copy source must be {}'s own markdown: {html}",
+                doc.slug
+            );
+            assert!(
+                html.contains("data-twig-doc-source"),
+                "the source must be readable by the copy script: {html}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_about_tab_offers_the_same_copy_button() {
+        let html = render_about_tab().into_string();
+        assert!(html.contains("data-twig-copy-doc"), "{html}");
+        assert!(
+            html.contains(&escaped(info::ABOUT_PAGE.content)),
+            "the copy source must be the about page's markdown: {html}"
+        );
+    }
+
+    #[test]
+    fn test_copy_source_is_hidden_but_not_removed() {
+        let html = render_copy_bar(&info::ABOUT_PAGE).into_string();
+        assert!(
+            html.starts_with("<header class=\"twig-docbar\">"),
+            "the copy control heads the page: {html}"
+        );
+        assert!(
+            html.contains("<pre class=\"twig-sr\" data-twig-doc-source>"),
+            "the source is off-screen rather than display:none: {html}"
+        );
+        assert!(html.contains("Copy page"), "{html}");
+    }
+
+    #[test]
+    fn test_copy_script_uses_the_clipboard_with_a_selection_fallback() {
+        assert!(
+            DOCS_SCRIPT.contains("navigator.clipboard.writeText"),
+            "copying goes through the async clipboard API: {DOCS_SCRIPT}"
+        );
+        assert!(
+            DOCS_SCRIPT.contains("document.createRange"),
+            "a rejected copy still selects the source: {DOCS_SCRIPT}"
+        );
+        for body in [render_docs_tab(None), render_about_tab()] {
+            let html = body.into_string();
+            assert!(
+                html.contains("getElementById('docs-container')"),
+                "both tabs are wired by the same script: {html}"
+            );
+        }
     }
 
     #[test]
