@@ -796,6 +796,73 @@ body.twig-shell {
     border-block-end-color: var(--twig-accent-500);
 }
 
+/* A second, smaller tab bar inside a tab's body: the Scripts tab's groups. */
+.twig-tabs--nested {
+    margin-block-end: var(--twig-space-4);
+}
+
+.twig-tabs--nested .twig-tab {
+    min-block-size: calc(var(--twig-control-h) - 8px);
+    padding-inline: var(--twig-space-3);
+    font-size: var(--twig-t-data);
+}
+
+/* ---- 8a. Scripts --------------------------------------------------------- */
+
+/* One configured script: identity on the left, its command and actions on
+   the right. Shares the technical row frame (7) via .twig-row--form. */
+.twig-script {
+    align-items: stretch;
+    gap: var(--twig-space-4);
+}
+
+.twig-script-id {
+    display: flex;
+    flex: 1 1 16rem;
+    flex-direction: column;
+    gap: var(--twig-space-1);
+    min-inline-size: 0;
+}
+
+.twig-script-id .twig-row-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--twig-space-3);
+}
+
+.twig-script-missing {
+    color: var(--twig-signal-warn);
+    font-size: var(--twig-t-data);
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.twig-script-command {
+    display: flex;
+    flex: 1 1 24rem;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    gap: var(--twig-space-2);
+    min-inline-size: 0;
+}
+
+.twig-script-command code {
+    overflow-wrap: anywhere;
+}
+
+.twig-script-command .twig-cluster {
+    flex-wrap: nowrap;
+}
+
+@media (max-width: 48rem) {
+    .twig-script {
+        flex-direction: column;
+    }
+}
+
 /* ---- 9. Buttons ---------------------------------------------------------- */
 
 .twig-btn {

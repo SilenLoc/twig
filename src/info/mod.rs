@@ -71,6 +71,15 @@ const DOCS_PAGES: &[DocPage] = &[
         },
     },
     DocPage {
+        slug: "twig-toml",
+        page: Page {
+            title: "Repository Config",
+            order: 25,
+            section: None,
+            content: include_str!("../../docs/twig-toml.md"),
+        },
+    },
+    DocPage {
         slug: "ui",
         page: Page {
             title: "Web UI",
@@ -135,6 +144,26 @@ mod tests {
         let page = load_doc_page("environment-variables").expect("page should exist");
         assert_eq!(page.section, Some("Self-hosting"));
         assert!(page.content.contains("PROJECT_ROOT"));
+    }
+
+    #[test]
+    fn test_repository_config_page_documents_every_section() {
+        let page = load_doc_page("twig-toml").expect("page should exist");
+        for section in [
+            "ignore_for_view",
+            "tabs",
+            "deleteable",
+            "private",
+            "[present]",
+            "[paper]",
+            "[scripts]",
+            "/raw/",
+        ] {
+            assert!(
+                page.content.contains(section),
+                "config doc missing {section}"
+            );
+        }
     }
 
     #[test]

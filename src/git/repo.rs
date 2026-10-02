@@ -193,6 +193,15 @@ pub fn bare_init(
 #[paper]
 # Directory whose Markdown pages form the long-form Paper view.
 #dir = "paper"
+
+# Runnable scripts, shown in the Scripts tab. Each key inside [scripts]
+# names a group; nesting groups ([scripts.linux.maintenance]) builds the
+# hierarchy. The tab appears only when a group lists a script.
+#[scripts.linux]
+#name = "Linux"
+#scripts = [
+#    { name = "Install", path = "scripts/install.sh" },
+#]
 "#;
     let blob_hash = cmd!(sh, "git hash-object -w --stdin")
         .stdin(blob_content)

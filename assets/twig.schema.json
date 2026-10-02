@@ -51,6 +51,47 @@
           "default": "paper"
         }
       }
+    },
+    "scripts": {
+      "type": "object",
+      "description": "Scripts configuration. Each key names a script group; nesting groups builds the hierarchy shown as sub-tabs in the Scripts tab. The tab only appears when a group lists at least one script.",
+      "additionalProperties": { "$ref": "#/definitions/scriptGroup" }
+    }
+  },
+  "definitions": {
+    "scriptGroup": {
+      "type": "object",
+      "description": "A script group: its display name, its scripts, and groups nested inside it.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Display name of the group; defaults to the group's key."
+        },
+        "scripts": {
+          "type": "array",
+          "description": "The scripts in this group, in configured order.",
+          "items": {
+            "type": "object",
+            "required": ["path"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Display name; defaults to the file's base name."
+              },
+              "path": {
+                "type": "string",
+                "description": "Repository-relative path, served raw so curl can fetch it."
+              },
+              "shell": {
+                "type": "string",
+                "description": "Interpreter the download-and-run command pipes into.",
+                "default": "bash"
+              }
+            }
+          }
+        }
+      },
+      "additionalProperties": { "$ref": "#/definitions/scriptGroup" }
     }
   }
 }

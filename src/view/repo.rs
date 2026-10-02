@@ -11,8 +11,8 @@ use crate::{
     auth::TwigContext,
     config,
     git::bare::{
-        Commit, Depth, PresentConfig, RepoHandle, TreeEntry, TwigConfig, TwigConfigWithRaw,
-        is_safe_repo_path,
+        Commit, Depth, PresentConfig, RepoHandle, ScriptEntry, ScriptGroupNode, TreeEntry,
+        TwigConfig, TwigConfigWithRaw, is_safe_repo_path,
     },
     md,
 };
@@ -155,6 +155,21 @@ struct PaperParams {
     page: String,
 }
 
+#[derive(Deserialize)]
+struct ScriptGroupParams {
+    namespace: String,
+    repo: String,
+    /// Slash-joined group key, e.g. `linux/maintenance`.
+    group: String,
+}
+
+#[derive(Deserialize)]
+struct RawParams {
+    namespace: String,
+    repo: String,
+    path: String,
+}
+
 fn render_for_request(
     req: &HttpRequest,
     content: Markup,
@@ -193,10 +208,19 @@ struct RepoContext {
     username: Option<String>,
     page_title: String,
     paper_pages: Vec<String>,
+    /// Absolute origin (`https://git.example.com`) the `curl` commands in the
+    /// Scripts tab are built from.
+    base_url: String,
+    /// The configured script groups, flattened and pruned. Empty when the
+    /// repository has no `[scripts]` section, which hides the tab.
+    script_groups: Vec<ScriptGroupNode>,
 }
 
 /// The frame every tab shares: the breadcrumb, the tab bar, and the
 /// configuration-error banner. None of it depends on the active tab.
+// One flag per optional view; each is a plain yes/no, so four bools are the
+// honest shape here.
+#[allow(clippy::struct_excessive_bools)]
 struct TabFrame<'a> {
     namespace: &'a str,
     repo: &'a str,
@@ -208,6 +232,7 @@ struct TabFrame<'a> {
     has_config: bool,
     has_present: bool,
     has_paper: bool,
+    has_scripts: bool,
 }
 
 impl RepoContext {
@@ -223,6 +248,7 @@ impl RepoContext {
             has_config: self.twig_result.raw.is_some(),
             has_present: !self.twig_result.config.present.files.is_empty(),
             has_paper: !self.paper_pages.is_empty(),
+            has_scripts: !self.script_groups.is_empty(),
         }
     }
 }
@@ -259,6 +285,7 @@ async fn open_repo(
     }
 
     let paper_pages = load_paper_pages(&handle, &twig_result.config);
+    let script_groups = twig_result.config.script_groups();
 
     Ok(RepoContext {
         handle,
@@ -268,6 +295,8 @@ async fn open_repo(
         username,
         page_title,
         paper_pages,
+        base_url: script_base_url(req),
+        script_groups,
     })
 }
 
@@ -335,15 +364,35 @@ fn paper_body(ctx: &RepoContext) -> Markup {
     render_paper_view(&ctx.namespace, &ctx.repo, dir, &ctx.paper_pages)
 }
 
+/// The Scripts tab: the active group's scripts with their copyable `curl`
+/// commands. `group` selects a group by its slash-joined key; `None` and
+/// unknown keys fall back to the first configured group.
+fn scripts_body(ctx: &RepoContext, group: Option<&str>) -> Markup {
+    let active = ctx
+        .script_groups
+        .iter()
+        .find(|node| Some(node.key.as_str()) == group)
+        .or_else(|| ctx.script_groups.first());
+    match active {
+        Some(node) => render_scripts_view(ctx, node),
+        None => render_empty(
+            "NO SCRIPTS",
+            "No scripts are configured. Add a [scripts.<group>] section with a scripts list to .twig.toml.",
+        ),
+    }
+}
+
 /// Renders a tab by name. Only the requested tab's data is loaded, so a Commits
-/// request never reads markdown, slides, or paper pages.
-fn tab_body(ctx: &RepoContext, tab: &str) -> Result<Markup, git2::Error> {
+/// request never reads markdown, slides, or paper pages. `group` selects a
+/// Scripts sub-group and is ignored by every other tab.
+fn tab_body(ctx: &RepoContext, tab: &str, group: Option<&str>) -> Result<Markup, git2::Error> {
     match tab {
         "content" => Ok(content_body(ctx)),
         "config" => Ok(config_body(ctx)),
         "present" => Ok(present_body(ctx)),
         "paper" => Ok(paper_body(ctx)),
         "license" => Ok(license_body(ctx)),
+        "scripts" => Ok(scripts_body(ctx, group)),
         "commits" => commits_body(ctx),
         // Documentation, and the fallback for an unknown tab name.
         _ => Ok(markdown_body(ctx)),
@@ -351,6 +400,7 @@ fn tab_body(ctx: &RepoContext, tab: &str) -> Result<Markup, git2::Error> {
 }
 
 /// Shared shape of every per-tab handler: open, build the one body, respond.
+/// `group` is the Scripts sub-group key; other tabs pass `None`.
 async fn respond_tab(
     req: HttpRequest,
     server: web::Data<config::Server>,
@@ -358,12 +408,13 @@ async fn respond_tab(
     namespace: &str,
     repo: &str,
     tab: &str,
+    group: Option<&str>,
 ) -> AwResult<Markup> {
     let ctx = match open_repo(&req, &server, &auth_state, namespace, repo).await {
         Ok(ctx) => ctx,
         Err(rendered) => return Ok(rendered),
     };
-    let body = match tab_body(&ctx, tab) {
+    let body = match tab_body(&ctx, tab, group) {
         Ok(body) => body,
         Err(e) => {
             let content = render_git_error(&e);
@@ -379,15 +430,7 @@ async fn respond_tab(
 }
 
 fn tab_nav(frame: &TabFrame<'_>, active: &str) -> Markup {
-    render_tabs(
-        frame.namespace,
-        frame.repo,
-        active,
-        frame.has_config,
-        frame.tabs_config,
-        frame.has_present,
-        frame.has_paper,
-    )
+    render_tabs(frame, active)
 }
 
 /// The full tab page body, without the document layout.
@@ -426,8 +469,8 @@ fn render_tab_response(
 }
 
 /// Every tab a repository can show.
-const TAB_IDS: [&str; 7] = [
-    "markdown", "paper", "content", "commits", "config", "present", "license",
+const TAB_IDS: [&str; 8] = [
+    "markdown", "paper", "content", "commits", "config", "present", "scripts", "license",
 ];
 
 /// The tab the repository home shows: the first configured tab, else Markdown
@@ -463,7 +506,7 @@ pub async fn handler(
     let body = if tab == "markdown" {
         markdown_body_from(&ctx, &files)
     } else {
-        match tab_body(&ctx, tab) {
+        match tab_body(&ctx, tab, None) {
             Ok(body) => body,
             Err(e) => {
                 let content = render_git_error(&e);
@@ -493,6 +536,7 @@ pub async fn markdown_tab_handler(
         &params.namespace,
         &params.repo,
         "markdown",
+        None,
     )
     .await
 }
@@ -511,6 +555,7 @@ pub async fn content_tab_handler(
         &params.namespace,
         &params.repo,
         "content",
+        None,
     )
     .await
 }
@@ -529,6 +574,7 @@ pub async fn commits_tab_handler(
         &params.namespace,
         &params.repo,
         "commits",
+        None,
     )
     .await
 }
@@ -547,6 +593,7 @@ pub async fn config_tab_handler(
         &params.namespace,
         &params.repo,
         "config",
+        None,
     )
     .await
 }
@@ -565,6 +612,7 @@ pub async fn present_tab_handler(
         &params.namespace,
         &params.repo,
         "present",
+        None,
     )
     .await
 }
@@ -583,6 +631,7 @@ pub async fn paper_tab_handler(
         &params.namespace,
         &params.repo,
         "paper",
+        None,
     )
     .await
 }
@@ -601,8 +650,83 @@ pub async fn license_tab_handler(
         &params.namespace,
         &params.repo,
         "license",
+        None,
     )
     .await
+}
+
+#[get("/{namespace}/{repo}/scripts")]
+pub async fn scripts_tab_handler(
+    req: HttpRequest,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<TwigContext>,
+    params: web::Path<Params>,
+) -> AwResult<Markup> {
+    respond_tab(
+        req,
+        server,
+        auth_state,
+        &params.namespace,
+        &params.repo,
+        "scripts",
+        None,
+    )
+    .await
+}
+
+#[get("/{namespace}/{repo}/scripts/{group:.*}")]
+pub async fn scripts_group_handler(
+    req: HttpRequest,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<TwigContext>,
+    params: web::Path<ScriptGroupParams>,
+) -> AwResult<Markup> {
+    respond_tab(
+        req,
+        server,
+        auth_state,
+        &params.namespace,
+        &params.repo,
+        "scripts",
+        Some(params.group.trim_matches('/')),
+    )
+    .await
+}
+
+/// Serves a repository file as raw bytes so the Scripts tab's `curl` command
+/// can fetch it. Paths ignored by `.twig.toml` stay unreachable here, and
+/// private repositories need a session like every other read.
+#[get("/{namespace}/{repo}/raw/{path:.*}")]
+pub async fn raw_handler(
+    req: HttpRequest,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<TwigContext>,
+    params: web::Path<RawParams>,
+) -> HttpResponse {
+    let username = get_username_from_request(&req, &auth_state).await;
+
+    let Ok(handle) = RepoHandle::open(server.project_root(), &params.namespace, &params.repo)
+    else {
+        return HttpResponse::NotFound().finish();
+    };
+
+    let twig_result = handle.load_config_with_raw();
+    if twig_result.config.private && username.is_none() {
+        return HttpResponse::Unauthorized().finish();
+    }
+
+    let path = params.path.trim_matches('/');
+    if !is_safe_repo_path(path) || path.is_empty() || twig_result.config.should_ignore(path) {
+        return HttpResponse::NotFound().finish();
+    }
+
+    match handle.read_blob_bytes(path) {
+        Ok(Some(bytes)) => HttpResponse::Ok()
+            .insert_header((header::CONTENT_TYPE, raw_content_type(path)))
+            .insert_header(("X-Content-Type-Options", "nosniff"))
+            .body(bytes),
+        _ => HttpResponse::NotFound().finish(),
+    }
 }
 
 /// The URL tabs used before each got its own route. A permanent redirect keeps
@@ -1085,17 +1209,13 @@ fn render_repo_crumbs(namespace: &str, repo: &str) -> Markup {
     }
 }
 
-/// Renders a tab navigation bar
-/// If `tabs_config` is not empty, only those tabs are shown
-fn render_tabs(
-    namespace: &str,
-    repo: &str,
-    active_tab: &str,
-    has_config: bool,
-    tabs_config: &[String],
-    has_present: bool,
-    has_paper: bool,
-) -> Markup {
+/// Renders a tab navigation bar. `tabs_config` lists the only tabs to show
+/// when set; every tab additionally requires its content to exist.
+fn render_tabs(frame: &TabFrame<'_>, active_tab: &str) -> Markup {
+    let namespace = frame.namespace;
+    let repo = frame.repo;
+    let tabs_config = frame.tabs_config;
+
     // Build the list of available tabs
     let mut all_tabs: Vec<(&str, &str)> = vec![];
 
@@ -1103,17 +1223,20 @@ fn render_tabs(
     if tabs_config.is_empty() {
         // Show all available tabs
         all_tabs.push(("markdown", "Documentation"));
-        if has_paper {
+        if frame.has_paper {
             all_tabs.push(("paper", "Paper"));
         }
         all_tabs.push(("content", "Content"));
 
         all_tabs.push(("commits", "Commits"));
-        if has_config {
+        if frame.has_config {
             all_tabs.push(("config", "Config"));
         }
-        if has_present {
+        if frame.has_present {
             all_tabs.push(("present", "Present"));
+        }
+        if frame.has_scripts {
+            all_tabs.push(("scripts", "Scripts"));
         }
         all_tabs.push(("license", "License"));
     } else {
@@ -1121,11 +1244,12 @@ fn render_tabs(
         for tab in tabs_config {
             match tab.as_str() {
                 "markdown" => all_tabs.push(("markdown", "Documentation")),
-                "paper" if has_paper => all_tabs.push(("paper", "Paper")),
+                "paper" if frame.has_paper => all_tabs.push(("paper", "Paper")),
                 "content" => all_tabs.push(("content", "Content")),
                 "commits" => all_tabs.push(("commits", "Commits")),
-                "config" if has_config => all_tabs.push(("config", "Config")),
-                "present" if has_present => all_tabs.push(("present", "Present")),
+                "config" if frame.has_config => all_tabs.push(("config", "Config")),
+                "present" if frame.has_present => all_tabs.push(("present", "Present")),
+                "scripts" if frame.has_scripts => all_tabs.push(("scripts", "Scripts")),
                 "license" => all_tabs.push(("license", "License")),
                 _ => {}
             }
@@ -1425,6 +1549,201 @@ fn render_content_file(namespace: &str, repo: &str, path: &str, bytes: &[u8]) ->
                 }
             }
         }
+    }
+}
+
+/// The Scripts tab: each configured group becomes a sub-tab labelled with the
+/// group name, and the active group lists its scripts with a copyable
+/// download-and-run command and its nested groups as links.
+fn render_scripts_view(ctx: &RepoContext, node: &ScriptGroupNode) -> Markup {
+    let is_private = ctx.twig_result.config.private;
+    maud::html! {
+        div class="twig-stack" id="scripts-container" {
+            (render_script_group_tabs(ctx, node))
+            div class="twig-stack twig-stack--tight" {
+                header class="twig-cluster" {
+                    p class="twig-eyebrow" { "SCRIPT GROUP" }
+                    h2 class="twig-section" { (node.label) }
+                }
+                p class="twig-hint" {
+                    "Fetch and run a script in one line: copy its command, or download it from "
+                    code class="twig-mono" { (format!("/{}/{}/raw/…", ctx.namespace, ctx.repo)) }
+                    "."
+                }
+                @if is_private {
+                    p class="twig-hint" {
+                        "This repository is private: add credentials to the command, e.g. "
+                        code class="twig-mono" { "curl -u user:password -fsSL …" }
+                        "."
+                    }
+                }
+
+                @if node.scripts.is_empty() && node.children.is_empty() {
+                    (render_empty("NO SCRIPTS", "This group has no scripts."))
+                } @else {
+                    div class="twig-panel twig-panel--flush" {
+                        div class="twig-list" {
+                            @for entry in &node.scripts {
+                                (render_script_row(ctx, entry))
+                            }
+                            @for child in &node.children {
+                                (render_script_group_row(ctx, child))
+                            }
+                        }
+                    }
+                }
+            }
+            script { (maud::PreEscaped(SCRIPTS_SCRIPT)) }
+        }
+    }
+}
+
+/// One sub-tab per configured group, labelled with the group name. Groups nest
+/// in `.twig.toml`; their flattened keys keep the bar flat and readable.
+fn render_script_group_tabs(ctx: &RepoContext, active: &ScriptGroupNode) -> Markup {
+    maud::html! {
+        nav id="script-group-nav" class="twig-tabs twig-tabs--nested" aria-label="Script groups" {
+            @for group in &ctx.script_groups {
+                @let href = format!("/{}/{}/scripts/{}", ctx.namespace, ctx.repo, group.key);
+                a
+                    class="twig-tab"
+                    href=(href)
+                    aria-current=[(group.key == active.key).then_some("page")]
+                    hx-get=(href)
+                    hx-target="#tab-content"
+                    hx-push-url=(href)
+                {
+                    (group.label)
+                }
+            }
+        }
+    }
+}
+
+/// The one-liner a reader copies: fetch the file over the raw route and pipe
+/// it straight into its interpreter.
+fn script_command(ctx: &RepoContext, entry: &ScriptEntry) -> String {
+    format!(
+        "curl -fsSL '{}/{}/{}/raw/{}' | {}",
+        ctx.base_url, ctx.namespace, ctx.repo, entry.path, entry.shell
+    )
+}
+
+/// One script row: its name and path, the run command, and a copy button.
+/// A configured path missing from HEAD is marked instead of silently skipped.
+fn render_script_row(ctx: &RepoContext, entry: &ScriptEntry) -> Markup {
+    let command = script_command(ctx, entry);
+    let view_href = format!("/{}/{}/content/{}", ctx.namespace, ctx.repo, entry.path);
+    let missing = !ctx.handle.path_exists(&entry.path);
+
+    maud::html! {
+        div class="twig-row twig-row--form twig-script" {
+            div class="twig-script-id" {
+                span class="twig-row-id" { (entry.label()) }
+                span class="twig-row-meta" {
+                    (entry.path)
+                    @if missing {
+                        span class="twig-script-missing" title="Not present in HEAD" { "MISSING" }
+                    }
+                }
+            }
+            div class="twig-script-command" {
+                code class="twig-mono" data-twig-command { (command) }
+                div class="twig-cluster twig-cluster--tight" {
+                    a class="twig-btn twig-btn--quiet" href=(view_href) { "View" }
+                    button class="twig-btn twig-btn--ghost" type="button" data-twig-copy { "Copy" }
+                }
+            }
+        }
+    }
+}
+
+/// A nested group rendered as a row, pointing at its own sub-tab.
+fn render_script_group_row(ctx: &RepoContext, key: &str) -> Markup {
+    let label = ctx
+        .script_groups
+        .iter()
+        .find(|node| node.key == key)
+        .map_or(String::from(key), |node| node.label.clone());
+    let href = format!("/{}/{}/scripts/{key}", ctx.namespace, ctx.repo);
+
+    maud::html! {
+        a
+            class="twig-row"
+            href=(href)
+            hx-get=(href)
+            hx-target="#tab-content"
+            hx-push-url=(href)
+        {
+            span class="twig-row-id" { (label) "/" }
+            span class="twig-row-meta" { "Group" }
+        }
+    }
+}
+
+/// Copy-to-clipboard wiring for the Scripts tab, scoped to
+/// `#scripts-container`: the Copy button next to a command copies it, and
+/// falls back to selecting the command so a manual copy still works.
+const SCRIPTS_SCRIPT: &str = r"(function(){
+var c=document.getElementById('scripts-container');
+if(!c||c.dataset.twigScripts)return;
+c.dataset.twigScripts='1';
+c.addEventListener('click',function(e){
+var b=e.target.closest?e.target.closest('[data-twig-copy]'):null;
+if(!b||!c.contains(b))return;
+var row=b.closest('.twig-script');
+var code=row?row.querySelector('[data-twig-command]'):null;
+if(!code)return;
+var text=code.textContent;
+var done=function(ok){
+var label=ok?'Copied':'Select manually';
+b.textContent=label;
+setTimeout(function(){b.textContent='Copy';},1500);
+if(!ok){
+try{
+var range=document.createRange();range.selectNodeContents(code);
+var sel=window.getSelection();sel.removeAllRanges();sel.addRange(range);
+}catch(_){}
+}
+};
+if(navigator.clipboard&&navigator.clipboard.writeText){
+navigator.clipboard.writeText(text).then(function(){done(true);},function(){done(false);});
+}else{done(false);}
+});
+})();";
+
+/// The absolute origin a `curl` command should use: the request's own host,
+/// with the scheme a reverse proxy reported via `X-Forwarded-Proto` when
+/// present. Local hosts default to `http`, everything else to `https`, so a
+/// development server still hands out runnable commands.
+fn script_base_url(req: &HttpRequest) -> String {
+    let host = req.connection_info().host().to_string();
+    let forwarded = req
+        .headers()
+        .get("x-forwarded-proto")
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| *value == "http" || *value == "https");
+    let scheme = forwarded.unwrap_or_else(|| {
+        let hostname = host.split(':').next().unwrap_or(&host);
+        if hostname == "localhost" || hostname.starts_with("127.") || hostname == "[::1]" {
+            "http"
+        } else {
+            "https"
+        }
+    });
+    format!("{scheme}://{host}")
+}
+
+/// Content type for a raw file: text for the formats worth reading in a
+/// terminal, a neutral download type for everything else.
+fn raw_content_type(path: &str) -> &'static str {
+    let extension = path.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+    match extension.as_str() {
+        "sh" | "bash" | "zsh" | "py" | "rb" | "pl" | "js" | "ts" | "toml" | "yaml" | "yml"
+        | "json" | "md" | "txt" | "conf" | "cfg" | "ini" | "env" | "sql" | "rs" | "go" | "c"
+        | "h" => "text/plain; charset=utf-8",
+        _ => "application/octet-stream",
     }
 }
 
@@ -1957,6 +2276,19 @@ mod tests {
             has_config: false,
             has_present: false,
             has_paper: false,
+            has_scripts: false,
+        }
+    }
+
+    /// A frame whose optional tabs are set per flag, for tab-bar tests.
+    #[allow(clippy::fn_params_excessive_bools)]
+    fn frame_with(config: bool, present: bool, paper: bool, scripts: bool) -> TabFrame<'static> {
+        TabFrame {
+            has_config: config,
+            has_present: present,
+            has_paper: paper,
+            has_scripts: scripts,
+            ..base_frame()
         }
     }
 
@@ -2008,6 +2340,48 @@ mod tests {
                 rest[open + 1..close].to_owned()
             })
             .collect()
+    }
+
+    #[test]
+    fn test_base_url_schemes_follow_the_request() {
+        use actix_web::test as actix_test;
+
+        let local = actix_test::TestRequest::get()
+            .uri("http://localhost:8080/ns/repo")
+            .to_http_request();
+        assert_eq!(
+            script_base_url(&local),
+            "http://localhost:8080",
+            "local hosts stay on http so dev commands run as printed"
+        );
+
+        let proxied = actix_test::TestRequest::get()
+            .uri("https://git.example.com/ns/repo")
+            .insert_header(("X-Forwarded-Proto", "https"))
+            .to_http_request();
+        assert_eq!(script_base_url(&proxied), "https://git.example.com");
+
+        let plain = actix_test::TestRequest::get()
+            .uri("http://git.example.com/ns/repo")
+            .to_http_request();
+        assert_eq!(
+            script_base_url(&plain),
+            "https://git.example.com",
+            "without a proxy header, remote hosts default to https"
+        );
+    }
+
+    #[test]
+    fn test_raw_content_type_is_text_for_scripts_and_neutral_otherwise() {
+        assert_eq!(
+            raw_content_type("scripts/install.sh"),
+            "text/plain; charset=utf-8"
+        );
+        assert_eq!(raw_content_type("README.md"), "text/plain; charset=utf-8");
+        assert_eq!(
+            raw_content_type("assets/logo.bin"),
+            "application/octet-stream"
+        );
     }
 
     #[test]
@@ -2180,8 +2554,7 @@ mod tests {
 
     #[test]
     fn test_tabs_are_an_out_of_band_labelled_nav() {
-        let html =
-            render_tabs("acme", "my-project", "commits", true, &[], true, true).into_string();
+        let html = render_tabs(&frame_with(true, true, true, true), "commits").into_string();
 
         assert!(
             html.contains(
@@ -2199,10 +2572,9 @@ mod tests {
 
     #[test]
     fn test_tabs_preserve_every_htmx_navigation_attribute() {
-        let html =
-            render_tabs("acme", "my-project", "commits", true, &[], true, true).into_string();
+        let html = render_tabs(&frame_with(true, true, true, true), "commits").into_string();
         let tabs = [
-            "markdown", "paper", "content", "commits", "config", "present", "license",
+            "markdown", "paper", "content", "commits", "config", "present", "scripts", "license",
         ];
 
         for tab in tabs {
@@ -2225,8 +2597,7 @@ mod tests {
 
     #[test]
     fn test_tabs_mark_exactly_one_current_tab() {
-        let html =
-            render_tabs("acme", "my-project", "commits", true, &[], true, true).into_string();
+        let html = render_tabs(&frame_with(true, true, true, true), "commits").into_string();
 
         assert_eq!(
             count_of(&html, "aria-current=\"page\""),
@@ -2244,16 +2615,14 @@ mod tests {
 
     #[test]
     fn test_tabs_render_only_available_views_in_order() {
-        let html =
-            render_tabs("acme", "my-project", "markdown", false, &[], false, false).into_string();
+        let html = render_tabs(&frame_with(false, false, false, false), "markdown").into_string();
         assert_eq!(
             tab_labels(&html),
             vec!["Documentation", "Content", "Commits", "License"],
-            "unconfigured repositories hide Config, Present and Paper: {html}"
+            "unconfigured repositories hide Config, Present, Paper and Scripts: {html}"
         );
 
-        let html =
-            render_tabs("acme", "my-project", "paper", false, &[], false, true).into_string();
+        let html = render_tabs(&frame_with(false, false, true, false), "paper").into_string();
         assert_eq!(
             tab_labels(&html),
             vec!["Documentation", "Paper", "Content", "Commits", "License"],
@@ -2269,13 +2638,11 @@ mod tests {
             "commits".to_string(),
         ];
         let html = render_tabs(
-            "acme",
-            "my-project",
+            &TabFrame {
+                tabs_config: &configured,
+                ..frame_with(false, true, true, false)
+            },
             "license",
-            false,
-            &configured,
-            true,
-            true,
         )
         .into_string();
         assert_eq!(
@@ -2285,13 +2652,11 @@ mod tests {
         );
 
         let html = render_tabs(
-            "acme",
-            "my-project",
+            &TabFrame {
+                tabs_config: &configured,
+                ..frame_with(false, true, false, false)
+            },
             "paper",
-            false,
-            &configured,
-            true,
-            false,
         )
         .into_string();
         assert_eq!(

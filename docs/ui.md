@@ -65,11 +65,17 @@ configuration:
 - **Config** — view `.twig.toml` when present.
 - **Present** — navigate configured Markdown slides when `[present].files` is
   set.
+- **Scripts** — the configured script groups when `[scripts]` is set. Each
+  group becomes a sub-tab listing its scripts with a copyable
+  `curl … | bash` command; the files are served from `/{namespace}/{repo}/raw/…`
+  so the command runs as printed.
 - **License** — display the repository license or fallback license content.
 
 The config can choose which tabs to display and which repository files to omit
 from the browser. Repositories with `private = true` require a logged-in user
-for the web UI.
+for the web UI. The full `.twig.toml` reference — ignore patterns, tab
+selection, privacy, presentations, paper, and script groups — lives in the
+Repository Config docs.
 
 When `.twig.toml` cannot be parsed, the repository page shows a compiler-style
 diagnostic with the offending line instead of silently ignoring the file; the

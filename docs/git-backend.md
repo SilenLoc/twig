@@ -60,7 +60,8 @@ appear in the browser, which repository tabs are shown, whether the repository
 can be deleted from Settings, and which Markdown files appear in the
 presentation view. New UI-created repositories include a commented
 configuration template. The schema is available at
-`/assets/twig.schema.json`.
+`/assets/twig.schema.json`, and every option is documented in the
+Repository Config docs.
 
 ## Troubleshooting
 

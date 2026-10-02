@@ -114,9 +114,26 @@ mod tests {
             "private",
             "present",
             "paper",
+            "scripts",
         ] {
             assert!(properties.contains_key(key), "schema missing {key}");
         }
+    }
+
+    #[test]
+    fn test_twig_schema_describes_nested_script_groups() {
+        let schema: serde_json::Value =
+            serde_json::from_str(TWIG_SCHEMA).expect("twig.schema.json must be valid JSON");
+        let group = &schema["definitions"]["scriptGroup"];
+        assert_eq!(group["properties"]["name"]["type"], "string");
+        assert_eq!(
+            group["properties"]["scripts"]["items"]["required"][0], "path",
+            "a script entry must carry its repository path"
+        );
+        assert_eq!(
+            group["additionalProperties"]["$ref"], "#/definitions/scriptGroup",
+            "groups nest recursively, which is what builds the hierarchy"
+        );
     }
 
     #[test]
