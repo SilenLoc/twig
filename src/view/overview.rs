@@ -88,7 +88,7 @@ fn render_index(
                             }
                             nav class="twig-list" aria-label="Repository matches" {
                                 @for (namespace, repo) in repo_hits {
-                                    a class="twig-row twig-row--hit" href=(format!("{namespace}/{repo}")) {
+                                    a class="twig-row" href=(format!("{namespace}/{repo}")) {
                                         span class="twig-row-id" { (repo) }
                                         span class="twig-row-meta" {
                                             span class="twig-sr" { "Namespace: " }
@@ -415,20 +415,17 @@ mod tests {
         );
         assert!(
             html.contains(
-                "<a class=\"twig-row twig-row--hit\" href=\"acme/twig-api\">\
+                "<a class=\"twig-row\" href=\"acme/twig-api\">\
 <span class=\"twig-row-id\">twig-api</span>"
             ),
             "a repository hit links straight to the repository: {html}"
         );
         assert!(
-            html.contains(
-                "<span class=\"twig-row-meta\"><span class=\"twig-sr\">Namespace: </span>acme</span>"
-            ),
+            html.contains("<span class=\"twig-row-meta\"><span class=\"twig-sr\">Namespace: </span>acme</span>"),
             "the hit row names the namespace it lives in: {html}"
         );
         assert!(
-            !html.contains("aria-label=\"Namespaces\"")
-                || html.contains("aria-label=\"Repository matches\""),
+            html.contains("<nav class=\"twig-list\" aria-label=\"Repository matches\">"),
             "repository hits get their own labelled list: {html}"
         );
     }
