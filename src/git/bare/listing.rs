@@ -165,6 +165,29 @@ pub fn search_repos_with_info(root: &str, namespace: &str, query: &str) -> Vec<R
     repos
 }
 
+/// Names of repositories in `namespace` whose name contains `query`
+/// (case-insensitive), sorted. Unlike [`search_repos_with_info`] this never
+/// opens a repository: a directory counts as a repository when it carries a
+/// bare repo's `HEAD` file. Callers needing per-repo metadata (privacy, last
+/// commit) follow up on the matched names only.
+pub fn search_repo_names(root: &str, namespace: &str, query: &str) -> Vec<String> {
+    let query_lower = query.to_lowercase();
+    let namespace_path = Path::new(root).join(namespace);
+    let Ok(entries) = std::fs::read_dir(&namespace_path) else {
+        return Vec::new();
+    };
+
+    let mut names: Vec<String> = entries
+        .into_iter()
+        .filter_map(std::result::Result::ok)
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .filter(|name| name.to_lowercase().contains(&query_lower))
+        .filter(|name| namespace_path.join(name).join("HEAD").is_file())
+        .collect();
+    names.sort();
+    names
+}
+
 /// Check if a repository is configured as private in its `.twig.toml`, `.twig`,
 /// `.fig.toml` or `fig.toml`.
 pub fn is_repo_private(root: &str, namespace: &str, repo: &str) -> bool {
@@ -207,6 +230,81 @@ mod tests {
         assert_eq!(
             CONFIG_FILENAMES,
             [".twig.toml", ".twig", ".fig.toml", "fig.toml"]
+        );
+    }
+
+    /// A bare repository, as the name scan sees it: any directory carrying a
+    /// `HEAD` file. No git invocation needed for these fixtures.
+    fn fake_bare_repo(root: &Path, namespace: &str, name: &str) {
+        std::fs::create_dir_all(
+            root.join(namespace)
+                .join(name)
+                .join("HEAD")
+                .parent()
+                .unwrap(),
+        )
+        .unwrap();
+        std::fs::write(root.join(namespace).join(name).join("HEAD"), "").unwrap();
+    }
+
+    /// A unique per-test scratch root, so parallel tests never share a path.
+    fn scratch_root(label: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "twig_listing_{label}_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+    }
+
+    #[test]
+    fn test_search_repo_names_matches_case_insensitively_and_sorts() {
+        let temp = scratch_root("matches");
+        std::fs::create_dir_all(&temp).unwrap();
+        fake_bare_repo(&temp, "acme", "widgets");
+        fake_bare_repo(&temp, "acme", "Web-Api");
+        fake_bare_repo(&temp, "acme", "unrelated");
+
+        assert_eq!(
+            search_repo_names(temp.to_str().unwrap(), "acme", "API"),
+            vec!["Web-Api".to_owned()],
+            "matching is case-insensitive on both sides: {temp:?}"
+        );
+        assert_eq!(
+            search_repo_names(temp.to_str().unwrap(), "acme", "e"),
+            vec![
+                "Web-Api".to_owned(),
+                "unrelated".to_owned(),
+                "widgets".to_owned()
+            ],
+            "every name containing the query comes back sorted, not in read_dir order: {temp:?}"
+        );
+        assert!(
+            search_repo_names(temp.to_str().unwrap(), "acme", "").len() == 3,
+            "an empty query matches everything"
+        );
+        std::fs::remove_dir_all(&temp).unwrap();
+    }
+
+    #[test]
+    fn test_search_repo_names_skips_non_repository_directories() {
+        let temp = scratch_root("skips");
+        std::fs::create_dir_all(temp.join("acme").join("stray-dir")).unwrap();
+        std::fs::write(temp.join("acme").join("stray-file"), "not a repo").unwrap();
+
+        assert!(
+            search_repo_names(temp.to_str().unwrap(), "acme", "").is_empty(),
+            "directories without a bare repo HEAD file are not repositories: {temp:?}"
+        );
+        std::fs::remove_dir_all(&temp).unwrap();
+    }
+
+    #[test]
+    fn test_search_repo_names_handles_missing_namespaces() {
+        assert!(
+            search_repo_names("/nonexistent-twig-root", "acme", "x").is_empty(),
+            "a missing namespace yields no names instead of an error"
         );
     }
 }

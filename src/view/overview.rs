@@ -6,6 +6,7 @@ use serde::Deserialize;
 
 use crate::auth::TwigContext;
 use crate::config;
+use crate::git;
 use crate::view::session_auth::get_username_from_request;
 
 #[derive(Deserialize)]
@@ -18,6 +19,7 @@ fn render_index(
     search_query: &str,
     username: Option<&str>,
     namespaces: &[(crate::auth::Namespace, String)],
+    repo_hits: &[(String, String)],
 ) -> maud::Markup {
     maud::html! {
         section class="twig-pagehead" {
@@ -31,14 +33,14 @@ fn render_index(
 
         div class="twig-stack" {
             form class="twig-search" role="search" method="GET" action="/" {
-                label class="twig-sr" for="namespace-search" { "Search namespaces" }
+                label class="twig-sr" for="index-search" { "Search namespaces and repositories" }
                 input
                     class="twig-input twig-input--mono"
-                    id="namespace-search"
+                    id="index-search"
                     type="search"
                     name="q"
                     value=(search_query)
-                    placeholder="Search namespaces...";
+                    placeholder="Search namespaces and repositories...";
                 button type="submit" class="twig-btn twig-btn--ghost" { "Search" }
                 @if !search_query.is_empty() {
                     a class="twig-btn twig-btn--quiet" href="/" { "Clear" }
@@ -47,7 +49,7 @@ fn render_index(
 
             section class="twig-panel twig-panel--flush" {
                 div class="twig-panel-body" aria-live="polite" {
-                    @if namespaces.is_empty() {
+                    @if namespaces.is_empty() && repo_hits.is_empty() {
                         @if search_query.is_empty() {
                             div class="twig-empty twig-empty--void" {
                                 p class="twig-eyebrow" { "NO NAMESPACES" }
@@ -56,21 +58,42 @@ fn render_index(
                         } @else {
                             div class="twig-empty twig-empty--filtered" {
                                 p class="twig-eyebrow" { "NO MATCHES" }
-                                p class="twig-empty-body" { "No namespaces found matching your search." }
+                                p class="twig-empty-body" {
+                                    "No namespaces or repositories found matching your search."
+                                }
                             }
                         }
                     } @else {
-                        div class="twig-colhead" {
-                            span { "Namespace" }
-                            span { "Owner" }
+                        @if !namespaces.is_empty() {
+                            div class="twig-colhead" {
+                                span { "Namespace" }
+                                span { "Owner" }
+                            }
+                            nav class="twig-list" aria-label="Namespaces" {
+                                @for (namespace, owner) in namespaces {
+                                    a class="twig-row" href=(namespace.name) {
+                                        span class="twig-row-id" { (namespace.name) }
+                                        span class="twig-row-meta" {
+                                            span class="twig-sr" { "Owner: " }
+                                            (owner)
+                                        }
+                                    }
+                                }
+                            }
                         }
-                        nav class="twig-list" aria-label="Namespaces" {
-                            @for (namespace, owner) in namespaces {
-                                a class="twig-row" href=(namespace.name) {
-                                    span class="twig-row-id" { (namespace.name) }
-                                    span class="twig-row-meta" {
-                                        span class="twig-sr" { "Owner: " }
-                                        (owner)
+                        @if !repo_hits.is_empty() {
+                            div class="twig-colhead" {
+                                span { "Repository" }
+                                span { "Namespace" }
+                            }
+                            nav class="twig-list" aria-label="Repository matches" {
+                                @for (namespace, repo) in repo_hits {
+                                    a class="twig-row twig-row--hit" href=(format!("{namespace}/{repo}")) {
+                                        span class="twig-row-id" { (repo) }
+                                        span class="twig-row-meta" {
+                                            span class="twig-sr" { "Namespace: " }
+                                            (namespace)
+                                        }
                                     }
                                 }
                             }
@@ -82,10 +105,37 @@ fn render_index(
     }
 }
 
+/// Repositories matched by the index search, across every namespace on disk.
+/// Private repositories stay hidden from anonymous visitors. Returns
+/// `(namespace, repository)` pairs sorted by namespace, then repository.
+///
+/// The scan matches repository *names* only; opening a repository is needed
+/// just for the anonymous private check on names that already matched.
+fn search_repo_hits(
+    root: &str,
+    namespaces: &[(crate::auth::Namespace, String)],
+    query: &str,
+    signed_in: bool,
+) -> Vec<(String, String)> {
+    let mut hits: Vec<(String, String)> = namespaces
+        .iter()
+        .flat_map(|(namespace, _)| {
+            git::bare::search_repo_names(root, &namespace.name, query)
+                .into_iter()
+                .filter(|repo| {
+                    signed_in || !git::bare::is_repo_private(root, &namespace.name, repo)
+                })
+                .map(move |repo| (namespace.name.clone(), repo))
+        })
+        .collect();
+    hits.sort();
+    hits
+}
+
 #[get("/")]
 pub async fn index(
     req: HttpRequest,
-    _server: web::Data<config::Server>,
+    server: web::Data<config::Server>,
     auth_state: web::Data<TwigContext>,
     query: web::Query<SearchQuery>,
 ) -> AwResult<maud::Markup> {
@@ -95,14 +145,31 @@ pub async fn index(
     let db = auth_state.db();
 
     // Get namespaces with owners from database
-    let namespaces = if search_query.is_empty() {
-        match db.get_all_namespaces_with_owners().await {
-            Ok(n) => n,
-            Err(e) => {
-                log::error!("Failed to get namespaces: {e}");
-                Vec::new()
-            }
+    let all_namespaces = match db.get_all_namespaces_with_owners().await {
+        Ok(n) => n,
+        Err(e) => {
+            log::error!("Failed to get namespaces: {e}");
+            Vec::new()
         }
+    };
+
+    // Repository hits are collected only while a query is active, and always
+    // over every namespace on disk, so a repo hit can surface even when its
+    // namespace's name does not match the query.
+    let repo_hits = if search_query.is_empty() {
+        Vec::new()
+    } else {
+        search_repo_hits(
+            server.project_root(),
+            &all_namespaces,
+            search_query,
+            username.is_some(),
+        )
+    };
+
+    // The visible namespace list narrows by name only while searching.
+    let namespaces = if search_query.is_empty() {
+        all_namespaces
     } else {
         match db.search_namespaces_with_owners(search_query).await {
             Ok(n) => n,
@@ -113,7 +180,7 @@ pub async fn index(
         }
     };
 
-    let content = render_index(search_query, username.as_deref(), &namespaces);
+    let content = render_index(search_query, username.as_deref(), &namespaces, &repo_hits);
 
     if req.headers().get("HX-Request").is_some() {
         Ok(content)
@@ -145,7 +212,16 @@ mod tests {
         username: Option<&str>,
         namespaces: &[(crate::auth::Namespace, String)],
     ) -> String {
-        render_index(search_query, username, namespaces).into_string()
+        render_index(search_query, username, namespaces, &[]).into_string()
+    }
+
+    fn render_with_repo_hits(
+        search_query: &str,
+        username: Option<&str>,
+        namespaces: &[(crate::auth::Namespace, String)],
+        repo_hits: &[(String, String)],
+    ) -> String {
+        render_index(search_query, username, namespaces, repo_hits).into_string()
     }
 
     fn classes_in(html: &str) -> Vec<String> {
@@ -228,8 +304,8 @@ mod tests {
             "the active query is echoed back into the field: {html}"
         );
         assert!(
-            html.contains("<label class=\"twig-sr\" for=\"namespace-search\">")
-                && html.contains("id=\"namespace-search\""),
+            html.contains("<label class=\"twig-sr\" for=\"index-search\">")
+                && html.contains("id=\"index-search\""),
             "the input needs a real label, not just a placeholder: {html}"
         );
         assert!(
@@ -324,6 +400,51 @@ mod tests {
     }
 
     #[test]
+    fn test_repo_hits_render_the_namespace_beneath_the_repository() {
+        let html = render_with_repo_hits(
+            "api",
+            None,
+            &[],
+            &[("acme".to_owned(), "twig-api".to_owned())],
+        );
+        assert!(
+            html.contains(
+                "<div class=\"twig-colhead\"><span>Repository</span><span>Namespace</span></div>"
+            ),
+            "repository matches are listed under their own column header: {html}"
+        );
+        assert!(
+            html.contains(
+                "<a class=\"twig-row twig-row--hit\" href=\"acme/twig-api\">\
+<span class=\"twig-row-id\">twig-api</span>"
+            ),
+            "a repository hit links straight to the repository: {html}"
+        );
+        assert!(
+            html.contains(
+                "<span class=\"twig-row-meta\"><span class=\"twig-sr\">Namespace: </span>acme</span>"
+            ),
+            "the hit row names the namespace it lives in: {html}"
+        );
+        assert!(
+            !html.contains("aria-label=\"Namespaces\"")
+                || html.contains("aria-label=\"Repository matches\""),
+            "repository hits get their own labelled list: {html}"
+        );
+    }
+
+    #[test]
+    fn test_repo_hits_respect_the_private_filter_and_missing_roots() {
+        let hits = search_repo_hits(
+            "/nonexistent-twig-root",
+            &[namespace("acme", "silen")],
+            "x",
+            true,
+        );
+        assert!(hits.is_empty(), "a missing root yields no repository hits");
+    }
+
+    #[test]
     fn test_empty_states_name_their_condition_and_keep_their_copy() {
         let void = render("", None, &[]);
         assert!(
@@ -354,7 +475,7 @@ mod tests {
             "a filtered miss is a different condition than an empty server: {filtered}"
         );
         assert!(
-            filtered.contains("No namespaces found matching your search."),
+            filtered.contains("No namespaces or repositories found matching your search."),
             "existing copy is preserved verbatim: {filtered}"
         );
         assert!(
