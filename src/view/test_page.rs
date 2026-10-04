@@ -212,7 +212,7 @@ fn render_pagehead(role: &CallerRole) -> maud::Markup {
         section class="twig-pagehead" {
             nav class="twig-crumbs twig-crumbs--page" aria-label="Breadcrumb" {
                 a href="/" { "Twig" }
-                span class="twig-crumbs-sep" aria-hidden="true" { "/" }
+                span class="twig-crumb-sep" aria-hidden="true" { "/" }
                 span aria-current="page" { "Test Suite" }
             }
             div class="twig-cluster" {
@@ -317,7 +317,7 @@ pub fn render_pin_panel(is_admin: bool, active_pin: Option<&str>, base_url: &str
 pub fn render_pin_entry_page(admin_user: &str, has_active_pin: bool) -> maud::Markup {
     maud::html! {
         div class="twig-stack" {
-            div class="twig-notice twig-notice--warn" role="alert" {
+            div class="twig-notice twig-notice--warning" role="alert" {
                 p class="twig-eyebrow" { "ACCESS RESTRICTED" }
                 p class="twig-notice-body" {
                     (format!("The test suite is restricted to admin '{admin_user}' or users with an active session PIN."))
