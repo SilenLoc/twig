@@ -4,7 +4,7 @@
 use std::path::Path;
 
 use super::config::{CONFIG_FILENAMES, TwigConfig, TwigConfigWithRaw};
-use super::history::{Commit, Depth, chrono};
+use super::history::{Commit, chrono};
 use super::listing::{extract_license_from_cargo_toml, get_non_commercial_license};
 use super::path::is_safe_component;
 
@@ -57,7 +57,7 @@ impl RepoHandle {
         }
     }
 
-    pub fn get_commits(&self, depth: &Depth) -> Result<Vec<Commit>, git2::Error> {
+    pub fn get_commits(&self, limit: usize) -> Result<Vec<Commit>, git2::Error> {
         let Some(commit) = self.head_commit()? else {
             return Ok(Vec::new());
         };
@@ -66,7 +66,7 @@ impl RepoHandle {
         revwalk.push(commit.id())?;
 
         let mut commits = Vec::new();
-        revwalk.take(depth.depth).for_each(|oid_result| {
+        revwalk.take(limit).for_each(|oid_result| {
             let Ok(oid) = oid_result else {
                 return;
             };

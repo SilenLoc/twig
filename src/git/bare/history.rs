@@ -37,22 +37,9 @@ impl Commit {
     }
 }
 
-/// How many commits a history listing returns.
-pub struct Depth {
-    pub depth: usize,
-}
-
-impl Depth {
-    pub fn new(depth: usize) -> Self {
-        Self { depth }
-    }
-}
-
-impl Default for Depth {
-    fn default() -> Self {
-        Self::new(1000)
-    }
-}
+/// The commit-history cap for a repository view: how many commits a history
+/// listing returns, walking back from `HEAD`.
+pub const MAX_COMMITS: usize = 1000;
 
 /// Converts a libgit2 timestamp into a UTC datetime, falling back to the Unix
 /// epoch for out-of-range values rather than failing the whole listing.

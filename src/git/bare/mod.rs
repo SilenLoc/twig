@@ -12,7 +12,7 @@ mod path;
 
 pub use config::{PresentConfig, ScriptEntry, ScriptGroupNode, TwigConfig, TwigConfigWithRaw};
 pub use handle::{RepoHandle, TreeEntry};
-pub use history::{Commit, Depth};
+pub use history::{Commit, MAX_COMMITS};
 pub use listing::{
     RepoInfo, get_repos_with_info, is_repo_private, search_repo_names, search_repos_with_info,
 };

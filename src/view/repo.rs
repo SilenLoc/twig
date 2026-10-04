@@ -11,7 +11,7 @@ use crate::{
     auth::TwigContext,
     config,
     git::bare::{
-        Commit, Depth, PresentConfig, RepoHandle, ScriptEntry, ScriptGroupNode, TreeEntry,
+        Commit, MAX_COMMITS, PresentConfig, RepoHandle, ScriptEntry, ScriptGroupNode, TreeEntry,
         TwigConfig, TwigConfigWithRaw, is_safe_repo_path,
     },
     md,
@@ -328,7 +328,7 @@ fn content_body(ctx: &RepoContext) -> Markup {
 }
 
 fn commits_body(ctx: &RepoContext) -> Result<Markup, git2::Error> {
-    let commits = ctx.handle.get_commits(&Depth::default())?;
+    let commits = ctx.handle.get_commits(MAX_COMMITS)?;
     Ok(render_commits_view(&commits))
 }
 
