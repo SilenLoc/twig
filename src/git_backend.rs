@@ -102,14 +102,13 @@ pub fn run_with_config(
         req.method, req.path_info, namespace, actual_root
     );
 
-    let sh = prepare_cgi_env(&actual_root, sh, req, authenticated_user);
-
     if !req.content_type.is_empty() {
         sh.set_var("CONTENT_TYPE", req.content_type.clone());
     }
     if !body.is_empty() {
         sh.set_var("CONTENT_LENGTH", body.len().to_string());
     }
+    let sh = prepare_cgi_env(&actual_root, sh, req, authenticated_user);
 
     let output = if body.is_empty() {
         xshell::cmd!(sh, "git http-backend").output()
@@ -193,7 +192,6 @@ pub fn prepare_cgi_env(
     match req.kind() {
         GitRequestKind::Push => {
             // Pushes need write access — enforce auth here before proceeding
-            sh.set_var("CONTENT_TYPE", req.content_type.clone());
             debug!(
                 "Git backend HTTP: push operation detected for path='{}'",
                 req.path_info
@@ -201,7 +199,6 @@ pub fn prepare_cgi_env(
         }
         GitRequestKind::FetchClone => {
             // needs read access — enforce auth here before proceeding
-            sh.set_var("CONTENT_TYPE", req.content_type.clone());
             debug!(
                 "Git backend HTTP: fetch/clone operation detected for path='{}'",
                 req.path_info
