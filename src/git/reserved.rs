@@ -1,26 +1,15 @@
 //! Repository-name policy.
 //!
-//! Two classes of name are refused for user-created repositories:
-//!
-//! * names that would shadow a namespace-level UI route, because
-//!   `/{namespace}/{repo}` is registered after those routes in `main.rs` and the
-//!   repository would simply be unreachable;
-//! * [`TICKET_REPO`], which is server-managed — it is created together with the
-//!   namespace and carries the ingest hooks, so it must never be produced by the
-//!   ordinary repository-creation paths.
+//! Names are refused for user-created repositories when they would shadow a
+//! namespace-level UI route, because `/{namespace}/{repo}` is registered after
+//! those routes in `main.rs` and the repository would simply be unreachable.
 
 use crate::git::bare::is_safe_component;
 
-/// The per-namespace issue-tracker repository, served at `/{namespace}/ticket`.
-pub const TICKET_REPO: &str = "ticket";
-
 /// Names refused for user-created repositories.
 ///
-/// `ticket` (singular) is the git repository; `tickets` (plural) is the
-/// issue-tracker UI path. Both are listed: a repository named `tickets` would be
-/// shadowed by the UI route and become unreachable.
+/// Each entry shadows a namespace-level UI route registered in `main.rs`.
 const RESERVED_REPO_NAMES: &[&str] = &[
-    TICKET_REPO,
     "create-repo",
     "create-repo-form",
     "settings",
@@ -65,12 +54,6 @@ pub fn validate_repo_name(name: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_ticket_repo_is_reserved() {
-        assert!(is_reserved_repo_name(TICKET_REPO));
-        assert!(validate_repo_name("ticket").is_err());
-    }
 
     #[test]
     fn test_reserved_check_is_case_insensitive() {

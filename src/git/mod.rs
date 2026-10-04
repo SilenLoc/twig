@@ -288,8 +288,6 @@ async fn is_authenticated(
 }
 
 /// Ensures a namespace exists in the database, creating it if necessary.
-/// The reserved ticket repository is created alongside it so the tracker is
-/// available immediately, without waiting for someone to push to it.
 async fn ensure_namespace_exists(
     auth_state: &web::Data<TwigContext>,
     user: &User,
@@ -312,8 +310,7 @@ async fn ensure_namespace_exists(
 
 /// Ensures a bare repository exists on disk, creating it if necessary
 fn ensure_repo_exists(project_root: &str, namespace: &str, repo_name: &str) -> Result<(), String> {
-    // The ticket repository is server-managed: it carries the ingest hooks and
-    // must never be produced by the generic path.
+    // User-created repositories must not shadow namespace-level UI routes.
     if crate::git::reserved::is_reserved_repo_name(repo_name) {
         return Err(format!("'{repo_name}' is a reserved repository name"));
     }

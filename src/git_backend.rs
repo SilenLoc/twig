@@ -181,9 +181,8 @@ pub fn prepare_cgi_env(
     sh.set_var("GIT_HTTP_RECEIVE_PACK", "true"); // enables push operations
 
     // Always set explicitly — empty when nobody is authenticated. The child
-    // process inherits this server's environment, and the ticket ingest hook
-    // takes the pusher's identity from REMOTE_USER, so an inherited value must
-    // never be able to pass for an authenticated user.
+    // process inherits this server's environment, so an inherited REMOTE_USER
+    // must never be able to pass for an authenticated user.
     sh.set_var("REMOTE_USER", authenticated_user.unwrap_or_default());
 
     debug!(

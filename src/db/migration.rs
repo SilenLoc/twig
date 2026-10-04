@@ -85,10 +85,10 @@ const MIGRATIONS: &[Migration] = &[
         name: "create_tokens_created_at_index",
         sql: r"CREATE INDEX IF NOT EXISTS idx_tokens_created_at ON tokens(created_at);",
     },
-    // The `tickets` table holds single-use SIGNUP INVITES. The name is reclaimed by the
-    // namespace-level issue tracker, whose git repo is `/{namespace}/ticket`, so the signup
-    // concept is renamed to `invites`. Historical migrations above are never edited; the rename
-    // is applied as its own step.
+    // The `tickets` table holds single-use SIGNUP INVITES. The name was claimed
+    // by the former ticket feature, so the signup concept is renamed to `invites`.
+    // Historical migrations above are never edited; the rename is applied as its
+    // own step.
     Migration {
         name: "rename_tickets_table_to_invites",
         sql: r"ALTER TABLE tickets RENAME TO invites;",
@@ -236,7 +236,7 @@ mod tests {
         assert!(tables.contains(&"_migrations".to_string()));
         assert!(
             !tables.contains(&"tickets".to_string()),
-            "`tickets` must be renamed to `invites`; the name is reclaimed by the issue tracker"
+            "`tickets` must be renamed to `invites`"
         );
 
         let mut rows = db
