@@ -342,7 +342,7 @@ pub fn render_pin_entry_page(admin_user: &str, has_active_pin: bool) -> maud::Ma
                             }
                         }
                     } @else {
-                        div class="twig-empty twig-empty--void" {
+                        div class="twig-empty" {
                             p class="twig-eyebrow" { "NO ACTIVE SESSION" }
                             p class="twig-empty-body" {
                                 "There is currently no active session PIN. Please ask the admin to generate a PIN on the test page, or log in as admin."

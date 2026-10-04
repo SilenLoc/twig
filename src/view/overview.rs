@@ -51,12 +51,12 @@ fn render_index(
                 div class="twig-panel-body" aria-live="polite" {
                     @if namespaces.is_empty() && repo_hits.is_empty() {
                         @if search_query.is_empty() {
-                            div class="twig-empty twig-empty--void" {
+                            div class="twig-empty" {
                                 p class="twig-eyebrow" { "NO NAMESPACES" }
                                 p class="twig-empty-body" { "No namespaces yet. Create one to get started!" }
                             }
                         } @else {
-                            div class="twig-empty twig-empty--filtered" {
+                            div class="twig-empty" {
                                 p class="twig-eyebrow" { "NO MATCHES" }
                                 p class="twig-empty-body" {
                                     "No namespaces or repositories found matching your search."
@@ -445,7 +445,7 @@ mod tests {
     fn test_empty_states_name_their_condition_and_keep_their_copy() {
         let void = render("", None, &[]);
         assert!(
-            void.contains("<div class=\"twig-empty twig-empty--void\">"),
+            void.contains("<div class=\"twig-empty\">"),
             "an empty list renders an empty state, not zero rows: {void}"
         );
         assert!(
@@ -467,7 +467,7 @@ mod tests {
 
         let filtered = render("zzz", None, &[]);
         assert!(
-            filtered.contains("<div class=\"twig-empty twig-empty--filtered\">")
+            filtered.contains("<div class=\"twig-empty\">")
                 && filtered.contains("<p class=\"twig-eyebrow\">NO MATCHES</p>"),
             "a filtered miss is a different condition than an empty server: {filtered}"
         );

@@ -131,12 +131,12 @@ fn render_namespace(
                 div class="twig-panel-body" {
                     @if repos.is_empty() {
                         @if search_query.is_empty() {
-                            div class="twig-empty twig-empty--void" {
+                            div class="twig-empty" {
                                 p class="twig-eyebrow" { "NO REPOSITORIES" }
                                 p class="twig-empty-body" { "No repositories yet. Click 'Create repo' to add one!" }
                             }
                         } @else {
-                            div class="twig-empty twig-empty--filtered" {
+                            div class="twig-empty" {
                                 p class="twig-eyebrow" { "NO MATCHES" }
                                 p class="twig-empty-body" { "No repositories found matching your search." }
                                 div class="twig-empty-actions" {
@@ -552,10 +552,7 @@ mod tests {
     #[test]
     fn test_namespace_empty_states_preserve_their_messages() {
         let void = render_namespace("acme", "", true, &[]).into_string();
-        assert!(
-            void.contains("class=\"twig-empty twig-empty--void\""),
-            "{void}"
-        );
+        assert!(void.contains("class=\"twig-empty\""), "{void}");
         assert!(
             void.contains("<p class=\"twig-eyebrow\">NO REPOSITORIES</p>"),
             "{void}"
@@ -567,11 +564,8 @@ mod tests {
 
         let filtered = render_namespace("acme", "zzz", true, &[]).into_string();
         assert!(
-            filtered.contains("class=\"twig-empty twig-empty--filtered\""),
-            "{filtered}"
-        );
-        assert!(
-            filtered.contains("<p class=\"twig-eyebrow\">NO MATCHES</p>"),
+            filtered.contains("class=\"twig-empty\"")
+                && filtered.contains("<p class=\"twig-eyebrow\">NO MATCHES</p>"),
             "{filtered}"
         );
         assert!(
