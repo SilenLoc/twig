@@ -6,21 +6,13 @@ argon2 = "0.5"
 base64 = "0.22"
 bytes = "1"
 env_logger = { version = "0.11", default-features = false, features = ["humantime"] }
-fs2 = "0.4"
-futures-util = { version = "0.3", default-features = false }
-glob = "0.3"
 hex = "0.4"
 log = "0.4"
 pulldown-cmark = "0.12"
 qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
-sha2 = "0.10"
 toml = "0.8"
 turso = { version = "0.5.3", default-features = false }
 xshell = "0.2.7"
-
-[dependencies.actix-multipart]
-default-features = false
-version = "0.7"
 
 [dependencies.actix-http]
 default-features = false
