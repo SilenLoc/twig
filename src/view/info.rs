@@ -82,7 +82,7 @@ fn render_docs_menu(docs: &[DocPage], active_slug: &str) -> maud::Markup {
         .collect();
 
     maud::html! {
-        nav class="twig-rail twig-rail--docs" aria-label="Documentation" {
+        nav class="twig-rail" aria-label="Documentation" {
             @for (doc, is_new_section) in docs.iter().zip(&show_heading) {
                 @if *is_new_section {
                     p class="twig-eyebrow" { (doc.page.section.unwrap_or_default()) }
@@ -292,9 +292,7 @@ mod tests {
         let docs = info::list_doc_pages();
         let html = render_docs_menu(&docs, docs[0].slug).into_string();
         assert!(
-            html.starts_with(
-                "<nav class=\"twig-rail twig-rail--docs\" aria-label=\"Documentation\">"
-            ),
+            html.starts_with("<nav class=\"twig-rail\" aria-label=\"Documentation\">"),
             "the docs menu is a labelled rail landmark: {html}"
         );
         assert!(

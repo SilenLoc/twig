@@ -378,10 +378,6 @@ body.twig-shell {
     gap: var(--twig-space-3);
 }
 
-.twig-stack--loose {
-    gap: var(--twig-space-8);
-}
-
 .twig-cluster {
     display: flex;
     flex-wrap: wrap;
@@ -1890,10 +1886,6 @@ body.twig-shell {
     overflow-wrap: anywhere;
 }
 
-.twig-nowrap {
-    white-space: nowrap;
-}
-
 .twig-mono {
     font-family: var(--twig-mono);
     font-variant-numeric: tabular-nums;
@@ -1905,16 +1897,6 @@ body.twig-shell {
 
 .twig-ink-tertiary {
     color: var(--twig-ink-tertiary);
-}
-
-.twig-prose {
-    max-inline-size: var(--twig-measure-prose);
-}
-
-.twig-scroll-x {
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    min-inline-size: 0;
 }
 
 /* ---- 21. Reduced motion -------------------------------------------------- */

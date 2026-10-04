@@ -1356,7 +1356,7 @@ fn render_config_error(filename: &str, error: &str) -> Markup {
     );
 
     maud::html! {
-        div class="twig-notice twig-notice--danger twig-config-error" role="alert" {
+        div class="twig-notice twig-notice--danger" role="alert" {
             p class="twig-eyebrow" { "CONFIG ERROR" }
             p class="twig-notice-body" {
                 code class="twig-mono" { (filename) }
@@ -2102,10 +2102,10 @@ fn render_paper_toolbar(page_count: usize) -> Markup {
                 {
                     "A+"
                 }
-                div class="twig-paper-fonts" role="group" aria-label="Paper font" {
+                div role="group" aria-label="Paper font" {
                     @for (value, label) in PAPER_FONTS {
                         button
-                            class="twig-btn twig-btn--quiet twig-paper-font"
+                            class="twig-btn twig-btn--quiet"
                             type="button"
                             data-twig-font=(value)
                             aria-pressed=(if value == "sans" { "true" } else { "false" })
@@ -3252,7 +3252,7 @@ mod tests {
         };
         let html = render_tab_shell(&frame, "commits", &maud::html! {}).into_string();
 
-        let error = index_of(&html, "twig-config-error");
+        let error = index_of(&html, "twig-notice--danger");
         let tabs = index_of(&html, "id=\"tab-nav\"");
         let content = index_of(&html, "id=\"tab-content\"");
         assert!(
