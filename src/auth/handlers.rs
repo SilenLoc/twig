@@ -75,7 +75,6 @@ pub async fn create_invite_ui_handler(
     auth_state: web::Data<TwigContext>,
     form: web::Form<InviteForm>,
 ) -> impl Responder {
-    // Validate API key
     if !auth_state.validate_api_key(&form.api_key) {
         return HttpResponse::Unauthorized().body(render_error("Invalid API key").into_string());
     }
@@ -206,7 +205,6 @@ pub async fn login_ui_handler(
 ) -> impl Responder {
     let db = auth_state.db();
 
-    // Get user from database
     let user = match db.get_user_by_username(&form.username).await {
         Ok(Some(user)) => user,
         Ok(None) => {
@@ -220,7 +218,6 @@ pub async fn login_ui_handler(
         }
     };
 
-    // Verify password
     match verify_password(&form.password, &user.password_hash) {
         Ok(true) => {}
         Ok(false) => {

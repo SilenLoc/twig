@@ -231,7 +231,6 @@ pub async fn settings_page(
     server: web::Data<config::Server>,
     auth_state: web::Data<TwigContext>,
 ) -> AwResult<maud::Markup> {
-    // Get user from session
     let Some(user_id) = auth_state.user_id_from_request(&req).await else {
         let message = if req.cookie("session").is_some() {
             "Session expired. Please log in again."
@@ -299,7 +298,6 @@ pub async fn update_email(
 
     let db = auth_state.db();
 
-    // Update email in database
     match db.update_user_email(&user_id, &form.email).await {
         Ok(()) => {
             info!("Updated email for user: {user_id}");

@@ -183,7 +183,6 @@ pub async fn handler(
     let username = get_username_from_request(&req, &auth_state).await;
     let has_access = user_has_namespace_access(&req, &auth_state, namespace).await;
 
-    // Get repos with info (last commit date)
     let repos = if search_query.is_empty() {
         git::bare::get_repos_with_info(server.project_root(), namespace)
     } else {
@@ -284,7 +283,6 @@ pub async fn create_repo_handler(
 ) -> impl Responder {
     let namespace = &params.namespace;
 
-    // Authenticate user via session cookie
     let Some(user_id) = auth_state.user_id_from_request(&req).await else {
         let message = if req.cookie("session").is_some() {
             "Session expired. Please log in again."
@@ -296,7 +294,6 @@ pub async fn create_repo_handler(
 
     let db = auth_state.db();
 
-    // Check if user has access to namespace
     match db.user_has_namespace_access(&user_id, namespace).await {
         Ok(true) => {}
         Ok(false) => {
@@ -310,30 +307,25 @@ pub async fn create_repo_handler(
         }
     }
 
-    // Validate repository name
     if let Err(message) = crate::git::reserved::validate_repo_name(&form.repo_name) {
         return HttpResponse::BadRequest().body(render_error(&message).into_string());
     }
 
-    // Create repository path
     let repo_path = std::path::Path::new(server.project_root())
         .join(namespace)
         .join(&form.repo_name);
 
-    // Check if repository already exists
     if repo_path.exists() {
         return HttpResponse::Conflict()
             .body(render_error("Repository already exists").into_string());
     }
 
-    // Create the repository directory
     if let Err(e) = std::fs::create_dir_all(&repo_path) {
         log::error!("Failed to create repository directory: {e}");
         return HttpResponse::InternalServerError()
             .body(render_error("Failed to create repository directory").into_string());
     }
 
-    // Get user details for git author info
     let Ok(Some(user)) = db.get_user_by_id(&user_id).await else {
         return HttpResponse::InternalServerError()
             .body(render_error("Failed to load user").into_string());
