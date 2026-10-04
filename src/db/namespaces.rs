@@ -72,38 +72,21 @@ impl Database {
     }
 
     pub async fn get_all_namespaces_with_owners(&self) -> Result<Vec<(Namespace, String)>, String> {
-        let mut rows = self
-            .conn()
-            .await?
-            .query(
-                "SELECT n.id, n.name, n.owner_id, n.created_at, u.username
-                 FROM namespaces n
-                 JOIN users u ON n.owner_id = u.id
-                 ORDER BY n.name",
-                (),
-            )
-            .await
-            .map_err(|e| e.to_string())?;
-
-        let mut result = Vec::new();
-        while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
-            let namespace = Namespace {
-                id: row.get(0).map_err(|e| e.to_string())?,
-                name: row.get(1).map_err(|e| e.to_string())?,
-                owner_id: row.get(2).map_err(|e| e.to_string())?,
-                created_at: row.get(3).map_err(|e| e.to_string())?,
-            };
-            let username: String = row.get(4).map_err(|e| e.to_string())?;
-            result.push((namespace, username));
-        }
-        Ok(result)
+        self.namespaces_with_owners(None).await
     }
 
     pub async fn search_namespaces_with_owners(
         &self,
         query: &str,
     ) -> Result<Vec<(Namespace, String)>, String> {
-        let search_pattern = format!("%{query}%");
+        self.namespaces_with_owners(Some(query)).await
+    }
+
+    async fn namespaces_with_owners(
+        &self,
+        query: Option<&str>,
+    ) -> Result<Vec<(Namespace, String)>, String> {
+        let search_pattern = query.map(|q| format!("%{q}%"));
         let mut rows = self
             .conn()
             .await?
@@ -111,7 +94,7 @@ impl Database {
                 "SELECT n.id, n.name, n.owner_id, n.created_at, u.username
                  FROM namespaces n
                  JOIN users u ON n.owner_id = u.id
-                 WHERE n.name LIKE ?1
+                 WHERE (?1 IS NULL OR n.name LIKE ?1)
                  ORDER BY n.name",
                 turso::params![search_pattern],
             )
