@@ -3,20 +3,19 @@ use std::fmt::Display;
 use log::{debug, warn};
 use xshell::Shell;
 
-#[derive(Default)]
 pub struct Config {
-    pub project_root: Option<String>,
+    pub project_root: String,
 }
 
 impl Config {
     pub fn new(project_root: impl Into<String>) -> Self {
         Self {
-            project_root: Some(project_root.into()),
+            project_root: project_root.into(),
         }
     }
 
     pub fn project_root(&self) -> &str {
-        self.project_root.as_deref().unwrap_or("/srv/git")
+        &self.project_root
     }
 }
 
@@ -96,7 +95,6 @@ pub fn run_with_config(
 ) -> Result<(String, Vec<u8>), String> {
     let sh = sh()?;
 
-    // TODO: make this configurable
     let actual_root = format!("{}/{}", config.project_root(), namespace);
 
     debug!(
@@ -322,12 +320,6 @@ mod tests {
     #[test]
     fn test_config_new() {
         let config = Config::new("/srv/git");
-        assert_eq!(config.project_root(), "/srv/git");
-    }
-
-    #[test]
-    fn test_config_default() {
-        let config = Config::default();
         assert_eq!(config.project_root(), "/srv/git");
     }
 
