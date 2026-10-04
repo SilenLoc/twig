@@ -20,20 +20,6 @@ pub fn default_branch() -> String {
     "main".to_string()
 }
 
-impl InitRepo {
-    pub fn namespace(&self) -> String {
-        self.namespace.clone()
-    }
-
-    pub fn repo(&self) -> String {
-        self.repo.clone()
-    }
-
-    pub fn branch(&self) -> String {
-        self.branch.clone()
-    }
-}
-
 #[post("/init")]
 pub async fn init(
     req: HttpRequest,
@@ -89,13 +75,11 @@ pub async fn init(
         }
     }
 
-    let init = init_repo;
-
     match create_repo(
         server.project_root(),
-        init.namespace(),
-        init.repo(),
-        init.branch(),
+        init_repo.namespace.clone(),
+        init_repo.repo.clone(),
+        init_repo.branch.clone(),
     ) {
         Ok(()) => HttpResponse::Ok().body("Repository created"),
         Err(e) => {
@@ -241,18 +225,6 @@ mod tests {
     #[test]
     fn test_default_branch_is_main() {
         assert_eq!(default_branch(), "main");
-    }
-
-    #[test]
-    fn test_init_repo_getters() {
-        let init_repo = InitRepo {
-            namespace: "ns".to_string(),
-            repo: "repo".to_string(),
-            branch: "trunk".to_string(),
-        };
-        assert_eq!(init_repo.namespace(), "ns");
-        assert_eq!(init_repo.repo(), "repo");
-        assert_eq!(init_repo.branch(), "trunk");
     }
 
     #[test]
