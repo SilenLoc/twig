@@ -23,7 +23,6 @@ mod tests {
         let auth_state = web::Data::new(auth::TwigContext::new(db, "secure".to_string()));
         // Initialize database synchronously (we are already inside an async test runtime)
         auth_state.db().init_tables().await.expect("init tables");
-        auth_state.set_initialized();
 
         let config_data = web::Data::new(config);
 
@@ -79,7 +78,6 @@ mod tests {
         let auth_state = web::Data::new(auth::TwigContext::new(db, "secure".to_string()));
         // Initialize database synchronously (we are already inside an async test runtime)
         auth_state.db().init_tables().await.expect("init tables");
-        auth_state.set_initialized();
 
         let config_data = web::Data::new(config);
         let session_db = auth_state.db().clone();
@@ -817,7 +815,6 @@ mod tests {
         let db = Database::new(config.db_path());
         let auth_state = web::Data::new(auth::TwigContext::new(db, "secure".to_string()));
         auth_state.db().init_tables().await.expect("init tables");
-        auth_state.set_initialized();
 
         test::init_service(
             App::new()
@@ -1611,7 +1608,6 @@ scripts = [{ name = "Install", path = "scripts/install.sh" }]
         let db = Database::new(config.db_path());
         let auth_state = web::Data::new(auth::TwigContext::new(db, "secure".to_string()));
         auth_state.db().init_tables().await.expect("init tables");
-        auth_state.set_initialized();
 
         let config_data = web::Data::new(config);
         let session_db = auth_state.db().clone();

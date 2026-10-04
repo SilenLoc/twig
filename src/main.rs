@@ -101,7 +101,6 @@ fn spawn_database_init(
             match auth_state.db().init_tables().await {
                 Ok(()) => {
                     info!("Database initialized successfully");
-                    auth_state.set_initialized();
 
                     if config.reset_db() {
                         match auth::seed_dev_admin(&auth_state, config.project_root()).await {

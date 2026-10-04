@@ -1,5 +1,3 @@
-use std::sync::atomic::{AtomicBool, Ordering};
-
 use actix_identity::IdentityExt;
 use actix_web::HttpRequest;
 use argon2::password_hash::{SaltString, rand_core::RngCore};
@@ -127,24 +125,15 @@ fn base64_decode(input: &str) -> Option<String> {
 pub struct TwigContext {
     db: Database,
     api_key: String,
-    initialized: AtomicBool,
 }
 
 impl TwigContext {
     pub fn new(db: Database, api_key: String) -> Self {
-        Self {
-            db,
-            api_key,
-            initialized: AtomicBool::new(false),
-        }
+        Self { db, api_key }
     }
 
     pub fn db(&self) -> &Database {
         &self.db
-    }
-
-    pub fn set_initialized(&self) {
-        self.initialized.store(true, Ordering::SeqCst);
     }
 
     pub fn validate_api_key(&self, key: &str) -> bool {
@@ -256,13 +245,6 @@ pub async fn seed_dev_admin(ctx: &TwigContext, project_root: &str) -> Result<Str
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    impl TwigContext {
-        // only for testing
-        pub fn is_initialized(&self) -> bool {
-            self.initialized.load(Ordering::SeqCst)
-        }
-    }
 
     #[test]
     fn test_hash_and_verify_password() {
@@ -376,15 +358,6 @@ mod tests {
         assert!(!ctx.validate_test_pin("123456").await);
 
         let _ = std::fs::remove_file(&db_path);
-    }
-
-    #[tokio::test]
-    async fn test_twig_context_initialized_flag() {
-        let db = Database::new("/tmp/test_twig_ctx_flag.db");
-        let ctx = TwigContext::new(db, "key".to_string());
-        assert!(!ctx.is_initialized());
-        ctx.set_initialized();
-        assert!(ctx.is_initialized());
     }
 
     #[tokio::test]
