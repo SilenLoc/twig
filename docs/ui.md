@@ -35,7 +35,9 @@ last 30 days; configure `SESSION_KEY` to keep them valid across restarts.
 
 Lists public namespaces and their owners.
 
-- Search namespaces by name.
+- Search namespaces by name; the same query also matches repository names
+  across every namespace, listed under a Repository section with their
+  namespace named. Private repositories stay hidden from anonymous visitors.
 - Signed-in users can create namespaces.
 - Select a namespace to view its repositories.
 
