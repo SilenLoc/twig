@@ -1,5 +1,4 @@
-use actix_web::{Error, FromRequest, HttpRequest, HttpResponse, Responder, error, get, web};
-use bytes::Bytes;
+use actix_web::{Error, HttpRequest, HttpResponse, Responder, error, get, web};
 use serde::{Deserialize, Serialize};
 
 use crate::{auth::TwigContext, config, git};
@@ -26,21 +25,6 @@ pub async fn version_endpoint() -> impl Responder {
     web::Json(VersionResponse {
         version: env!("CARGO_PKG_VERSION"),
     })
-}
-
-/// Extracts and decodes a `MessagePack` request body.
-///
-/// Actix keeps the request head and streaming payload separate, so callers
-/// must pass the request's mutable `dev::Payload` alongside its `HttpRequest`.
-#[allow(dead_code)]
-pub async fn msgpack_extractor<T: for<'de> Deserialize<'de>>(
-    req: HttpRequest,
-    payload: web::Payload,
-) -> Result<T, Error> {
-    let mut payload = payload.into_inner();
-    let bytes = Bytes::from_request(&req, &mut payload).await?;
-    rmp_serde::from_slice(&bytes)
-        .map_err(|e| error::ErrorBadRequest(format!("MessagePack decode error: {e}")))
 }
 
 pub fn msgpack_responder<T: Serialize>(data: T) -> impl Responder {
@@ -144,31 +128,6 @@ mod tests {
         let decoded: NamespaceTree = rmp_serde::from_slice(&bytes).expect("deserialize tree");
         assert_eq!(decoded.namespaces[0].name, "silen");
         assert_eq!(decoded.namespaces[0].repositories, ["twig", "site"]);
-    }
-
-    async fn echo_tree(req: HttpRequest, payload: web::Payload) -> Result<impl Responder, Error> {
-        let tree_data: NamespaceTree = msgpack_extractor(req, payload).await?;
-        Ok(msgpack_responder(tree_data))
-    }
-
-    #[actix_web::test]
-    async fn test_msgpack_extractor_rejects_invalid_messagepack() {
-        let app = aw_test::init_service(App::new().route("/echo", web::post().to(echo_tree))).await;
-        let response = aw_test::call_service(
-            &app,
-            aw_test::TestRequest::post()
-                .uri("/echo")
-                .set_payload(vec![0xc1])
-                .to_request(),
-        )
-        .await;
-
-        assert_eq!(response.status(), actix_web::http::StatusCode::BAD_REQUEST);
-        let body = aw_test::read_body(response).await;
-        assert_eq!(
-            body,
-            "MessagePack decode error: wrong msgpack marker Reserved"
-        );
     }
 
     #[actix_web::test]
