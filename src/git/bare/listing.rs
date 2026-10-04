@@ -89,44 +89,7 @@ fn last_commit_date(repo: &git2::Repository) -> Option<chrono::DateTime<Utc>> {
     Some(chrono(commit.author().when()))
 }
 
-pub fn get_repos_with_info(root: &str, namespace: &str) -> Vec<RepoInfo> {
-    let path = Path::new(root).join(namespace);
-    let Ok(entries) = std::fs::read_dir(path) else {
-        return Vec::new();
-    };
-
-    let mut repos = Vec::new();
-
-    for entry in entries {
-        let Ok(entry) = entry else {
-            continue;
-        };
-
-        let Ok(repo_name) = entry.file_name().into_string() else {
-            continue;
-        };
-
-        let repo_path = Path::new(root).join(namespace).join(&repo_name);
-        let Ok(repo) = git2::Repository::open(&repo_path) else {
-            continue;
-        };
-
-        let last_commit = last_commit_date(&repo);
-        let handle = RepoHandle::from_repository(repo);
-        let is_private = handle.load_config_with_raw().config.private;
-
-        repos.push(RepoInfo {
-            name: repo_name,
-            last_commit_date: last_commit,
-            is_private,
-        });
-    }
-
-    repos
-}
-
-pub fn search_repos_with_info(root: &str, namespace: &str, query: &str) -> Vec<RepoInfo> {
-    let query_lower = query.to_lowercase();
+fn list_repos_with_info(root: &str, namespace: &str, query: Option<&str>) -> Vec<RepoInfo> {
     let path = Path::new(root).join(namespace);
     let Ok(entries) = std::fs::read_dir(path) else {
         return Vec::new();
@@ -142,7 +105,9 @@ pub fn search_repos_with_info(root: &str, namespace: &str, query: &str) -> Vec<R
             continue;
         };
 
-        if !repo_name.to_lowercase().contains(&query_lower) {
+        if let Some(query) = query
+            && !repo_name.to_lowercase().contains(query.to_lowercase().as_str())
+        {
             continue;
         }
 
@@ -163,6 +128,14 @@ pub fn search_repos_with_info(root: &str, namespace: &str, query: &str) -> Vec<R
     }
 
     repos
+}
+
+pub fn get_repos_with_info(root: &str, namespace: &str) -> Vec<RepoInfo> {
+    list_repos_with_info(root, namespace, None)
+}
+
+pub fn search_repos_with_info(root: &str, namespace: &str, query: &str) -> Vec<RepoInfo> {
+    list_repos_with_info(root, namespace, Some(query))
 }
 
 /// Names of repositories in `namespace` whose name contains `query`
