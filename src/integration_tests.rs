@@ -1,49 +1,9 @@
-// ========== ACTIX API TESTS ==========
-
 #[cfg(test)]
 mod tests {
-    use crate::{auth, config, db::Database, health, view};
+    use crate::{auth, config, db::Database, view};
     use actix_http::Request;
     use actix_web::{App, http::StatusCode, test, web};
 
-    // Health endpoint test
-    #[actix_web::test]
-    async fn test_health_endpoint() {
-        let config = config::Server::new(
-            ("127.0.0.1".to_string(), 8080),
-            "debug".to_string(),
-            "/tmp/test_git".to_string(),
-            format!("/tmp/test_twig_health_{}.db", uuid::Uuid::new_v4()),
-            "secure".to_string(),
-            true,
-            1.0,
-        );
-
-        let db = Database::new(config.db_path());
-        let auth_state = web::Data::new(auth::TwigContext::new(db, "secure".to_string()));
-        // Initialize database synchronously (we are already inside an async test runtime)
-        auth_state.db().init_tables().await.expect("init tables");
-
-        let config_data = web::Data::new(config);
-
-        let app = test::init_service(
-            App::new()
-                .app_data(config_data)
-                .app_data(auth_state.clone())
-                .app_data(web::PayloadConfig::new(1 << 29))
-                .service(health::health)
-                .service(health::up),
-        )
-        .await;
-
-        let req = test::TestRequest::get().uri("/health").to_request();
-        let resp = test::call_service(&app, req).await;
-
-        assert!(resp.status().is_success());
-        assert_eq!(resp.status(), StatusCode::OK);
-    }
-
-    // Helper function to create full test app service
     async fn create_test_service() -> impl actix_web::dev::Service<
         Request,
         Response = actix_web::dev::ServiceResponse,
@@ -97,17 +57,14 @@ mod tests {
         .await
     }
 
-    // Rewritten health test using helper
     #[actix_web::test]
-    async fn test_health_endpoint_v2() {
+    async fn test_health_endpoint() {
         let app = create_test_service().await;
         let req = test::TestRequest::get().uri("/health").to_request();
         let resp = test::call_service(&app, req).await;
-        assert!(resp.status().is_success());
         assert_eq!(resp.status(), StatusCode::OK);
     }
 
-    // Auth UI tests - from auth_ui.hurl
     #[actix_web::test]
     async fn test_invite_page_loads() {
         let app = create_test_service().await;
