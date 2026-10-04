@@ -2261,6 +2261,7 @@ fn render_commit(commit: &Commit) -> Markup {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::view::test_util::{classes_in, index_of};
 
     /// A tab frame with nothing configured. Tests override only the fields they
     /// exercise, which keeps each assertion pinned to one input.
@@ -2306,25 +2307,6 @@ mod tests {
             path: name.to_string(),
             is_dir,
         }
-    }
-
-    fn classes_in(html: &str) -> Vec<String> {
-        let marker = "class=\"";
-        html.match_indices(marker)
-            .flat_map(|(start, _)| {
-                let rest = &html[start + marker.len()..];
-                let end = rest.find('"').expect("class attribute must be closed");
-                rest[..end]
-                    .split_whitespace()
-                    .map(str::to_owned)
-                    .collect::<Vec<_>>()
-            })
-            .collect()
-    }
-
-    fn index_of(html: &str, needle: &str) -> usize {
-        html.find(needle)
-            .unwrap_or_else(|| panic!("expected markup to contain {needle}\n{html}"))
     }
 
     fn count_of(html: &str, needle: &str) -> usize {

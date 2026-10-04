@@ -85,9 +85,7 @@ pub async fn tree_endpoint(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use actix_web::{
-        App, HttpRequest, Responder, http::header::CONTENT_TYPE, test as aw_test, web,
-    };
+    use actix_web::{App, http::header::CONTENT_TYPE, test as aw_test, web};
 
     fn test_config(project_root: &str, db_path: &str) -> config::Server {
         config::Server::new(

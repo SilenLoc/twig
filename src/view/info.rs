@@ -222,20 +222,7 @@ pub async fn index(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn classes_in(html: &str) -> Vec<String> {
-        let marker = "class=\"";
-        html.match_indices(marker)
-            .flat_map(|(start, _)| {
-                let rest = &html[start + marker.len()..];
-                let end = rest.find('"').expect("class attribute must be closed");
-                rest[..end]
-                    .split_whitespace()
-                    .map(str::to_owned)
-                    .collect::<Vec<_>>()
-            })
-            .collect()
-    }
+    use crate::view::test_util::classes_in;
 
     fn anchor_containing<'a>(html: &'a str, needle: &str) -> &'a str {
         html.split("<a ")

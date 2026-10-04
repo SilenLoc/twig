@@ -10,6 +10,9 @@ pub mod settings;
 pub mod test_page;
 pub mod tree;
 
+#[cfg(test)]
+pub(crate) mod test_util;
+
 pub fn render_layout(
     main_content: &maud::Markup,
     username: Option<&str>,
@@ -147,29 +150,11 @@ pub fn render_success(message: &str) -> maud::Markup {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::view::test_util::{classes_in, index_of};
 
     fn layout_html(username: Option<&str>) -> String {
         let content = maud::html! { p { "hello" } };
         render_layout(&content, username, None).into_string()
-    }
-
-    fn classes_in(html: &str) -> Vec<String> {
-        let marker = "class=\"";
-        html.match_indices(marker)
-            .flat_map(|(start, _)| {
-                let rest = &html[start + marker.len()..];
-                let end = rest.find('"').expect("class attribute must be closed");
-                rest[..end]
-                    .split_whitespace()
-                    .map(str::to_owned)
-                    .collect::<Vec<_>>()
-            })
-            .collect()
-    }
-
-    fn index_of(html: &str, needle: &str) -> usize {
-        html.find(needle)
-            .unwrap_or_else(|| panic!("expected markup to contain {needle}\n{html}"))
     }
 
     #[test]

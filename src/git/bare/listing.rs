@@ -106,7 +106,9 @@ fn list_repos_with_info(root: &str, namespace: &str, query: Option<&str>) -> Vec
         };
 
         if let Some(query) = query
-            && !repo_name.to_lowercase().contains(query.to_lowercase().as_str())
+            && !repo_name
+                .to_lowercase()
+                .contains(query.to_lowercase().as_str())
         {
             continue;
         }

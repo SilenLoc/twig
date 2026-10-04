@@ -408,6 +408,7 @@ pub fn render_login_success(username: &str) -> maud::Markup {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::view::test_util::classes_in;
 
     fn auth_pages() -> [(&'static str, String); 4] {
         [
@@ -427,20 +428,6 @@ mod tests {
             ("signup", render_signup_success("testuser").into_string()),
             ("login", render_login_success("testuser").into_string()),
         ]
-    }
-
-    fn classes_in(html: &str) -> Vec<String> {
-        let marker = "class=\"";
-        html.match_indices(marker)
-            .flat_map(|(start, _)| {
-                let rest = &html[start + marker.len()..];
-                let end = rest.find('"').expect("class attribute must be closed");
-                rest[..end]
-                    .split_whitespace()
-                    .map(str::to_owned)
-                    .collect::<Vec<_>>()
-            })
-            .collect()
     }
 
     fn input_tags(html: &str) -> Vec<&str> {

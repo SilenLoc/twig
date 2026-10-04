@@ -196,6 +196,7 @@ pub async fn index(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::view::test_util::{classes_in, index_of};
 
     fn namespace(name: &str, owner: &str) -> (crate::auth::Namespace, String) {
         let namespace = crate::auth::Namespace {
@@ -222,25 +223,6 @@ mod tests {
         repo_hits: &[(String, String)],
     ) -> String {
         render_index(search_query, username, namespaces, repo_hits).into_string()
-    }
-
-    fn classes_in(html: &str) -> Vec<String> {
-        let marker = "class=\"";
-        html.match_indices(marker)
-            .flat_map(|(start, _)| {
-                let rest = &html[start + marker.len()..];
-                let end = rest.find('"').expect("class attribute must be closed");
-                rest[..end]
-                    .split_whitespace()
-                    .map(str::to_owned)
-                    .collect::<Vec<_>>()
-            })
-            .collect()
-    }
-
-    fn index_of(html: &str, needle: &str) -> usize {
-        html.find(needle)
-            .unwrap_or_else(|| panic!("expected markup to contain {needle}\n{html}"))
     }
 
     #[test]
