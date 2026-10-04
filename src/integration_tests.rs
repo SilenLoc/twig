@@ -333,6 +333,32 @@ mod tests {
         let html = String::from_utf8(body.to_vec()).unwrap();
         assert!(html.contains(">50</td>"));
 
+        // An offset past the end of the table is an empty page with no load-more
+        // link, so the scroll chain terminates instead of repeating rows.
+        let response = test::call_service(
+            &app,
+            test::TestRequest::get()
+                .uri("/tree/data/rows?table=scroll_fixture&offset=100")
+                .cookie(actix_web::cookie::Cookie::new("session", &admin_token))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = test::read_body(response).await;
+        let html = String::from_utf8(body.to_vec()).unwrap();
+        assert!(html.is_empty(), "rows past the end render nothing: {html}");
+
+        // A hand-crafted absurd offset is rejected rather than walked.
+        let response = test::call_service(
+            &app,
+            test::TestRequest::get()
+                .uri("/tree/data/rows?table=scroll_fixture&offset=99999999999")
+                .cookie(actix_web::cookie::Cookie::new("session", &admin_token))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
         let _ = std::fs::remove_file(db_path);
     }
 
