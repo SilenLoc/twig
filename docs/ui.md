@@ -66,7 +66,10 @@ configuration:
 - **Commits** — recent commit history with short hash, author, date, and message.
 - **Config** — view `.twig.toml` when present.
 - **Present** — navigate configured Markdown slides when `[present].files` is
-  set.
+  set. The toolbar's Download PDF button opens `/{namespace}/{repo}/present/print`,
+  a chrome-free view that lays every slide out on its own A4 page with the
+  license as the final page, then opens the print dialog automatically; choose
+  "Save as PDF" there to download the deck.
 - **Scripts** — the configured script groups when `[scripts]` is set. Each
   group becomes a sub-tab listing its scripts with a copyable
   `curl … | bash` command; the files are served from `/{namespace}/{repo}/raw/…`

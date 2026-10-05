@@ -1911,3 +1911,134 @@ body.twig-shell {
         scroll-behavior: auto !important;
     }
 }
+
+/* ---- 22. Presentation PDF export ----------------------------------------- */
+
+/* The present/print route serves a chrome-free document: one page per slide
+   from the deck's files, the license page last, then the print dialog opens.
+   This rule applies to every print out of the app, but only the export pages
+   depend on the exact A4 page box; other views simply print at A4 instead of
+   the browser's locale default. */
+@page {
+    size: A4;
+    margin: 0;
+}
+
+/* Backgrounds and rules must survive onto the paper — the export prints with
+   the app's own surfaces, so the slides look like the deck they came from.
+   The binder is a plain flowing column: no viewport units, no scroll areas. */
+.twig-pdf {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    background-color: var(--twig-void);
+    color: var(--twig-ink-primary);
+}
+
+/* Screen preview only: sheets float on the void with a gap between them.
+   Printing collapses the binder so the page boxes decide pagination alone. */
+.twig-pdf-binder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--twig-space-8);
+    padding-block: var(--twig-space-8);
+}
+
+/* One slide, one page: the box is the A4 sheet and a forced break follows it.
+   Overflow hides so an overlong slide clips at its own page instead of
+   bleeding into the next one. */
+.twig-pdf-page {
+    inline-size: 210mm;
+    min-block-size: 297mm;
+    box-sizing: border-box;
+    padding: 16mm;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    break-after: page;
+    background-color: var(--twig-surface-0);
+    border: 1px solid var(--twig-rule);
+}
+
+.twig-pdf-pagehead {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--twig-space-4);
+    padding-block-end: var(--twig-space-3);
+    border-block-end: 1px solid var(--twig-rule);
+}
+
+/* The static stage mirrors .twig-present-stage without the scroll area or the
+   swap transition: the slide fills the sheet and centers vertically, exactly
+   as the deck does at its default 100% text size. */
+.twig-pdf-stage {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-block-size: 0;
+    min-inline-size: 0;
+}
+
+.twig-pdf-stage > * {
+    inline-size: 100%;
+}
+
+/* The license starts on its own sheet, whatever the last slide filled, and
+   never forces a trailing blank page behind itself. */
+.twig-pdf-page--license {
+    break-before: page;
+    break-after: auto;
+}
+
+/* The save hint rides up once fonts and images have settled, and hides from
+   the printout itself. */
+.twig-pdf-hint {
+    position: fixed;
+    inset-block-end: var(--twig-space-6);
+    inset-inline-start: 50%;
+    translate: -50% var(--twig-space-2);
+    display: flex;
+    align-items: baseline;
+    gap: var(--twig-space-3);
+    padding: var(--twig-space-4) var(--twig-space-6);
+    background-color: var(--twig-surface-1);
+    border: 1px solid var(--twig-rule-strong);
+    color: var(--twig-ink-primary);
+    opacity: 0;
+    transition: opacity var(--twig-dur-standard) var(--twig-ease-out);
+    pointer-events: none;
+    z-index: 40;
+}
+
+.twig-pdf-hint[data-twig-pdf-ready="true"] {
+    opacity: 1;
+    translate: -50% 0;
+}
+
+.twig-pdf-hint-body {
+    margin: 0;
+    font-size: var(--twig-t-body);
+}
+
+@media print {
+    .twig-pdf {
+        background-color: transparent;
+    }
+
+    .twig-pdf-binder {
+        display: block;
+        padding-block: 0;
+        gap: 0;
+    }
+
+    .twig-pdf-page {
+        border: 0;
+    }
+
+    .twig-pdf-hint {
+        display: none;
+    }
+}

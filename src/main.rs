@@ -180,6 +180,7 @@ pub(crate) fn configure_routes(cfg: &mut web::ServiceConfig) {
         .service(view::repo::commits_tab_handler)
         .service(view::repo::config_tab_handler)
         .service(view::repo::present_tab_handler)
+        .service(view::repo::present_print_handler)
         .service(view::repo::paper_tab_handler)
         .service(view::repo::scripts_tab_handler)
         .service(view::repo::scripts_group_handler)

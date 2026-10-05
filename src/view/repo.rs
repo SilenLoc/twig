@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use actix_web::Result as AwResult;
 use actix_web::http::header;
 use actix_web::{HttpRequest, HttpResponse, get, web};
-use maud::Markup;
+use maud::{DOCTYPE, Markup};
 use pulldown_cmark::{CowStr, Event, HeadingLevel, Options, Parser, Tag, TagEnd, html};
 use serde::Deserialize;
 
@@ -112,6 +112,26 @@ entries.forEach(function(e){if(e.isIntersecting)track(e.target);});
 },{rootMargin:'-50% 0px -50% 0px',threshold:0});
 pages.forEach(function(p){observer.observe(p);});
 }
+})();";
+
+/// The export document's auto-print. Only once every webfont and image has
+/// loaded does the binder open the print dialog, and the hint banner flips to
+/// its "ready" state so the reader knows what to pick. The `load` event joins
+/// the wait so stylesheet-driven fonts cannot race the first pagination pass.
+const PDF_PRINT_SCRIPT: &str = r"(function(){
+var hint=document.getElementById('twig-pdf-hint');
+var ready=function(){
+if(hint){hint.setAttribute('data-twig-pdf-ready','true');}
+window.print();
+};
+var fonts='fonts' in document ? document.fonts.ready : Promise.resolve();
+var images=Promise.all([].slice.call(document.images).map(function(img){
+return img.complete ? null : new Promise(function(resolve){ img.onload=img.onerror=resolve; });
+}));
+var page=document.readyState==='complete' ? null : new Promise(function(resolve){
+window.addEventListener('load',resolve,{once:true});
+});
+Promise.all([fonts,images,page]).then(ready).catch(ready);
 })();";
 
 #[derive(Deserialize)]
@@ -1863,6 +1883,12 @@ fn render_slide_content(
                 {
                     "Fullscreen"
                 }
+                a class="twig-btn twig-btn--quiet"
+                    href=(format!("/{namespace}/{repo}/present/print"))
+                    title="Open the print view with every slide and the license page"
+                {
+                    "Download PDF"
+                }
                 (super::render_theme_toggle())
             }
         }
@@ -1915,6 +1941,157 @@ fn render_present_view(namespace: &str, repo: &str, slides: &[PresentSlide]) -> 
             "hx-on:htmx:after:swap"="this.focus({ preventScroll: true })"
         {
             (render_slide_content(namespace, repo, 0, slides))
+        }
+    }
+}
+
+/// The PDF export route: the entire deck, one A4 page per slide, with the
+/// license page last. It serves a standalone document with no application
+/// chrome, so the print dialog captures slides only. Rendering reads the slide
+/// files again from the repository, so the output never depends on what the
+/// live view currently shows — scroll position, text size, and the active
+/// slide have no effect on it.
+#[get("/{namespace}/{repo}/present/print")]
+pub async fn present_print_handler(
+    req: HttpRequest,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<TwigContext>,
+    params: web::Path<Params>,
+) -> AwResult<Markup> {
+    let namespace = &params.namespace;
+    let repo = &params.repo;
+    let page_title = format!("{namespace}/{repo}");
+    let username = get_username_from_request(&req, &auth_state).await;
+
+    let handle = match RepoHandle::open(server.project_root(), namespace, repo) {
+        Ok(handle) => handle,
+        Err(e) => {
+            let content = render_git_error(&e);
+            return Ok(render_for_request(
+                &req,
+                content,
+                username.as_deref(),
+                &page_title,
+            ));
+        }
+    };
+
+    let twig_result = handle.load_config_with_raw();
+    if twig_result.config.private && username.is_none() {
+        return Ok(render_repo_auth_error(&req, &page_title));
+    }
+
+    let slides = load_present_slides(&handle, &twig_result.config.present, namespace, repo);
+    // The license comes from the same repository metadata the License tab reads.
+    let license_content = handle.get_license_content();
+    let license = if license_content.trim().is_empty() {
+        None
+    } else {
+        Some(license_content.as_str())
+    };
+
+    Ok(render_pdf_document(namespace, repo, &slides, license))
+}
+
+/// The export binder: a complete HTML document whose head mirrors the app
+/// layout (same webfont and stylesheet, so slides look identical), whose body
+/// is one page per slide plus the license page, and whose only script waits
+/// for fonts and images before opening the print dialog.
+fn render_pdf_document(
+    namespace: &str,
+    repo: &str,
+    slides: &[PresentSlide],
+    license: Option<&str>,
+) -> Markup {
+    maud::html! {
+        (DOCTYPE)
+        html lang="en" {
+            head {
+                meta charset="utf-8";
+                meta name="viewport" content="width=device-width, initial-scale=1";
+                title { (format!("{namespace}/{repo} slides")) " · Twig" }
+                link rel="icon" type="image/svg+xml" href="/assets/twig.svg";
+                script src="/assets/theme.js" {}
+                link rel="preconnect" href="https://fonts.googleapis.com";
+                link rel="preconnect" href="https://fonts.gstatic.com" crossorigin;
+                link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&display=swap";
+                link rel="stylesheet" href="/assets/twig.css";
+            }
+            body class="twig-pdf" {
+                main class="twig-pdf-binder" {
+                    @if slides.is_empty() {
+                        section class="twig-pdf-page" aria-label="No slides" {
+                            (render_empty(
+                                "NO SLIDES",
+                                "No presentation slides configured. Add a [present] section with files to your .twig.toml.",
+                            ))
+                        }
+                    } @else {
+                        @for (index, slide) in slides.iter().enumerate() {
+                            (render_pdf_slide_page(index, slides.len(), slide))
+                        }
+                    }
+                    (render_pdf_license_page(license))
+                }
+                @if !slides.is_empty() {
+                    div id="twig-pdf-hint" class="twig-pdf-hint" role="status" {
+                        p class="twig-eyebrow" { "PRINT" }
+                        p class="twig-pdf-hint-body" { "Choose “Save as PDF” in the dialog to download the deck." }
+                    }
+                    script { (maud::PreEscaped(PDF_PRINT_SCRIPT)) }
+                }
+            }
+        }
+    }
+}
+
+/// The header strip every export page carries: the section name and, on slide
+/// pages, the same zero-padded counter the live deck shows.
+fn render_pdf_pagehead(eyebrow: &str, count: Option<&str>) -> Markup {
+    maud::html! {
+        header class="twig-pdf-pagehead" {
+            p class="twig-eyebrow" { (eyebrow) }
+            @if let Some(count) = count {
+                span class="twig-present-count" { (count) }
+            }
+        }
+    }
+}
+
+/// One slide on one A4 page. The slide reuses the live view's `twig-md--slide`
+/// article inside a static, print-safe stage, so the export styling matches
+/// the deck at its default 100% text size.
+fn render_pdf_slide_page(index: usize, slide_count: usize, slide: &PresentSlide) -> Markup {
+    maud::html! {
+        section
+            class="twig-pdf-page"
+            aria-label=(format!("Slide {} of {slide_count}", index + 1))
+        {
+            (render_pdf_pagehead("PRESENTATION", Some(&slide_counter(index, slide_count))))
+            div class="twig-pdf-stage" {
+                article class="twig-md twig-md--slide" {
+                    (maud::PreEscaped(&slide.html))
+                }
+            }
+        }
+    }
+}
+
+/// The final export page: the repository license, always starting on its own
+/// sheet. It reads through the same `get_license_content` fallback chain the
+/// License tab uses; a repository without any license text gets the same
+/// empty state the License tab shows.
+fn render_pdf_license_page(license: Option<&str>) -> Markup {
+    maud::html! {
+        section class="twig-pdf-page twig-pdf-page--license" aria-label="License" {
+            (render_pdf_pagehead("LICENSE", None))
+            @if let Some(license) = license {
+                div class="twig-md twig-md--boxed" {
+                    (maud::PreEscaped(license))
+                }
+            } @else {
+                (render_empty("NO LICENSE", "No license information available."))
+            }
         }
     }
 }
@@ -2803,6 +2980,124 @@ mod tests {
     }
 
     #[test]
+    fn test_presentation_offers_the_pdf_export() {
+        let deck = slides(3);
+        let html = render_slide_content("acme", "my-project", 0, &deck).into_string();
+
+        assert!(
+            html.contains(r#"href="/acme/my-project/present/print""#),
+            "the toolbar links to the print view: {html}"
+        );
+        assert!(
+            html.contains(
+                r#"<a class="twig-btn twig-btn--quiet" href="/acme/my-project/present/print""#
+            ),
+            "Download PDF is a plain navigation link, not an htmx swap: {html}"
+        );
+    }
+
+    #[test]
+    fn test_print_export_renders_one_page_per_slide_with_the_license_last() {
+        let deck = slides(3);
+        let html =
+            render_pdf_document("acme", "my-project", &deck, Some("<p>MIT</p>")).into_string();
+
+        // One page per slide in deck order, each labelled and counted, plus
+        // the license page at the end.
+        for i in 0..3 {
+            assert!(
+                html.contains(&format!(r#"aria-label="Slide {} of 3""#, i + 1)),
+                "every slide gets its own page: {html}"
+            );
+            assert!(
+                html.contains(&format!("<h1>Slide {i}</h1>")),
+                "slide {i} renders from the deck data: {html}"
+            );
+            assert!(
+                html.contains(&format!(
+                    r#"<span class="twig-present-count">{} / 3</span>"#,
+                    i + 1
+                )),
+                "the export reuses the live deck's zero-padded counter: {html}"
+            );
+        }
+        assert_eq!(
+            count_of(&html, r#"class="twig-pdf-page""#),
+            3,
+            "exactly one page per slide: {html}"
+        );
+        assert!(
+            index_of(&html, r#"aria-label="Slide 3 of 3""#)
+                < index_of(&html, r#"class="twig-pdf-page twig-pdf-page--license""#),
+            "the license page follows the last slide: {html}"
+        );
+        assert!(html.contains("<p>MIT</p>"), "{html}");
+
+        // The license page starts on its own sheet, and the last page never
+        // forces a trailing blank sheet.
+        assert!(html.contains(r#"class="twig-pdf-page twig-pdf-page--license""#),);
+    }
+
+    #[test]
+    fn test_print_export_opens_the_dialog_once_loaded() {
+        let deck = slides(2);
+        let html =
+            render_pdf_document("acme", "my-project", &deck, Some("<p>MIT</p>")).into_string();
+
+        assert!(
+            html.contains("document.fonts.ready") && html.contains("window.print()"),
+            "the export auto-prints after the fonts settle: {html}"
+        );
+        assert!(
+            html.contains("img.complete"),
+            "images join the wait before the dialog opens: {html}"
+        );
+        assert!(
+            html.contains(r#"id="twig-pdf-hint""#) && html.contains("data-twig-pdf-ready"),
+            "the save hint flips to ready when the dialog opens: {html}"
+        );
+        assert!(
+            html.contains("Save as PDF"),
+            "the hint names the dialog option to pick: {html}"
+        );
+    }
+
+    #[test]
+    fn test_print_export_is_a_chrome_free_document() {
+        let deck = slides(2);
+        let html =
+            render_pdf_document("acme", "my-project", &deck, Some("<p>MIT</p>")).into_string();
+
+        assert!(html.starts_with("<!DOCTYPE html>"), "{html}");
+        assert!(
+            html.contains("<title>acme/my-project slides · Twig</title>"),
+            "{html}"
+        );
+        assert!(
+            !html.contains("twig-masthead") && !html.contains("twig-tabs"),
+            "the export carries no application chrome: {html}"
+        );
+        assert!(
+            !html.contains("hx-get=") && !html.contains("/assets/h.js"),
+            "the export is a static document: {html}"
+        );
+        assert!(
+            html.contains(r#"class="twig-pdf""#) && html.contains(r#"class="twig-pdf-binder""#),
+            "{html}"
+        );
+
+        let empty = render_pdf_document("acme", "my-project", &[], None).into_string();
+        assert!(
+            empty.contains("NO SLIDES") && empty.contains("No license information available."),
+            "a deck without slides still names both conditions: {empty}"
+        );
+        assert!(
+            !empty.contains("window.print()"),
+            "an empty binder has nothing to print: {empty}"
+        );
+    }
+
+    #[test]
     fn test_content_breadcrumbs_mark_the_final_segment_as_current() {
         let html = render_content_breadcrumbs("acme", "my-project", "src/git").into_string();
         assert!(
@@ -3384,6 +3679,14 @@ mod tests {
             (
                 "present tab",
                 render_present_view("acme", "my-project", &deck).into_string(),
+            ),
+            (
+                "present print",
+                render_pdf_document("acme", "my-project", &deck, Some("<p>MIT</p>")).into_string(),
+            ),
+            (
+                "empty present print",
+                render_pdf_document("acme", "my-project", &[], None).into_string(),
             ),
             (
                 "empty present tab",
