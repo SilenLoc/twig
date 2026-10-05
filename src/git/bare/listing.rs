@@ -60,23 +60,29 @@ pub(super) fn extract_license_from_cargo_toml(cargo_content: &str) -> Result<Str
     }
 }
 
-/// Get the non-commercial license fallback text
+/// Get the non-commercial license fallback text. It covers everything in the
+/// repository the author created — code and prose alike — and explicitly
+/// leaves third-party content under its own license.
 pub(super) fn get_non_commercial_license() -> String {
     r#"Non-Commercial License
 
-This software is provided under a non-commercial license with the following restrictions:
+This license covers everything in this repository that its author created, not just the software: source code, documentation, papers and notes, slides and presentations, data, images, and other original material (together, the "Works"). Third-party content is not covered — see clause 2.
 
-1. **Non-Commercial Use Only**: This software and its source code may only be used for non-commercial purposes. Any commercial use, including but not limited to sale, licensing, or use in commercial products or services, is strictly prohibited.
+1. **Non-Commercial Use Only**: The Works may only be used for non-commercial purposes. Any commercial use, including but not limited to sale, licensing, or use in commercial products or services, is strictly prohibited.
 
-2. **No LLM Training**: This software and its source code may not be used for training large language models (LLMs), machine learning models, or any other form of AI/ML training, whether commercial or non-commercial.
+2. **Third-Party Content**: Vendored dependencies, submodules, datasets, fonts, and any other third-party material included in the repository remain under their own licenses and terms. This license grants no rights to that content, and using it is subject to its own license regardless of what this one allows.
 
-3. **No Redistribution for Training**: You may not distribute, share, or make this software available to others for the purpose of AI/ML training.
+3. **No AI/ML Training**: The Works may not be used for training large language models (LLMs), machine learning models, or for any other form of AI/ML training or fine-tuning, whether commercial or non-commercial.
 
-4. **Permitted Uses**: You may use this software for personal, educational, research (non-AI/ML), and other non-commercial purposes, provided you comply with all other restrictions.
+4. **No Redistribution for Training**: You may not distribute, share, or make the Works available to others for the purpose of AI/ML training.
 
-5. **No Warranty**: This software is provided "AS IS" without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose, and non-infringement.
+5. **Attribution**: When you share or adapt the Works in a way this license permits, keep a notice of this license and credit the author as the copyright holder.
 
-Violation of any of these terms will result in immediate termination of your rights to use this software."#.to_string()
+6. **Permitted Uses**: You may use and adapt the Works for personal, educational, research (non-AI/ML), and other non-commercial purposes, provided you comply with all other restrictions.
+
+7. **No Warranty**: The Works are provided "AS IS" without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose, and non-infringement.
+
+8. **Termination**: Violation of any of these terms will result in immediate termination of your rights to use the Works."#.to_string()
 }
 
 /// Date of the commit `HEAD` points at, or `None` when the repository has no

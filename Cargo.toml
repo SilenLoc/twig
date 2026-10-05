@@ -86,7 +86,7 @@ pedantic = { level = "warn", priority = -1 }
 [package]
 edition = "2024"
 name = "twig"
-version = "0.1.124"
+version = "0.1.125"
 
 [profile.dev]
 debug = "line-tables-only"

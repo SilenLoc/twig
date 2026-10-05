@@ -74,7 +74,10 @@ configuration:
   group becomes a sub-tab listing its scripts with a copyable
   `curl … | bash` command; the files are served from `/{namespace}/{repo}/raw/…`
   so the command runs as printed.
-- **License** — display the repository license or fallback license content.
+- **License** — display the repository license (`LICENSE.md`, `LICENSE`, or the
+  `license` field of `Cargo.toml`), or a fallback non-commercial license when
+  none is present. The fallback covers the author's own content — code,
+  documentation, papers, slides, data — and excludes third-party material.
 
 The config can choose which tabs to display and which repository files to omit
 from the browser. Repositories with `private = true` require a logged-in user

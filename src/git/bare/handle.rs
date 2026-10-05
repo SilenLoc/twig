@@ -124,7 +124,8 @@ impl RepoHandle {
     /// 1. Try LICENSE.md
     /// 2. Try LICENSE
     /// 3. Try to extract from Cargo.toml
-    /// 4. Fall back to non-commercial license
+    /// 4. Fall back to the non-commercial license, which covers the author's
+    ///    own content (code and prose) but no third-party material
     pub fn get_license_content(&self) -> String {
         // Try LICENSE.md first
         if let Ok(Some(content)) = self.read_file("LICENSE.md") {
@@ -143,7 +144,7 @@ impl RepoHandle {
             return license;
         }
 
-        // Fall back to non-commercial license
+        // Fall back to the non-commercial license
         get_non_commercial_license()
     }
 
