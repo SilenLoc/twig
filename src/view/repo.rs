@@ -2010,12 +2010,12 @@ fn render_pdf_document(
                 meta charset="utf-8";
                 meta name="viewport" content="width=device-width, initial-scale=1";
                 title { (format!("{namespace}/{repo} slides")) " · Twig" }
-                link rel="icon" type="image/svg+xml" href="/assets/twig.svg";
-                script src="/assets/theme.js" {}
+                link rel="icon" type="image/svg+xml" href=(crate::assets::url("twig.svg"));
+                script src=(crate::assets::url("theme.js")) {}
                 link rel="preconnect" href="https://fonts.googleapis.com";
                 link rel="preconnect" href="https://fonts.gstatic.com" crossorigin;
                 link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&display=swap";
-                link rel="stylesheet" href="/assets/twig.css";
+                link rel="stylesheet" href=(crate::assets::url("twig.css"));
             }
             body class="twig-pdf" {
                 main class="twig-pdf-binder" {

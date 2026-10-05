@@ -1,49 +1,117 @@
-use actix_web::{HttpRequest, HttpResponse, Responder, get, http::header::CACHE_CONTROL, web};
+use actix_web::{
+    HttpRequest, HttpResponse, Responder, get,
+    http::header::{CACHE_CONTROL, HeaderValue},
+    web,
+};
 
 use crate::config;
 
-const TCSS: &str = include_str!("../assets/t.css");
-const TWIGCSS: &str = include_str!("../assets/twig.css");
-const THEME_JS: &str = include_str!("../assets/theme.js");
-const HTMX: &str = include_str!("../assets/h.js");
-const HX_LIVE: &str = include_str!("../assets/hx-live.js");
-const TWIG_SVG: &str = include_str!("../assets/twig.svg");
-const TWIG_SCHEMA: &str = include_str!("../assets/twig.schema.json");
+/// Version segment embedded in every asset URL the UI renders.
+pub const ASSET_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Unversioned URLs share one cache entry across releases, so they must revalidate.
+pub const UNVERSIONED_CACHE_CONTROL: &str = "no-cache";
+
+struct Asset {
+    stem: &'static str,
+    extension: &'static str,
+    content_type: &'static str,
+    body: &'static str,
+}
+
+impl Asset {
+    fn name(&self) -> String {
+        format!("{}.{}", self.stem, self.extension)
+    }
+
+    fn versioned_name(&self) -> String {
+        format!("{}-{}.{}", self.stem, ASSET_VERSION, self.extension)
+    }
+}
+
+const ASSETS: &[Asset] = &[
+    Asset {
+        stem: "t",
+        extension: "css",
+        content_type: "text/css; charset=utf-8",
+        body: include_str!("../assets/t.css"),
+    },
+    Asset {
+        stem: "twig",
+        extension: "css",
+        content_type: "text/css; charset=utf-8",
+        body: include_str!("../assets/twig.css"),
+    },
+    Asset {
+        stem: "theme",
+        extension: "js",
+        content_type: "application/javascript; charset=utf-8",
+        body: include_str!("../assets/theme.js"),
+    },
+    Asset {
+        stem: "h",
+        extension: "js",
+        content_type: "application/javascript; charset=utf-8",
+        body: include_str!("../assets/h.js"),
+    },
+    Asset {
+        stem: "hx-live",
+        extension: "js",
+        content_type: "application/javascript; charset=utf-8",
+        body: include_str!("../assets/hx-live.js"),
+    },
+    Asset {
+        stem: "twig",
+        extension: "svg",
+        content_type: "image/svg+xml",
+        body: include_str!("../assets/twig.svg"),
+    },
+    Asset {
+        stem: "twig.schema",
+        extension: "json",
+        content_type: "application/schema+json; charset=utf-8",
+        body: include_str!("../assets/twig.schema.json"),
+    },
+];
+
+fn find(filename: &str) -> Option<(&'static Asset, bool)> {
+    ASSETS.iter().find_map(|asset| {
+        if filename == asset.versioned_name() {
+            Some((asset, true))
+        } else if filename == asset.name() {
+            Some((asset, false))
+        } else {
+            None
+        }
+    })
+}
+
+/// Path of a versioned asset, e.g. `/assets/twig-<version>.css`, so a browser only
+/// reuses its cached copy while the version it was fetched under still matches.
+pub fn url(filename: &str) -> String {
+    match find(filename) {
+        Some((asset, _)) => format!("/assets/{}", asset.versioned_name()),
+        None => format!("/assets/{filename}"),
+    }
+}
 
 #[get("/assets/{filename:.*}")]
 pub async fn assets(req: HttpRequest, config: web::Data<config::Server>) -> impl Responder {
     let path = req.match_info().query("filename");
 
-    match path {
-        "t.css" => HttpResponse::Ok()
-            .content_type("text/css; charset=utf-8")
+    match find(path) {
+        Some((asset, true)) => HttpResponse::Ok()
+            .content_type(asset.content_type)
             .insert_header((CACHE_CONTROL, config.cache_control().clone()))
-            .body(TCSS),
-        "twig.css" => HttpResponse::Ok()
-            .content_type("text/css; charset=utf-8")
-            .insert_header((CACHE_CONTROL, config.cache_control().clone()))
-            .body(TWIGCSS),
-        "theme.js" => HttpResponse::Ok()
-            .content_type("application/javascript; charset=utf-8")
-            .insert_header((CACHE_CONTROL, config.cache_control().clone()))
-            .body(THEME_JS),
-        "h.js" => HttpResponse::Ok()
-            .content_type("application/javascript; charset=utf-8")
-            .insert_header((CACHE_CONTROL, config.cache_control().clone()))
-            .body(HTMX),
-        "hx-live.js" => HttpResponse::Ok()
-            .content_type("application/javascript; charset=utf-8")
-            .insert_header((CACHE_CONTROL, config.cache_control().clone()))
-            .body(HX_LIVE),
-        "twig.svg" => HttpResponse::Ok()
-            .content_type("image/svg+xml")
-            .insert_header((CACHE_CONTROL, config.cache_control().clone()))
-            .body(TWIG_SVG),
-        "twig.schema.json" => HttpResponse::Ok()
-            .content_type("application/schema+json; charset=utf-8")
-            .insert_header((CACHE_CONTROL, config.cache_control().clone()))
-            .body(TWIG_SCHEMA),
-        _ => HttpResponse::NotFound().body("Not found"),
+            .body(asset.body),
+        Some((asset, false)) => HttpResponse::Ok()
+            .content_type(asset.content_type)
+            .insert_header((
+                CACHE_CONTROL,
+                HeaderValue::from_static(UNVERSIONED_CACHE_CONTROL),
+            ))
+            .body(asset.body),
+        None => HttpResponse::NotFound().body("Not found"),
     }
 }
 
@@ -53,6 +121,12 @@ mod tests {
     use actix_web::{http::header::HeaderValue, test as aw_test, web};
 
     use crate::config;
+
+    fn body_of(filename: &str) -> &'static str {
+        find(filename)
+            .map(|(asset, _)| asset.body)
+            .unwrap_or_else(|| panic!("{filename} must be a known asset"))
+    }
 
     fn css_without_comments(css: &str) -> String {
         let mut out = String::with_capacity(css.len());
@@ -88,22 +162,38 @@ mod tests {
 
     #[test]
     fn test_asset_constants_are_non_empty() {
-        assert!(!TCSS.is_empty(), "t.css should not be empty");
-        assert!(!TWIGCSS.is_empty(), "twig.css should not be empty");
-        assert!(!THEME_JS.is_empty(), "theme.js should not be empty");
-        assert!(!HTMX.is_empty(), "h.js should not be empty");
-        assert!(!HX_LIVE.is_empty(), "hx-live.js should not be empty");
-        assert!(!TWIG_SVG.is_empty(), "twig.svg should not be empty");
-        assert!(
-            !TWIG_SCHEMA.is_empty(),
-            "twig.schema.json should not be empty"
+        for filename in [
+            "t.css",
+            "twig.css",
+            "theme.js",
+            "h.js",
+            "hx-live.js",
+            "twig.svg",
+            "twig.schema.json",
+        ] {
+            assert!(
+                !body_of(filename).is_empty(),
+                "{filename} should not be empty"
+            );
+        }
+    }
+
+    #[test]
+    fn test_urls_carry_the_version() {
+        assert_eq!(url("t.css"), format!("/assets/t-{ASSET_VERSION}.css"));
+        assert_eq!(url("twig.css"), format!("/assets/twig-{ASSET_VERSION}.css"));
+        assert_eq!(
+            url("hx-live.js"),
+            format!("/assets/hx-live-{ASSET_VERSION}.js")
         );
+        assert_eq!(url("twig.svg"), format!("/assets/twig-{ASSET_VERSION}.svg"));
+        assert_eq!(url("nope.txt"), "/assets/nope.txt");
     }
 
     #[test]
     fn test_twig_schema_lists_every_config_key() {
-        let schema: serde_json::Value =
-            serde_json::from_str(TWIG_SCHEMA).expect("twig.schema.json must be valid JSON");
+        let schema: serde_json::Value = serde_json::from_str(body_of("twig.schema.json"))
+            .expect("twig.schema.json must be valid JSON");
         let properties = schema["properties"]
             .as_object()
             .expect("schema must define top-level properties");
@@ -122,8 +212,8 @@ mod tests {
 
     #[test]
     fn test_twig_schema_describes_nested_script_groups() {
-        let schema: serde_json::Value =
-            serde_json::from_str(TWIG_SCHEMA).expect("twig.schema.json must be valid JSON");
+        let schema: serde_json::Value = serde_json::from_str(body_of("twig.schema.json"))
+            .expect("twig.schema.json must be valid JSON");
         let group = &schema["definitions"]["scriptGroup"];
         assert_eq!(group["properties"]["name"]["type"], "string");
         assert_eq!(
@@ -138,7 +228,7 @@ mod tests {
 
     #[test]
     fn test_twig_css_confines_raw_colour_values_to_the_token_block() {
-        let scanned = css_outside_root_blocks(&css_without_comments(TWIGCSS));
+        let scanned = css_outside_root_blocks(&css_without_comments(body_of("twig.css")));
         for (offset, _) in scanned.match_indices('#') {
             assert!(
                 !starts_a_hex_colour(&scanned[offset + 1..]),
@@ -160,7 +250,7 @@ mod tests {
 
     #[test]
     fn test_twig_css_honours_the_depth_and_motion_bans() {
-        let css = css_without_comments(TWIGCSS);
+        let css = css_without_comments(body_of("twig.css"));
         for banned in ["box-shadow", "backdrop-filter", "text-shadow", "100vh"] {
             assert!(!css.contains(banned), "{banned} is banned by DESIGN.md");
         }
@@ -184,7 +274,7 @@ mod tests {
 
     #[test]
     fn test_twig_css_uses_only_the_two_authoritative_breakpoints() {
-        let css = css_without_comments(TWIGCSS);
+        let css = css_without_comments(body_of("twig.css"));
         let marker = "min-width:";
         let widths: Vec<String> = css
             .match_indices(marker)
@@ -205,7 +295,7 @@ mod tests {
 
     #[test]
     fn test_twig_css_drops_the_outgoing_system() {
-        let css = css_without_comments(TWIGCSS);
+        let css = css_without_comments(body_of("twig.css"));
         for outgoing in ["tf-", "Anton", "Bricolage", "markdown-body"] {
             assert!(!css.contains(outgoing), "{outgoing} is superseded");
         }
@@ -213,7 +303,7 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn test_assets_handler_uses_configured_cache_control() {
+    async fn test_versioned_assets_handler_uses_configured_cache_control() {
         let config = config::Server::new(
             ("127.0.0.1".to_string(), 8080),
             "debug".to_string(),
@@ -231,6 +321,33 @@ mod tests {
         )
         .await;
 
+        let req = aw_test::TestRequest::get().uri(&url("t.css")).to_request();
+        let resp = aw_test::call_service(&app, req).await;
+
+        assert_eq!(
+            resp.headers().get("cache-control"),
+            Some(&HeaderValue::from_static("no-cache"))
+        );
+    }
+
+    #[actix_web::test]
+    async fn test_unversioned_assets_must_revalidate() {
+        let config = config::Server::new(
+            ("127.0.0.1".to_string(), 8080),
+            "debug".to_string(),
+            "/srv/git".to_string(),
+            "twig.db".to_string(),
+            "key".to_string(),
+            false,
+            1.0,
+        );
+        let app = aw_test::init_service(
+            actix_web::App::new()
+                .app_data(web::Data::new(config))
+                .service(assets),
+        )
+        .await;
+
         let req = aw_test::TestRequest::get()
             .uri("/assets/t.css")
             .to_request();
@@ -238,7 +355,8 @@ mod tests {
 
         assert_eq!(
             resp.headers().get("cache-control"),
-            Some(&HeaderValue::from_static("no-cache"))
+            Some(&HeaderValue::from_static(UNVERSIONED_CACHE_CONTROL)),
+            "an unversioned path cannot be cached for a whole release"
         );
     }
 
@@ -260,35 +378,41 @@ mod tests {
         )
         .await;
 
-        for (path, expected_type) in [
-            ("/assets/t.css", "text/css"),
-            ("/assets/twig.css", "text/css"),
-            ("/assets/theme.js", "application/javascript"),
-            ("/assets/h.js", "application/javascript"),
-            ("/assets/hx-live.js", "application/javascript"),
-            ("/assets/twig.svg", "image/svg+xml"),
-            ("/assets/twig.schema.json", "application/schema+json"),
+        for (name, expected_type) in [
+            ("t.css", "text/css"),
+            ("twig.css", "text/css"),
+            ("theme.js", "application/javascript"),
+            ("h.js", "application/javascript"),
+            ("hx-live.js", "application/javascript"),
+            ("twig.svg", "image/svg+xml"),
+            ("twig.schema.json", "application/schema+json"),
         ] {
-            let req = aw_test::TestRequest::get().uri(path).to_request();
-            let resp = aw_test::call_service(&app, req).await;
-            assert!(resp.status().is_success(), "{path} should succeed");
-            assert!(
-                resp.headers()
-                    .get("content-type")
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .starts_with(expected_type),
-                "{path} should have content type {expected_type}"
-            );
-            assert_eq!(
-                resp.headers()
-                    .get("cache-control")
-                    .unwrap()
-                    .to_str()
-                    .unwrap(),
-                config::DEFAULT_CACHE_CONTROL
-            );
+            for (path, expected_cache) in [
+                (url(name), config::DEFAULT_CACHE_CONTROL),
+                (format!("/assets/{name}"), UNVERSIONED_CACHE_CONTROL),
+            ] {
+                let req = aw_test::TestRequest::get().uri(&path).to_request();
+                let resp = aw_test::call_service(&app, req).await;
+                assert!(resp.status().is_success(), "{path} should succeed");
+                assert!(
+                    resp.headers()
+                        .get("content-type")
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .starts_with(expected_type),
+                    "{path} should have content type {expected_type}"
+                );
+                assert_eq!(
+                    resp.headers()
+                        .get("cache-control")
+                        .unwrap()
+                        .to_str()
+                        .unwrap(),
+                    expected_cache,
+                    "{path} should carry {expected_cache}"
+                );
+            }
         }
     }
 
@@ -314,5 +438,33 @@ mod tests {
             .to_request();
         let resp = aw_test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::NOT_FOUND);
+    }
+
+    #[actix_web::test]
+    async fn test_assets_handler_rejects_another_version() {
+        let config = config::Server::new(
+            ("127.0.0.1".to_string(), 8080),
+            "debug".to_string(),
+            "/srv/git".to_string(),
+            "twig.db".to_string(),
+            "key".to_string(),
+            false,
+            1.0,
+        );
+        let app = aw_test::init_service(
+            actix_web::App::new()
+                .app_data(web::Data::new(config))
+                .service(assets),
+        )
+        .await;
+        let req = aw_test::TestRequest::get()
+            .uri("/assets/t-0.0.1.css")
+            .to_request();
+        let resp = aw_test::call_service(&app, req).await;
+        assert_eq!(
+            resp.status(),
+            actix_web::http::StatusCode::NOT_FOUND,
+            "a version from another release must not be served"
+        );
     }
 }

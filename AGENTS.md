@@ -16,7 +16,7 @@ Twig is a Git server and web UI: Rust, Actix-web, maud templates, Turso/libSQL o
 
 - Tests are `#[cfg(test)]` modules colocated in the file they cover, driven by `actix_web::test`. Keep new tests there rather than in `tests/`.
 - Views use `maud::html!`. Check the `HX-Request` header: present → return the bare partial, absent → wrap it in `view::render_layout`.
-- All styling flows through the `--twig-*` tokens in the `:root` block of `assets/twig.css`; that block is the only place raw colour values may appear. Assets (`t.css`, `h.js` htmx, `twig.svg`) are embedded via `include_str!` in `src/assets.rs`. Do not add a CSS framework, inline styles, or a second stylesheet.
+- All styling flows through the `--twig-*` tokens in the `:root` block of `assets/twig.css`; that block is the only place raw colour values may appear. Assets (`t.css`, `h.js` htmx, `twig.svg`) are embedded via `include_str!` in `src/assets.rs`. Do not add a CSS framework, inline styles, or a second stylesheet. Reference assets in views through `crate::assets::url("twig.css")`, never a literal `/assets/...` path, so every URL carries the version and stays immutable-cacheable only for its own release.
 - Clippy runs at `pedantic`. Prefer `?` over `.unwrap()`, and `log::error!` before returning an HTTP error.
 
 ## Config and auth

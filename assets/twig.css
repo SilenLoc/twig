@@ -1916,11 +1916,12 @@ body.twig-shell {
 
 /* The present/print route serves a chrome-free document: one page per slide
    from the deck's files, the license page last, then the print dialog opens.
-   This rule applies to every print out of the app, but only the export pages
-   depend on the exact A4 page box; other views simply print at A4 instead of
-   the browser's locale default. */
+   Landscape suits the widescreen shape of a projected deck. This rule applies
+   to every print out of the app, but only the export pages depend on the
+   exact A4 page box; other views simply print at A4 landscape instead of the
+   browser's locale default. */
 @page {
-    size: A4;
+    size: A4 landscape;
     margin: 0;
 }
 
@@ -1944,12 +1945,12 @@ body.twig-shell {
     padding-block: var(--twig-space-8);
 }
 
-/* One slide, one page: the box is the A4 sheet and a forced break follows it.
-   Overflow hides so an overlong slide clips at its own page instead of
-   bleeding into the next one. */
+/* One slide, one landscape page: the box is the A4 sheet and a forced break
+   follows it. Overflow hides so an overlong slide clips at its own page
+   instead of bleeding into the next one. */
 .twig-pdf-page {
-    inline-size: 210mm;
-    min-block-size: 297mm;
+    inline-size: 297mm;
+    min-block-size: 210mm;
     box-sizing: border-box;
     padding: 16mm;
     display: flex;
@@ -2024,8 +2025,13 @@ body.twig-shell {
 }
 
 @media print {
+    /* The body background propagates to the page canvas, so it paints every
+       sheet edge to edge. That lets the page boxes print a little under the
+       sheet height: an exactly-full box is measured against a sheet the
+       browser rounds slightly differently, and the rounding difference
+       fragments the box's last line onto a stray page. */
     .twig-pdf {
-        background-color: transparent;
+        background-color: var(--twig-surface-0);
     }
 
     .twig-pdf-binder {
@@ -2036,6 +2042,7 @@ body.twig-shell {
 
     .twig-pdf-page {
         border: 0;
+        min-block-size: 200mm;
     }
 
     .twig-pdf-hint {

@@ -31,16 +31,16 @@ pub fn render_layout(
                         "Twig"
                     }
                 }
-                link rel="icon" type="image/svg+xml" href="/assets/twig.svg";
-                script src="/assets/theme.js" {}
+                link rel="icon" type="image/svg+xml" href=(crate::assets::url("twig.svg"));
+                script src=(crate::assets::url("theme.js")) {}
                 link rel="preconnect" href="https://fonts.googleapis.com";
                 link rel="preconnect" href="https://fonts.gstatic.com" crossorigin;
                 link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&display=swap";
-                link rel="stylesheet" href="/assets/t.css";
-                link rel="stylesheet" href="/assets/twig.css";
+                link rel="stylesheet" href=(crate::assets::url("t.css"));
+                link rel="stylesheet" href=(crate::assets::url("twig.css"));
                 meta name="htmx-config" content=(r#"{"implicitInheritance":true,"noSwap":[204,304]}"#);
-                script src="/assets/h.js" {}
-                script src="/assets/hx-live.js" {}
+                script src=(crate::assets::url("h.js")) {}
+                script src=(crate::assets::url("hx-live.js")) {}
             }
             body
                 class="twig-shell"
@@ -227,7 +227,8 @@ mod tests {
             );
         }
         assert!(
-            index_of(&html, "/assets/t.css") < index_of(&html, "/assets/twig.css"),
+            index_of(&html, &crate::assets::url("t.css"))
+                < index_of(&html, &crate::assets::url("twig.css")),
             "twig.css must override t.css: {html}"
         );
     }
@@ -239,7 +240,8 @@ mod tests {
             assert!(html.contains("Toggle light and dark mode"), "{html}");
             assert!(html.contains("twig-theme-toggle"), "{html}");
             assert!(
-                index_of(&html, "/assets/theme.js") < index_of(&html, "/assets/twig.css"),
+                index_of(&html, &crate::assets::url("theme.js"))
+                    < index_of(&html, &crate::assets::url("twig.css")),
                 "restore the theme before the stylesheet paints: {html}"
             );
         }
@@ -251,12 +253,33 @@ mod tests {
         assert!(html.contains("implicitInheritance"), "{html}");
         assert!(html.contains("&quot;noSwap&quot;:[204,304]"), "{html}");
         assert!(html.contains("hx-status:4xx=\"swap:none\""), "{html}");
-        assert!(html.contains("/assets/h.js"), "{html}");
-        assert!(html.contains("/assets/hx-live.js"), "{html}");
+        assert!(html.contains(&crate::assets::url("h.js")), "{html}");
+        assert!(html.contains(&crate::assets::url("hx-live.js")), "{html}");
         assert!(
-            index_of(&html, "/assets/h.js") < index_of(&html, "/assets/hx-live.js"),
+            index_of(&html, &crate::assets::url("h.js"))
+                < index_of(&html, &crate::assets::url("hx-live.js")),
             "hx-live must load after htmx: {html}"
         );
+    }
+
+    #[test]
+    fn test_layout_links_versioned_assets() {
+        let html = layout_html(None);
+        for name in [
+            "t.css",
+            "twig.css",
+            "theme.js",
+            "h.js",
+            "hx-live.js",
+            "twig.svg",
+        ] {
+            let versioned = crate::assets::url(name);
+            assert!(html.contains(&versioned), "{versioned} missing: {html}");
+            assert!(
+                !html.contains(&format!("/assets/{name}")),
+                "{name} must only be linked through its versioned path: {html}"
+            );
+        }
     }
 
     #[test]

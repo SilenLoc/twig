@@ -141,25 +141,25 @@ fn asset_endpoints() -> Vec<TestEndpoint> {
             id: "css-twig",
             category: "Assets",
             method: "GET",
-            url: "/assets/twig.css".to_string(),
+            url: crate::assets::url("twig.css"),
         },
         TestEndpoint {
             id: "css-t",
             category: "Assets",
             method: "GET",
-            url: "/assets/t.css".to_string(),
+            url: crate::assets::url("t.css"),
         },
         TestEndpoint {
             id: "js-h",
             category: "Assets",
             method: "GET",
-            url: "/assets/h.js".to_string(),
+            url: crate::assets::url("h.js"),
         },
         TestEndpoint {
             id: "svg-twig",
             category: "Assets",
             method: "GET",
-            url: "/assets/twig.svg".to_string(),
+            url: crate::assets::url("twig.svg"),
         },
     ]
 }
