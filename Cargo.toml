@@ -1,6 +1,6 @@
 [package]
 name = "twig"
-version = "0.2.0"
+version = "0.2.2"
 edition = "2024"
 
 [workspace]
@@ -11,16 +11,16 @@ resolver = "3"
 actix-identity = "0.9"
 actix-session = "0.11"
 anyhow = "1"
-argon2 = "0.5"
-base64 = "0.22"
+argon2 = "0.6"
+base64 = "0.23"
 bytes = "1"
 env_logger = { version = "0.11", default-features = false, features = ["humantime"] }
 hex = "0.4"
 log = "0.4"
-pulldown-cmark = "0.12"
+pulldown-cmark = "0.13"
 qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
-toml = "0.8"
-turso = { version = "0.5.3", default-features = false }
+toml = "1.1"
+turso = { version = "0.8.2", default-features = false }
 xshell = "0.2.7"
 
 [dependencies.actix-http]
@@ -46,7 +46,7 @@ features = [
 ]
 
 [dependencies.git2]
-version = "0.18"
+version = "0.21"
 default-features = false
 
 [dependencies.maud]
@@ -58,9 +58,9 @@ version = "0.3.1"
 default-features = false
 
 [dependencies.rand]
-version = "0.8"
+version = "0.10"
 default-features = false
-features = ["getrandom"]
+features = ["sys_rng"]
 
 [dependencies.rmp-serde]
 version = "1.3"

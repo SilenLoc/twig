@@ -1,9 +1,9 @@
 use actix_web::http::header::HeaderMap;
 use actix_web::{HttpRequest, HttpResponse, get, post, web};
-use argon2::password_hash::rand_core::RngCore;
 use qrcode::QrCode;
 use qrcode::render::svg;
-use rand::rngs::OsRng;
+use rand::TryRng;
+use rand::rngs::SysRng;
 use serde::Deserialize;
 
 use super::session_auth::get_username_from_request;
@@ -47,7 +47,9 @@ impl CallerRole {
 #[must_use]
 pub fn generate_random_pin() -> String {
     let mut buf = [0u8; 4];
-    OsRng.fill_bytes(&mut buf);
+    SysRng
+        .try_fill_bytes(&mut buf)
+        .expect("operating system RNG should be available");
     let num = (u32::from_be_bytes(buf) % 900_000) + 100_000;
     format!("{num:06}")
 }

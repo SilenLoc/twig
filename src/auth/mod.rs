@@ -1,8 +1,9 @@
 use actix_identity::IdentityExt;
 use actix_web::HttpRequest;
-use argon2::password_hash::{SaltString, rand_core::RngCore};
-use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
-use rand::rngs::OsRng;
+use argon2::password_hash::phc::PasswordHash;
+use argon2::{Argon2, PasswordHasher, PasswordVerifier};
+use rand::TryRng;
+use rand::rngs::SysRng;
 use uuid::Uuid;
 
 use crate::db::Database;
@@ -38,10 +39,8 @@ pub struct Invite {
 
 pub fn hash_password(password: &str) -> Result<String, String> {
     let argon2 = Argon2::default();
-    let salt = SaltString::generate(&mut OsRng);
-
     let password_hash = argon2
-        .hash_password(password.as_bytes(), &salt)
+        .hash_password(password.as_bytes())
         .map_err(|e| e.to_string())?;
 
     Ok(password_hash.to_string())
@@ -58,7 +57,9 @@ pub fn verify_password(password: &str, hash: &str) -> Result<bool, String> {
 
 pub fn generate_token() -> String {
     let mut bytes = [0u8; 32];
-    OsRng.fill_bytes(&mut bytes);
+    SysRng
+        .try_fill_bytes(&mut bytes)
+        .expect("operating system RNG should be available");
     hex::encode(bytes)
 }
 
