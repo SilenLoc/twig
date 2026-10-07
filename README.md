@@ -7,8 +7,9 @@ SQLite-compatible database (Turso/libSQL) and Git's smart-HTTP backend.
 ## Features
 
 - Public namespace and repository browsing, with search, Markdown rendering,
-  file browsing, commit history, license display, optional slide presentations,
-  and an optional long-form Paper reader configured in `.twig.toml`.
+  Mermaid diagrams, file browsing, commit history, license display, optional
+  slide presentations, and an optional long-form Paper reader configured in
+  `.twig.toml`.
 - A configurable Scripts tab: group repository scripts in `.twig.toml` and
   readers run them with one copied `curl … | bash` command.
 - Git clone/fetch over HTTP; pushes use HTTP Basic Auth. Repositories can be

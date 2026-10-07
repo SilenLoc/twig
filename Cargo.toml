@@ -1,6 +1,6 @@
 [package]
 name = "twig"
-version = "0.1.126"
+version = "0.1.127"
 edition = "2024"
 
 [dependencies]
@@ -48,6 +48,10 @@ default-features = false
 [dependencies.maud]
 version = "0.27.0"
 features = ["actix-web"]
+
+[dependencies.mermaid-rs-renderer]
+version = "0.3.1"
+default-features = false
 
 [dependencies.rand]
 version = "0.8"

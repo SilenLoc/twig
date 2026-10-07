@@ -1554,6 +1554,17 @@ body.twig-shell {
     block-size: auto;
 }
 
+.twig-md .twig-mermaid {
+    max-inline-size: 100%;
+    overflow-x: auto;
+}
+
+.twig-md .twig-mermaid svg {
+    display: block;
+    max-inline-size: 100%;
+    block-size: auto;
+}
+
 /* ---- 17. Commit row ------------------------------------------------------ */
 
 .twig-commits {

@@ -18,7 +18,7 @@ const DATA_PAGE_SIZE: usize = 50;
 
 /// Upper bound on the OFFSET the rows route accepts. The infinite-scroll chain
 /// only ever requests page-aligned offsets counting up from 0, so anything
-/// larger is a hand-crafted URL; reject it instead of making SQLite walk that
+/// larger is a hand-crafted URL; reject it instead of making `SQLite` walk that
 /// many rows (OFFSET scans are O(offset)). Offsets past the end of a table
 /// within this bound are fine — they yield an empty page and the chain stops.
 const MAX_DATA_OFFSET: usize = 1_000_000;

@@ -123,9 +123,10 @@ mod tests {
     use crate::config;
 
     fn body_of(filename: &str) -> &'static str {
-        find(filename)
-            .map(|(asset, _)| asset.body)
-            .unwrap_or_else(|| panic!("{filename} must be a known asset"))
+        find(filename).map_or_else(
+            || panic!("{filename} must be a known asset"),
+            |(asset, _)| asset.body,
+        )
     }
 
     fn css_without_comments(css: &str) -> String {

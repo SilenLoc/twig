@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use pulldown_cmark::{Event, Options, Parser, html};
+use pulldown_cmark::{CodeBlockKind, CowStr, Event, Options, Parser, Tag, TagEnd, html};
 
 pub fn replace_mustache(input: &str, vars: &HashMap<String, String>) -> String {
     let mut result = input.to_string();
@@ -28,8 +28,56 @@ pub fn markdown_to_ast(markdown: &str) -> Vec<Event<'_>> {
 
 pub fn ast_to_html(events: Vec<Event<'_>>) -> String {
     let mut html_output = String::new();
-    html::push_html(&mut html_output, events.into_iter());
+    html::push_html(&mut html_output, render_mermaid_blocks(events).into_iter());
     html_output
+}
+
+/// Replace valid fenced Mermaid blocks with inline SVG. If parsing or rendering
+/// fails, keep the original events so the source remains visible as code.
+fn render_mermaid_blocks<'a>(events: Vec<Event<'a>>) -> Vec<Event<'a>> {
+    let mut rendered = Vec::with_capacity(events.len());
+    let mut code_block: Option<(Vec<Event<'a>>, String)> = None;
+
+    for event in events {
+        if code_block.is_none() && is_mermaid_block_start(&event) {
+            code_block = Some((vec![event], String::new()));
+            continue;
+        }
+
+        if code_block.is_some() {
+            let is_end = matches!(&event, Event::End(TagEnd::CodeBlock));
+            if let Some((block_events, source)) = &mut code_block {
+                if let Event::Text(text) = &event {
+                    source.push_str(text);
+                }
+                block_events.push(event);
+            }
+
+            if is_end {
+                let (original_events, source) = code_block.take().expect("active code block");
+                if let Ok(svg) = mermaid_rs_renderer::render(&source) {
+                    rendered.push(Event::Html(CowStr::Boxed(
+                        format!("<div class=\"twig-mermaid\">{svg}</div>").into_boxed_str(),
+                    )));
+                } else {
+                    rendered.extend(original_events);
+                }
+            }
+        } else {
+            rendered.push(event);
+        }
+    }
+
+    if let Some((original_events, _)) = code_block {
+        rendered.extend(original_events);
+    }
+
+    rendered
+}
+
+fn is_mermaid_block_start(event: &Event<'_>) -> bool {
+    matches!(event, Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(info)))
+        if info.split_whitespace().next().is_some_and(|language| language.eq_ignore_ascii_case("mermaid")))
 }
 
 pub fn process_markdown(markdown: &str, vars: &HashMap<String, String>) -> String {
@@ -89,5 +137,47 @@ mod tests {
         let events = markdown_to_ast(md);
         let html = ast_to_html(events);
         assert!(html.contains("<h1>Hello</h1>"));
+    }
+
+    #[test]
+    fn test_process_markdown_renders_mermaid_fences_as_svg() {
+        let md = "Before\n\n```mermaid\nflowchart LR\n    A[Start] --> B[End]\n```\n\nAfter";
+        let html = process_markdown(md, &HashMap::new());
+
+        assert!(html.contains("<div class=\"twig-mermaid\"><svg"), "{html}");
+        assert!(
+            html.contains("Start"),
+            "the rendered diagram includes its labels: {html}"
+        );
+        assert!(
+            !html.contains("<pre><code class=\"language-mermaid\">"),
+            "{html}"
+        );
+        assert!(html.find("Before").unwrap() < html.find("twig-mermaid").unwrap());
+        assert!(html.find("twig-mermaid").unwrap() < html.find("After").unwrap());
+    }
+
+    #[test]
+    fn test_invalid_mermaid_fence_falls_back_to_code() {
+        let html = process_markdown("```mermaid\nnot a diagram\n```", &HashMap::new());
+
+        assert!(
+            html.contains("<pre><code class=\"language-mermaid\">"),
+            "{html}"
+        );
+        assert!(html.contains("not a diagram"), "{html}");
+        assert!(!html.contains("twig-mermaid"), "{html}");
+    }
+
+    #[test]
+    fn test_non_mermaid_fences_remain_code() {
+        let html = process_markdown("```rust\nfn main() {}\n```", &HashMap::new());
+
+        assert!(
+            html.contains("<pre><code class=\"language-rust\">"),
+            "{html}"
+        );
+        assert!(html.contains("fn main() {}"), "{html}");
+        assert!(!html.contains("twig-mermaid"), "{html}");
     }
 }
