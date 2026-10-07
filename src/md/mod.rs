@@ -28,8 +28,66 @@ pub fn markdown_to_ast(markdown: &str) -> Vec<Event<'_>> {
 
 pub fn ast_to_html(events: Vec<Event<'_>>) -> String {
     let mut html_output = String::new();
-    html::push_html(&mut html_output, render_mermaid_blocks(events).into_iter());
+    let events = render_mermaid_blocks(events);
+    html::push_html(
+        &mut html_output,
+        highlight_rust_code_blocks(events.into_iter()),
+    );
     html_output
+}
+
+/// Adds Rust token markup to fenced Rust blocks while leaving every other
+/// Markdown event untouched. The highlighted source is generated and escaped
+/// by the dependency-free `twig-highlight` crate before it enters raw HTML.
+pub fn highlight_rust_code_blocks<'a>(
+    mut events: impl Iterator<Item = Event<'a>> + 'a,
+) -> impl Iterator<Item = Event<'a>> + 'a {
+    let mut code_block: Option<String> = None;
+
+    std::iter::from_fn(move || {
+        loop {
+            let Some(event) = events.next() else {
+                return code_block
+                    .take()
+                    .map(|source| highlighted_rust_event(&source));
+            };
+
+            if code_block.is_none() && is_rust_block_start(&event) {
+                code_block = Some(String::new());
+                continue;
+            }
+
+            if let Some(source) = &mut code_block {
+                let is_end = matches!(&event, Event::End(TagEnd::CodeBlock));
+                if let Event::Text(text) = &event {
+                    source.push_str(text);
+                }
+
+                if is_end {
+                    let source = code_block.take().expect("active code block");
+                    return Some(highlighted_rust_event(&source));
+                }
+                continue;
+            }
+
+            return Some(event);
+        }
+    })
+}
+
+fn highlighted_rust_event(source: &str) -> Event<'static> {
+    let highlighted =
+        twig_highlight::highlight("rust", source).expect("Rust grammar is registered");
+    Event::Html(CowStr::Boxed(
+        format!("<pre><code class=\"language-rust\">{highlighted}</code></pre>").into_boxed_str(),
+    ))
+}
+
+fn is_rust_block_start(event: &Event<'_>) -> bool {
+    matches!(event, Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(info)))
+        if info.split_whitespace().next()
+            .and_then(|language| language.split(',').next())
+            .is_some_and(|language| language.eq_ignore_ascii_case("rust") || language.eq_ignore_ascii_case("rs")))
 }
 
 /// Replace valid fenced Mermaid blocks with inline SVG. If parsing or rendering
@@ -177,7 +235,32 @@ mod tests {
             html.contains("<pre><code class=\"language-rust\">"),
             "{html}"
         );
-        assert!(html.contains("fn main() {}"), "{html}");
+        assert!(
+            html.contains("<span class=\"twig-syn-keyword\">fn</span>"),
+            "{html}"
+        );
         assert!(!html.contains("twig-mermaid"), "{html}");
+    }
+
+    #[test]
+    fn test_rust_fences_are_highlighted_and_other_fences_are_unchanged() {
+        let html = process_markdown(
+            "```rust\nfn main() { let message = \"<hi>\"; }\n```\n\n```text\nfn main() {}\n```",
+            &HashMap::new(),
+        );
+
+        assert!(
+            html.contains("<pre><code class=\"language-rust\">"),
+            "{html}"
+        );
+        assert!(
+            html.contains("<span class=\"twig-syn-keyword\">fn</span>"),
+            "{html}"
+        );
+        assert!(html.contains("&lt;hi&gt;"), "{html}");
+        assert!(
+            html.contains("<pre><code class=\"language-text\">fn main() {}\n</code></pre>"),
+            "{html}"
+        );
     }
 }

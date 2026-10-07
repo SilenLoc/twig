@@ -1105,7 +1105,7 @@ fn markdown_to_html(markdown: &str, namespace: &str, repo: &str, base_dir: &str)
     });
 
     let mut html_output = String::new();
-    html::push_html(&mut html_output, parser);
+    html::push_html(&mut html_output, md::highlight_rust_code_blocks(parser));
     html_output
 }
 
@@ -1144,7 +1144,7 @@ fn render_paper_markdown(
     });
 
     let mut html_output = String::new();
-    html::push_html(&mut html_output, parser);
+    html::push_html(&mut html_output, md::highlight_rust_code_blocks(parser));
     html_output
 }
 
@@ -1168,7 +1168,7 @@ fn render_slide_markdown(
     });
 
     let mut html_output = String::new();
-    html::push_html(&mut html_output, parser);
+    html::push_html(&mut html_output, md::highlight_rust_code_blocks(parser));
     html_output
 }
 
@@ -1564,7 +1564,11 @@ fn render_content_file(namespace: &str, repo: &str, path: &str, bytes: &[u8]) ->
                     }
                 } @else {
                     pre class="twig-code" tabindex="0" aria-label=(format!("{path} contents")) {
-                        code { (text) }
+                        @if let Some(highlighted) = twig_highlight::highlight_path(path, &text) {
+                            code { (maud::PreEscaped(highlighted)) }
+                        } @else {
+                            code { (text) }
+                        }
                     }
                 }
             }
@@ -2572,6 +2576,12 @@ mod tests {
         let html = markdown_to_html(md, "test", "repo", "");
         assert!(html.contains("<h1>Hello</h1>"));
         assert!(html.contains("<strong>bold</strong>"));
+
+        let html = markdown_to_html("```rust\nfn main() {}\n```", "test", "repo", "");
+        assert!(
+            html.contains("<span class=\"twig-syn-keyword\">fn</span>"),
+            "{html}"
+        );
     }
 
     #[test]
@@ -3598,7 +3608,10 @@ mod tests {
             !html.contains(r#"<h2 class="twig-section">main.rs</h2>"#),
             "the file is not repeated as a title: {html}"
         );
-        assert!(html.contains("fn main() {}"), "{html}");
+        assert!(
+            html.contains("<span class=\"twig-syn-keyword\">fn</span>"),
+            "Rust source is tokenized while remaining visible: {html}"
+        );
 
         let html =
             render_content_file("acme", "my-project", "docs/a.md", b"[b](c.md)").into_string();

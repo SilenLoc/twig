@@ -35,6 +35,17 @@
     --twig-signal-ok: #9cbd6e;
     --twig-signal-warn: #dda15e;
 
+    /* Syntax roles are semantic so language grammars can share one palette. */
+    --twig-syntax-keyword: #e9a7bf;
+    --twig-syntax-type: #f2c879;
+    --twig-syntax-function: #a9c7f1;
+    --twig-syntax-macro: #c6a0e0;
+    --twig-syntax-string: #b8cf91;
+    --twig-syntax-lifetime: #d5b2e8;
+    --twig-syntax-number: #e6a976;
+    --twig-syntax-comment: #a9858b;
+    --twig-syntax-attribute: #d49cac;
+
     /* Families */
     --twig-sans: "Space Grotesk", "Helvetica Neue", Arial, system-ui, sans-serif;
     --twig-mono:
@@ -121,6 +132,16 @@
     --twig-signal-danger: #a33930;
     --twig-signal-ok: #346538;
     --twig-signal-warn: #845013;
+
+    --twig-syntax-keyword: #70283e;
+    --twig-syntax-type: #75520e;
+    --twig-syntax-function: #1d4e89;
+    --twig-syntax-macro: #69418a;
+    --twig-syntax-string: #326225;
+    --twig-syntax-lifetime: #69418a;
+    --twig-syntax-number: #8a4813;
+    --twig-syntax-comment: #755d64;
+    --twig-syntax-attribute: #8a4560;
 }
 
 @media (min-width: 48rem) {
@@ -1376,6 +1397,44 @@ body.twig-shell {
     overflow-x: auto;
     min-inline-size: 0;
     tab-size: 2;
+}
+
+/* Highlight spans use language-independent roles; grammar changes do not
+   couple tokenization to either the dark or light palette. */
+.twig-syn-keyword {
+    color: var(--twig-syntax-keyword);
+}
+
+.twig-syn-type {
+    color: var(--twig-syntax-type);
+}
+
+.twig-syn-function {
+    color: var(--twig-syntax-function);
+}
+
+.twig-syn-macro {
+    color: var(--twig-syntax-macro);
+}
+
+.twig-syn-string {
+    color: var(--twig-syntax-string);
+}
+
+.twig-syn-lifetime {
+    color: var(--twig-syntax-lifetime);
+}
+
+.twig-syn-number {
+    color: var(--twig-syntax-number);
+}
+
+.twig-syn-comment {
+    color: var(--twig-syntax-comment);
+}
+
+.twig-syn-attribute {
+    color: var(--twig-syntax-attribute);
 }
 
 /* ---- 16. Markdown surface ------------------------------------------------ */

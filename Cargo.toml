@@ -1,7 +1,11 @@
 [package]
 name = "twig"
-version = "0.1.127"
+version = "0.1.128"
 edition = "2024"
+
+[workspace]
+members = ["crates/twig-highlight"]
+resolver = "3"
 
 [dependencies]
 actix-identity = "0.9"
@@ -71,6 +75,9 @@ version = "1.0"
 [dependencies.tokio]
 version = "1"
 features = ["macros", "rt-multi-thread", "sync"]
+
+[dependencies.twig-highlight]
+path = "crates/twig-highlight"
 
 [dependencies.uuid]
 version = "1.23.0"

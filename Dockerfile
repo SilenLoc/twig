@@ -3,8 +3,8 @@
 # Build strategy: BuildKit cache mounts instead of cargo-chef.
 #
 # The cargo registry and the `target/` directory are persisted in BuildKit
-# cache mounts, so a release build only recompiles the `twig` crate itself —
-# all 340+ dependency artifacts are reused from the previous build. That makes
+# cache mounts, so a release build reuses all 340+ dependency artifacts and
+# recompiles only changed local crates. That makes
 # cargo-chef (and the `cargo install cargo-chef` + full `chef cook` passes it
 # needs) redundant on a machine with a persistent BuildKit cache, which is how
 # `mise run release` builds.
@@ -34,6 +34,7 @@ ENV RUSTFLAGS="-C link-arg=-fuse-ld=mold" \
     CARGO_TERM_COLOR=always
 
 COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
 COPY docs ./docs
 COPY assets ./assets
 COPY src ./src
