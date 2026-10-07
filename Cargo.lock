@@ -2973,7 +2973,7 @@ dependencies = [
 
 [[package]]
 name = "twig"
-version = "0.1.127"
+version = "0.1.129"
 dependencies = [
  "actix-http",
  "actix-identity",
@@ -3008,6 +3008,11 @@ dependencies = [
 [[package]]
 name = "twig-highlight"
 version = "0.1.0"
+dependencies = [
+ "regex",
+ "serde",
+ "toml",
+]
 
 [[package]]
 name = "twox-hash"

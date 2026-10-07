@@ -1,0 +1,36 @@
+name = "shell"
+aliases = ["sh", "bash", "zsh"]
+extensions = ["sh", "bash", "zsh"]
+
+[[rules]]
+kind = "comment"
+pattern = "#[^\\n]*"
+
+[[rules]]
+kind = "string"
+pattern = "\\$'(?:\\\\.|[^'\\\\])*'"
+
+[[rules]]
+kind = "string"
+pattern = "\"(?:\\\\.|[^\"\\\\])*\""
+
+[[rules]]
+kind = "string"
+pattern = "'[^']*'"
+
+[[rules]]
+kind = "string"
+pattern = "`(?:\\\\.|[^`\\\\])*`"
+
+[[rules]]
+kind = "number"
+pattern = "\\b[0-9]+\\b"
+
+[[rules]]
+kind = "keyword"
+pattern = "\\b(?:if|then|elif|else|fi|case|esac|for|select|while|until|do|done|in|function|time|coproc)\\b"
+
+[[rules]]
+kind = "function"
+pattern = "([A-Za-z_][A-Za-z0-9_]*)\\s*\\("
+capture = 1

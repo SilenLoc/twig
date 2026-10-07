@@ -2,6 +2,12 @@
 name = "twig-highlight"
 version = "0.1.0"
 edition = "2024"
+build = "build.rs"
+
+[dependencies]
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
 
 [lib]
 path = "src/lib.rs"

@@ -1,0 +1,42 @@
+name = "javascript"
+aliases = ["js", "node"]
+extensions = ["js", "mjs", "cjs"]
+
+[[rules]]
+kind = "comment"
+pattern = "//[^\\n]*"
+
+[[rules]]
+kind = "comment"
+matcher = "delimited"
+start = "/*"
+end = "*/"
+
+[[rules]]
+kind = "string"
+pattern = "\"(?:\\\\.|[^\"\\\\])*\""
+
+[[rules]]
+kind = "string"
+pattern = "'(?:\\\\.|[^'\\\\])*'"
+
+[[rules]]
+kind = "string"
+pattern = "`(?:\\\\.|[^`\\\\])*`"
+
+[[rules]]
+kind = "number"
+pattern = "(?:0[xX][0-9A-Fa-f]+|0[bB][01]+|0[oO][0-7]+|(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[eE][+-]?[0-9]+)?n?)"
+
+[[rules]]
+kind = "keyword"
+pattern = "\\b(?:as|async|await|break|case|catch|class|const|continue|debugger|default|delete|do|else|export|extends|finally|for|from|function|get|if|implements|import|in|instanceof|interface|let|new|of|package|private|protected|public|return|set|static|super|switch|this|throw|try|typeof|var|void|while|with|yield|null|true|false)\\b"
+
+[[rules]]
+kind = "type"
+pattern = "\\b(?:Array|BigInt|Boolean|Date|Error|Map|Math|Number|Object|Promise|RegExp|Set|String|Symbol|WeakMap|WeakSet)\\b"
+
+[[rules]]
+kind = "function"
+pattern = "([A-Za-z_$][A-Za-z0-9_$]*)\\s*\\("
+capture = 1

@@ -1,0 +1,65 @@
+name = "rust"
+aliases = ["rs"]
+extensions = ["rs"]
+
+# Rules are tried in order. Regex rules are anchored at the current source
+# position. A capture rule highlights only that capture and leaves the rest of
+# the match as plain source text.
+[[rules]]
+kind = "comment"
+pattern = "//[^\\n]*"
+
+[[rules]]
+kind = "comment"
+matcher = "delimited"
+start = "/*"
+end = "*/"
+nested = true
+
+[[rules]]
+kind = "attribute"
+pattern = "#!?\\[(?:[^\\[\\]]|\\[[^\\[\\]]*\\])*\\]"
+
+[[rules]]
+kind = "string"
+matcher = "hash_raw_string"
+prefixes = ["br", "r"]
+
+[[rules]]
+kind = "string"
+pattern = "(?:b|c)?\"(?:\\\\.|[^\"\\\\])*\""
+
+[[rules]]
+kind = "string"
+pattern = "'(?:\\\\(?:u\\{[0-9A-Fa-f_]+\\}|[^\\n])|[^'\\\\\\n])'"
+
+[[rules]]
+kind = "lifetime"
+pattern = "'[A-Za-z_][A-Za-z0-9_]*"
+
+[[rules]]
+kind = "number"
+pattern = "\\b[0-9][A-Za-z0-9_]*(?:\\.[0-9][A-Za-z0-9_]*)?(?:[eEpP][+-]?[0-9_]+)?"
+
+# Consume raw identifiers before checking keywords so `r#type` stays intact.
+[[rules]]
+kind = "plain"
+pattern = "r#[A-Za-z_][A-Za-z0-9_]*"
+
+[[rules]]
+kind = "keyword"
+pattern = "\\b(?:as|async|await|break|const|continue|crate|dyn|else|enum|extern|false|fn|for|if|impl|in|let|loop|match|mod|move|mut|pub|ref|return|self|static|struct|super|trait|true|type|union|unsafe|use|where|while|abstract|become|box|do|final|macro|override|priv|typeof|unsized|virtual|yield|try)\\b"
+
+[[rules]]
+kind = "type"
+pattern = "\\b(?:Self|bool|char|str|u8|u16|u32|u64|u128|usize|i8|i16|i32|i64|i128|isize|f32|f64|[A-Z][A-Za-z0-9_]*)\\b"
+
+[[rules]]
+kind = "macro"
+pattern = "([A-Za-z_][A-Za-z0-9_]*)\\s*!"
+capture = 1
+
+[[rules]]
+kind = "function"
+pattern = "([A-Za-z_][A-Za-z0-9_]*)\\s*\\("
+capture = 1
