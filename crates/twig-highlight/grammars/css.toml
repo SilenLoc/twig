@@ -1,0 +1,46 @@
+name = "css"
+extensions = ["css"]
+
+[[rules]]
+kind = "comment"
+matcher = "delimited"
+start = "/*"
+end = "*/"
+
+[[rules]]
+kind = "string"
+pattern = "\"(?:\\\\.|[^\"\\\\])*\""
+
+[[rules]]
+kind = "string"
+pattern = "'(?:\\\\.|[^'\\\\])*'"
+
+[[rules]]
+kind = "keyword"
+pattern = "@[A-Za-z-]+\\b"
+
+[[rules]]
+kind = "keyword"
+pattern = "!(?i:\\s*important)\\b"
+
+[[rules]]
+kind = "attribute"
+pattern = "\\[[^\\]]*\\]"
+
+[[rules]]
+kind = "attribute"
+pattern = "[.#][-A-Za-z_][A-Za-z0-9_-]*|:{1,2}[-A-Za-z_][A-Za-z0-9_-]*"
+
+[[rules]]
+kind = "number"
+pattern = "[+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[eE][+-]?[0-9]+)?(?:%|[-A-Za-z]+)?"
+
+[[rules]]
+kind = "keyword"
+pattern = "([-A-Za-z_][A-Za-z0-9_-]*)\\s*:"
+capture = 1
+
+[[rules]]
+kind = "function"
+pattern = "([-A-Za-z_][A-Za-z0-9_-]*)\\s*\\("
+capture = 1

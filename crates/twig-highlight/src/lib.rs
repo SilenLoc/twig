@@ -512,6 +512,23 @@ mod tests {
     }
 
     #[test]
+    fn css_grammar_highlights_styles_and_maps_css_files() {
+        let source = "@media screen {\n/* card */\n.card:hover { color: rgb(12, 34, 56); margin: 1.5rem !IMPORTANT; content: \"<ready>\"; }\n}";
+        let html = highlight("CSS", source).expect("CSS TOML grammar is registered");
+        assert!(html.contains("<span class=\"twig-syn-keyword\">@media</span>"));
+        assert!(html.contains("<span class=\"twig-syn-comment\">/* card */</span>"));
+        assert!(html.contains("<span class=\"twig-syn-attribute\">.card</span>"));
+        assert!(html.contains("<span class=\"twig-syn-attribute\">:hover</span>"));
+        assert!(html.contains("<span class=\"twig-syn-keyword\">color</span>"));
+        assert!(html.contains("<span class=\"twig-syn-function\">rgb</span>("));
+        assert!(html.contains("<span class=\"twig-syn-number\">1.5rem</span>"));
+        assert!(html.contains("<span class=\"twig-syn-keyword\">!IMPORTANT</span>"));
+        assert!(html.contains("&lt;ready&gt;"));
+        assert!(!html.contains("<ready>"));
+        assert!(highlight_path("styles/site.CSS", "body { color: red; }").is_some());
+    }
+
+    #[test]
     fn grammar_rules_highlight_tokens_and_escape_source() {
         let html = highlight(
             "rust",
