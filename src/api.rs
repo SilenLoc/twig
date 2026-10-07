@@ -95,7 +95,6 @@ mod tests {
             db_path.to_string(),
             "secure".to_string(),
             false,
-            1.0,
         )
     }
 

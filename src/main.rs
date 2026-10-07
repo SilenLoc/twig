@@ -8,7 +8,6 @@ use actix_web::{
 use db::Database;
 use env_logger::Env;
 use log::{info, warn};
-use sentry::integrations::log::LogFilter;
 
 mod api;
 mod assets;
@@ -23,60 +22,14 @@ mod integration_tests;
 mod md;
 mod view;
 
-/// Initialises Sentry before the async runtime starts, as the SDK requires.
-/// The DSN is read from `SENTRY_DSN`; when it is unset the application runs
-/// without sending telemetry.
-fn init_sentry(config: &config::Server) -> sentry::ClientInitGuard {
-    let dsn = std::env::var("SENTRY_DSN")
-        .ok()
-        .filter(|dsn| !dsn.trim().is_empty());
-    sentry::init(sentry_options(config, dsn.as_deref()))
-}
-
-fn sentry_options(config: &config::Server, dsn: Option<&str>) -> sentry::ClientOptions {
-    let options = sentry::ClientOptions::new()
-        .maybe_release(sentry::release_name!())
-        .send_default_pii(true)
-        .max_request_body_size(sentry::MaxRequestBodySize::Always)
-        // Capture all request transactions; lower this in production if needed.
-        .traces_sample_rate(config.traces_sample_rate())
-        .enable_logs(true)
-        // errors and warns become events + logs; everything else is a breadcrumb + log
-        .before_send_log(|log| {
-            if log.level == sentry::protocol::LogLevel::Trace {
-                return None;
-            }
-            Some(log)
-        });
-
-    match dsn {
-        Some(dsn) => options.dsn(dsn),
-        None => options,
-    }
-}
-
-/// Wraps `env_logger` with `SentryLogger` so every `log::*` call reaches both
-/// the console and Sentry (as logs, plus breadcrumbs/events for errors).
 fn init_logging(config: &config::Server) {
     let log_filter = format!(
         "{},libsql=warn,turso=warn,tracing::span=warn",
         config.log_level()
     );
 
-    let env_logger =
+    let logger =
         env_logger::Builder::from_env(Env::default().default_filter_or(log_filter)).build();
-    let logger = sentry::integrations::log::SentryLogger::with_dest(env_logger).filter(|log| {
-        if log.level() == log::Level::Error || log.level() == log::Level::Warn {
-            LogFilter::Event | LogFilter::Log
-        } else if log.target().starts_with("libsql")
-            || log.target().starts_with("turso")
-            || log.target().starts_with("tracing::span")
-        {
-            LogFilter::Log
-        } else {
-            LogFilter::Breadcrumb | LogFilter::Log
-        }
-    });
     log::set_boxed_logger(Box::new(logger)).expect("install logger");
     let max_level = config
         .log_level()
@@ -204,7 +157,6 @@ pub(crate) fn configure_routes(cfg: &mut web::ServiceConfig) {
 
 fn main() -> std::io::Result<()> {
     let config = config::from_env();
-    let _sentry_guard = init_sentry(&config);
     init_logging(&config);
 
     actix_web::rt::System::new().block_on(async move {
@@ -268,14 +220,6 @@ fn main() -> std::io::Result<()> {
                     }
                     srv.call(req)
                 })
-                // Sentry middleware: capture server errors and start a transaction
-                // per request. Added last so it is the outermost wrap (first to process).
-                .wrap(
-                    sentry::integrations::actix::Sentry::builder()
-                        .capture_server_errors(true)
-                        .start_transaction(true)
-                        .finish(),
-                )
                 .configure(configure_routes)
         })
         .bind(bind_address)?
@@ -298,41 +242,6 @@ pub(crate) fn is_git() -> impl guard::Guard {
 mod tests {
     use super::*;
     use actix_web::{HttpResponse, test as aw_test, web};
-
-    #[test]
-    fn sentry_options_use_configured_dsn() {
-        let config = config::Server::new(
-            ("127.0.0.1".to_string(), 8080),
-            "info".to_string(),
-            "/srv/git".to_string(),
-            "twig.db".to_string(),
-            "key".to_string(),
-            false,
-            0.25,
-        );
-
-        let options = sentry_options(&config, Some("https://public:@example.com/1"));
-
-        assert_eq!(
-            options.dsn.unwrap().to_string(),
-            "https://public:@example.com/1"
-        );
-    }
-
-    #[test]
-    fn sentry_options_leave_dsn_unset_when_not_configured() {
-        let config = config::Server::new(
-            ("127.0.0.1".to_string(), 8080),
-            "info".to_string(),
-            "/srv/git".to_string(),
-            "twig.db".to_string(),
-            "key".to_string(),
-            false,
-            1.0,
-        );
-
-        assert!(sentry_options(&config, None).dsn.is_none());
-    }
 
     #[actix_web::test]
     async fn test_is_git_guard_matches_git_user_agent() {

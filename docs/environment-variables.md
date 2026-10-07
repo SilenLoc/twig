@@ -12,8 +12,6 @@
 | `CACHE_CONTROL` | `Cache-Control` header value for versioned static assets (see [Assets](#assets)) | `public, max-age=31536000, immutable` |
 | `TEST_USER` | Username allowed to access the endpoint test page and manage session PINs. Set to `true` as a shortcut for `admin`. If unset, the test page is disabled. | unset |
 | `ADMIN_USER` | Username allowed to inspect database tables and values in Tree → Data. If unset, database browsing is disabled. | unset |
-| `SENTRY_DSN` | Sentry project DSN. If unset, Sentry instrumentation is disabled | unset |
-| `SENTRY_TRACES_SAMPLE_RATE` | Fraction of transactions sent to Sentry (0.0–1.0) | `1.0` |
 
 For local development, `mise.toml` overrides several values, including
 `PORT=8080`, `PROJECT_ROOT=tests/git/srv`, `RESET_DB=true`, and

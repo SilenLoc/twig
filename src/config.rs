@@ -12,7 +12,6 @@ pub struct Server {
     reset_db: bool,
     test_user: Option<String>,
     admin_user: Option<String>,
-    traces_sample_rate: f32,
     cache_control: HeaderValue,
     session_key: actix_web::cookie::Key,
 }
@@ -26,7 +25,6 @@ impl Server {
         db_path: String,
         api_key: String,
         reset_db: bool,
-        traces_sample_rate: f32,
     ) -> Self {
         Server {
             address,
@@ -37,7 +35,6 @@ impl Server {
             reset_db,
             test_user: None,
             admin_user: None,
-            traces_sample_rate,
             cache_control: HeaderValue::from_static(DEFAULT_CACHE_CONTROL),
             session_key: actix_web::cookie::Key::generate(),
         }
@@ -123,10 +120,6 @@ impl Server {
         }
     }
 
-    pub fn traces_sample_rate(&self) -> f32 {
-        self.traces_sample_rate
-    }
-
     pub fn cache_control(&self) -> &HeaderValue {
         &self.cache_control
     }
@@ -188,10 +181,6 @@ pub fn from_env() -> Server {
         .ok()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
-    let traces_sample_rate = std::env::var("SENTRY_TRACES_SAMPLE_RATE")
-        .ok()
-        .and_then(|s| s.parse::<f32>().ok())
-        .unwrap_or(1.0);
     let cache_control = std::env::var("CACHE_CONTROL")
         .unwrap_or_else(|_| DEFAULT_CACHE_CONTROL.to_string())
         .parse::<HeaderValue>()
@@ -207,7 +196,6 @@ pub fn from_env() -> Server {
         db_path,
         api_key,
         reset_db,
-        traces_sample_rate,
     )
     .with_cache_control(cache_control)
     .with_session_key(session_key)
@@ -251,7 +239,6 @@ mod tests {
             "twig.db".to_string(),
             "mykey".to_string(),
             false,
-            1.0,
         );
         assert_eq!(server.address(), ("127.0.0.1".to_string(), 8080));
         assert_eq!(server.log_level(), "debug");
@@ -272,7 +259,6 @@ mod tests {
             "twig.db".to_string(),
             "mykey".to_string(),
             false,
-            1.0,
         )
         .with_cache_control(HeaderValue::from_static("no-cache"));
 
@@ -291,7 +277,6 @@ mod tests {
             "twig.db".to_string(),
             "apikey".to_string(),
             false,
-            1.0,
         );
         let cloned = server.clone();
         assert_eq!(cloned.project_root(), server.project_root());
@@ -307,7 +292,6 @@ mod tests {
             "twig.db".to_string(),
             "my-secret-key".to_string(),
             false,
-            1.0,
         );
         assert_eq!(server.effective_api_key(), "my-secret-key");
     }
@@ -321,7 +305,6 @@ mod tests {
             String::new(),
             String::new(),
             false,
-            1.0,
         );
         let key = server.effective_api_key();
         assert!(!key.is_empty());
@@ -337,7 +320,6 @@ mod tests {
             "/tmp/twig_test_no_reset.db".to_string(),
             "key".to_string(),
             false,
-            1.0,
         );
         server.maybe_reset_database();
     }
@@ -351,7 +333,6 @@ mod tests {
             "twig.db".to_string(),
             "key".to_string(),
             false,
-            1.0,
         );
         let addr = server.address();
         assert_eq!(addr, ("0.0.0.0".to_string(), 3000));
@@ -366,7 +347,6 @@ mod tests {
             "twig.db".to_string(),
             "key".to_string(),
             false,
-            1.0,
         );
         assert_eq!(server.test_user(), None);
         assert!(!server.is_test_user_enabled());
@@ -388,7 +368,6 @@ mod tests {
             "twig.db".to_string(),
             "key".to_string(),
             false,
-            1.0,
         )
         .with_admin_user(Some("root-user".to_string()));
 
@@ -407,7 +386,6 @@ mod tests {
             "twig.db".to_string(),
             "key".to_string(),
             false,
-            1.0,
         )
         .with_admin_user(None);
 

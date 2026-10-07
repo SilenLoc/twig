@@ -1,3 +1,8 @@
+[package]
+name = "twig"
+version = "0.1.126"
+edition = "2024"
+
 [dependencies]
 actix-identity = "0.9"
 actix-session = "0.11"
@@ -15,78 +20,63 @@ turso = { version = "0.5.3", default-features = false }
 xshell = "0.2.7"
 
 [dependencies.actix-http]
+version = "3"
 default-features = false
 features = ["http2"]
-version = "3"
 
 [dependencies.actix-web]
+version = "4"
 default-features = false
 features = [
-    "macros",
-    "cookies",
-    "http2",
+  "cookies",
+  "http2",
+  "macros",
 ]
-version = "4"
 
 [dependencies.chrono]
+version = "0.4"
 default-features = false
 features = [
-    "clock",
-    "std",
+  "clock",
+  "std",
 ]
-version = "0.4"
 
 [dependencies.git2]
-default-features = false
 version = "0.18"
+default-features = false
 
 [dependencies.maud]
-features = ["actix-web"]
 version = "0.27.0"
+features = ["actix-web"]
 
 [dependencies.rand]
+version = "0.8"
 default-features = false
 features = ["getrandom"]
-version = "0.8"
 
 [dependencies.rmp-serde]
 version = "1.3"
 
-[dependencies.sentry]
-default-features = false
-features = [
-    "actix",
-    "log",
-    "logs",
-    "ureq",
-]
-version = "0.49.0"
-
 [dependencies.serde]
-features = ["derive"]
 version = "1.0"
+features = ["derive"]
 
 [dependencies.serde_json]
 version = "1.0"
 
 [dependencies.tokio]
-features = ["macros", "rt-multi-thread", "sync"]
 version = "1"
+features = ["macros", "rt-multi-thread", "sync"]
 
 [dependencies.uuid]
-features = ["v4"]
 version = "1.23.0"
+features = ["v4"]
 
 [dev-dependencies]
 serde_urlencoded = "0.7"
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
-
-[package]
-edition = "2024"
-name = "twig"
-version = "0.1.125"
 
 [profile.dev]
 debug = "line-tables-only"
@@ -96,8 +86,8 @@ split-debuginfo = "unpacked"
 debug = false
 
 [profile.release]
-codegen-units = 1
-lto = "fat"
 opt-level = 3
-panic = "abort"
 strip = true
+lto = "fat"
+panic = "abort"
+codegen-units = 1

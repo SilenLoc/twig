@@ -31,7 +31,6 @@ mod tests {
             format!("/tmp/test_twig_service_{}.db", uuid::Uuid::new_v4()),
             "secure".to_string(),
             true,
-            1.0,
         );
 
         let db = Database::new(config.db_path());
@@ -201,7 +200,6 @@ mod tests {
             db_path.clone(),
             "secure".to_string(),
             false,
-            1.0,
         )
         .with_admin_user(Some("dbadmin".to_string()))
         .with_test_user(Some("testadmin".to_string()));
@@ -792,7 +790,6 @@ mod tests {
             fixture.db_path.clone(),
             "secure".to_string(),
             true,
-            1.0,
         );
 
         let db = Database::new(config.db_path());
@@ -1582,7 +1579,6 @@ scripts = [{ name = "Install", path = "scripts/install.sh" }]
             format!("/tmp/test_twig_test_user_{}.db", uuid::Uuid::new_v4()),
             "secure".to_string(),
             true,
-            1.0,
         );
         if let Some(user) = admin_user {
             config = config.with_test_user(Some(user.to_string()));

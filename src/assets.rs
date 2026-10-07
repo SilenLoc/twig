@@ -311,7 +311,6 @@ mod tests {
             "twig.db".to_string(),
             "key".to_string(),
             false,
-            1.0,
         )
         .with_cache_control(HeaderValue::from_static("no-cache"));
         let app = aw_test::init_service(
@@ -339,7 +338,6 @@ mod tests {
             "twig.db".to_string(),
             "key".to_string(),
             false,
-            1.0,
         );
         let app = aw_test::init_service(
             actix_web::App::new()
@@ -369,7 +367,6 @@ mod tests {
             "twig.db".to_string(),
             "key".to_string(),
             false,
-            1.0,
         );
         let app = aw_test::init_service(
             actix_web::App::new()
@@ -425,7 +422,6 @@ mod tests {
             "twig.db".to_string(),
             "key".to_string(),
             false,
-            1.0,
         );
         let app = aw_test::init_service(
             actix_web::App::new()
@@ -449,7 +445,6 @@ mod tests {
             "twig.db".to_string(),
             "key".to_string(),
             false,
-            1.0,
         );
         let app = aw_test::init_service(
             actix_web::App::new()
