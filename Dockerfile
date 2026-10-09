@@ -17,7 +17,7 @@
 FROM rust:slim-bookworm AS builder
 
 LABEL remote="silenloc/twig"
-LABEL ino.deploy.server="https://twig.silenlocatelli.ch"
+LABEL ino.deploy.server="https://ino.silenlocatelli.ch"
 LABEL ino.deploy.host="twig.silenlocatelli.ch"
 
 
