@@ -3,8 +3,8 @@ use actix_web::{HttpRequest, HttpResponse, Responder, get, post, web};
 use log::info;
 use serde::Deserialize;
 
-use super::session_auth::get_username_from_request;
-use super::{render_error, render_error_with_action, render_success};
+use crate::http::auth::session::get_username_from_request;
+use crate::http::view::{render_error, render_error_with_action, render_success};
 use crate::{
     auth::TwigContext,
     config,
@@ -200,7 +200,7 @@ pub async fn handler(
     if req.headers().get("HX-Request").is_some() {
         Ok(content)
     } else {
-        Ok(super::render_layout(
+        Ok(crate::http::view::render_layout(
             &content,
             username.as_deref(),
             Some(namespace),
@@ -378,7 +378,7 @@ fn missing_email_response() -> HttpResponse {
 mod tests {
     use super::*;
 
-    use crate::view::test_util::{classes_in, index_of};
+    use crate::http::view::test_util::{classes_in, index_of};
 
     fn repo(name: &str, days_ago: Option<i64>) -> git::bare::RepoInfo {
         git::bare::RepoInfo {

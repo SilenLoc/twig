@@ -7,7 +7,7 @@ use serde::Deserialize;
 use crate::auth::TwigContext;
 use crate::config;
 use crate::git;
-use crate::view::session_auth::get_username_from_request;
+use crate::http::auth::session::get_username_from_request;
 
 #[derive(Deserialize)]
 struct SearchQuery {
@@ -185,7 +185,7 @@ pub async fn index(
     if req.headers().get("HX-Request").is_some() {
         Ok(content)
     } else {
-        Ok(super::render_layout(
+        Ok(crate::http::view::render_layout(
             &content,
             username.as_deref(),
             Some("Namespaces"),
@@ -196,7 +196,7 @@ pub async fn index(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::view::test_util::{classes_in, index_of};
+    use crate::http::view::test_util::{classes_in, index_of};
 
     fn namespace(name: &str, owner: &str) -> (crate::auth::Namespace, String) {
         let namespace = crate::auth::Namespace {

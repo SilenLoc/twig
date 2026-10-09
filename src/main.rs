@@ -2,26 +2,20 @@ use actix_identity::IdentityMiddleware;
 use actix_web::{
     App, HttpServer,
     dev::Service,
-    guard,
     web::{self},
 };
 use db::Database;
 use env_logger::Env;
 use log::{info, warn};
 
-mod api;
-mod assets;
 mod auth;
-mod binaries;
 mod config;
 mod db;
 mod git;
-mod git_backend;
-mod health;
+mod http;
 mod info;
 mod integration_tests;
 mod md;
-mod view;
 
 fn init_logging(config: &config::Server) {
     let log_filter = format!(
@@ -77,85 +71,6 @@ fn spawn_database_init(
             }
         }
     });
-}
-
-/// Registers every route, grouped and ordered exactly as the inline chain
-/// used to be. Order still matters: static/UI routes must be registered
-/// before the dynamic `/{namespace}` and `/{namespace}/{repo}` patterns they
-/// would otherwise be shadowed by.
-pub(crate) fn configure_routes(cfg: &mut web::ServiceConfig) {
-    cfg.service(health::health)
-        .service(health::up)
-        .service(assets::assets)
-        .service(api::tree_endpoint)
-        .service(api::version_endpoint)
-        .service(view::info::index)
-        // Auth UI endpoints (HTML forms)
-        .service(view::auth::invite_page)
-        .service(view::auth::signup_page)
-        .service(view::auth::login_page)
-        .service(view::auth::namespace_page)
-        .service(auth::handlers::create_invite_ui_handler)
-        .service(auth::handlers::signup_ui_handler)
-        .service(auth::handlers::login_ui_handler)
-        .service(auth::handlers::create_namespace_ui_handler)
-        .service(auth::handlers::logout_ui_handler)
-        // Web UI endpoints (MUST come before git routes to avoid pattern conflicts)
-        .service(view::overview::index)
-        .service(view::tree::tree_page)
-        .service(view::tree::namespaces_page)
-        .service(view::tree::repositories_page)
-        .service(view::tree::data_page)
-        .service(view::tree::data_rows)
-        // Test suite endpoints (gated by TEST_USER and admin auth)
-        .service(view::test_page::test_page_alias)
-        .service(view::test_page::test_runner)
-        .service(view::test_page::test_stopped)
-        .service(view::test_page::test_ping)
-        .service(view::test_page::test_feature_check)
-        .service(view::test_page::test_pin_create)
-        .service(view::test_page::test_pin_remove)
-        .service(view::test_page::test_pin_qr)
-        // Settings page MUST come before namespace handler (which matches /{namespace})
-        .service(view::settings::settings_page)
-        .service(view::settings::update_email)
-        .service(view::settings::move_repo)
-        .service(view::settings::rename_repo)
-        .service(view::settings::delete_repo)
-        .service(view::settings::rename_namespace)
-        .service(view::settings::delete_namespace)
-        .service(view::namespace::handler)
-        .service(view::namespace::create_repo_form_handler)
-        .service(view::namespace::create_repo_handler)
-        .service(binaries::upload_binary)
-        .service(binaries::download_binary)
-        .service(view::repo::handler)
-        .service(view::repo::tab_handler)
-        .service(view::repo::markdown_tab_handler)
-        .service(view::repo::content_tab_handler)
-        .service(view::repo::commits_tab_handler)
-        .service(view::repo::config_tab_handler)
-        .service(view::repo::present_tab_handler)
-        .service(view::repo::present_print_handler)
-        .service(view::repo::paper_tab_handler)
-        .service(view::repo::scripts_tab_handler)
-        .service(view::repo::scripts_group_handler)
-        .service(view::repo::raw_handler)
-        .service(view::repo::license_tab_handler)
-        .service(view::repo::slide_handler)
-        .service(view::repo::markdown_handler)
-        .service(view::repo::content_handler)
-        .service(view::repo::paper_handler)
-        // Git endpoints with auth
-        .service(git::repo::init)
-        .route(
-            "/{namespace}/{repo}/{endpoint:.*}",
-            web::get().guard(is_git()).to(git::git_handler),
-        )
-        .route(
-            "/{namespace}/{repo}/{endpoint:.*}",
-            web::post().guard(is_git()).to(git::git_handler),
-        );
 }
 
 fn main() -> std::io::Result<()> {
@@ -223,85 +138,10 @@ fn main() -> std::io::Result<()> {
                     }
                     srv.call(req)
                 })
-                .configure(configure_routes)
+                .configure(http::routes::configure_routes)
         })
         .bind(bind_address)?
         .run()
         .await
     })
-}
-
-pub(crate) fn is_git() -> impl guard::Guard {
-    guard::fn_guard(|ctx| {
-        ctx.head()
-            .headers
-            .get("User-Agent")
-            .and_then(|v| v.to_str().ok())
-            .is_some_and(|ua| ua.starts_with("git/"))
-    })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use actix_web::{HttpResponse, test as aw_test, web};
-
-    #[actix_web::test]
-    async fn test_is_git_guard_matches_git_user_agent() {
-        let app = aw_test::init_service(
-            actix_web::App::new().route(
-                "/{namespace}/{repo}/{endpoint:.*}",
-                web::get()
-                    .guard(is_git())
-                    .to(|| async { HttpResponse::Ok().body("git") }),
-            ),
-        )
-        .await;
-
-        let req = aw_test::TestRequest::get()
-            .uri("/ns/repo/info/refs")
-            .insert_header(("User-Agent", "git/2.43.0"))
-            .to_request();
-        let resp = aw_test::call_service(&app, req).await;
-        assert!(resp.status().is_success());
-    }
-
-    #[actix_web::test]
-    async fn test_is_git_guard_rejects_non_git_user_agent() {
-        let app = aw_test::init_service(
-            actix_web::App::new().route(
-                "/{namespace}/{repo}/{endpoint:.*}",
-                web::get()
-                    .guard(is_git())
-                    .to(|| async { HttpResponse::Ok().body("git") }),
-            ),
-        )
-        .await;
-
-        let req = aw_test::TestRequest::get()
-            .uri("/ns/repo/info/refs")
-            .insert_header(("User-Agent", "Mozilla/5.0"))
-            .to_request();
-        let resp = aw_test::call_service(&app, req).await;
-        assert_eq!(resp.status(), actix_web::http::StatusCode::NOT_FOUND);
-    }
-
-    #[actix_web::test]
-    async fn test_is_git_guard_rejects_missing_user_agent() {
-        let app = aw_test::init_service(
-            actix_web::App::new().route(
-                "/{namespace}/{repo}/{endpoint:.*}",
-                web::get()
-                    .guard(is_git())
-                    .to(|| async { HttpResponse::Ok().body("git") }),
-            ),
-        )
-        .await;
-
-        let req = aw_test::TestRequest::get()
-            .uri("/ns/repo/info/refs")
-            .to_request();
-        let resp = aw_test::call_service(&app, req).await;
-        assert_eq!(resp.status(), actix_web::http::StatusCode::NOT_FOUND);
-    }
 }

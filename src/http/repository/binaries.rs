@@ -7,7 +7,7 @@ use crate::{
     config,
     db::binaries::{BinaryBlob, PutBinaryOutcome},
     git::bare::RepoHandle,
-    view::session_auth::get_username_from_request,
+    http::auth::session::get_username_from_request,
 };
 
 /// Match the Actix request payload ceiling configured in `main`.

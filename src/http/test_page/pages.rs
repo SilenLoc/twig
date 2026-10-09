@@ -6,9 +6,9 @@ use rand::TryRng;
 use rand::rngs::SysRng;
 use serde::Deserialize;
 
-use super::session_auth::get_username_from_request;
 use crate::auth::TwigContext;
 use crate::config;
+use crate::http::auth::session::get_username_from_request;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct TestPageQuery {
@@ -143,25 +143,25 @@ fn asset_endpoints() -> Vec<TestEndpoint> {
             id: "css-twig",
             category: "Assets",
             method: "GET",
-            url: crate::assets::url("twig.css"),
+            url: crate::http::assets::url("twig.css"),
         },
         TestEndpoint {
             id: "css-t",
             category: "Assets",
             method: "GET",
-            url: crate::assets::url("t.css"),
+            url: crate::http::assets::url("t.css"),
         },
         TestEndpoint {
             id: "js-h",
             category: "Assets",
             method: "GET",
-            url: crate::assets::url("h.js"),
+            url: crate::http::assets::url("h.js"),
         },
         TestEndpoint {
             id: "svg-twig",
             category: "Assets",
             method: "GET",
-            url: crate::assets::url("twig.svg"),
+            url: crate::http::assets::url("twig.svg"),
         },
     ]
 }
@@ -368,7 +368,11 @@ pub fn render_test_page(
     data_enabled: bool,
 ) -> maud::Markup {
     maud::html! {
-        (super::tree::render_tree_hub(true, data_enabled, Some("test")))
+        (crate::http::tree::pages::render_tree_hub(
+            true,
+            data_enabled,
+            Some("test"),
+        ))
         (render_pagehead(role))
         (render_pin_panel(role.is_admin(), active_pin, base_url))
         div id="test-runner-container" {
@@ -500,7 +504,7 @@ async fn authenticate_caller(
 
     if is_hx_request(req.headers()) {
         return Err(HttpResponse::Forbidden().body(
-            super::render_error(
+            crate::http::view::render_error(
                 "Forbidden: Test suite requires admin login or a valid session PIN.",
             )
             .into_string(),
@@ -510,7 +514,7 @@ async fn authenticate_caller(
     let has_active_pin = auth_state.get_test_pin().await.is_some();
     let content = render_pin_entry_page(admin_user, has_active_pin);
     Err(HttpResponse::Forbidden().body(
-        super::render_layout(&content, username.as_deref(), Some("Test Suite Access"))
+        crate::http::view::render_layout(&content, username.as_deref(), Some("Test Suite Access"))
             .into_string(),
     ))
 }
@@ -534,8 +538,10 @@ async fn verify_admin_only(
         .is_some_and(|name| server.is_test_user(name))
     {
         return Err(HttpResponse::Forbidden().body(
-            super::render_error("Forbidden: Only the admin user can manage session PINs.")
-                .into_string(),
+            crate::http::view::render_error(
+                "Forbidden: Only the admin user can manage session PINs.",
+            )
+            .into_string(),
         ));
     }
 
@@ -580,8 +586,10 @@ async fn handle_test_page(
     if is_hx_request(req.headers()) {
         builder.body(content.into_string())
     } else {
-        builder
-            .body(super::render_layout(&content, role.username(), Some("Test Suite")).into_string())
+        builder.body(
+            crate::http::view::render_layout(&content, role.username(), Some("Test Suite"))
+                .into_string(),
+        )
     }
 }
 

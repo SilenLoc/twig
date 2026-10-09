@@ -1,9 +1,10 @@
 use actix_web::Result as AwResult;
 use actix_web::{HttpRequest, get, web};
 
-use super::render_layout;
-use super::session_auth::get_username_from_request;
-use crate::auth::TwigContext;
+use crate::{
+    auth::TwigContext,
+    http::{auth::session::get_username_from_request, view::render_layout},
+};
 
 #[derive(Default)]
 struct AuthField<'a> {
@@ -408,7 +409,7 @@ pub fn render_login_success(username: &str) -> maud::Markup {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::view::test_util::classes_in;
+    use crate::http::view::test_util::classes_in;
 
     fn auth_pages() -> [(&'static str, String); 4] {
         [

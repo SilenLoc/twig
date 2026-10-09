@@ -6,8 +6,8 @@ use serde::Deserialize;
 use crate::{
     auth::{Invite, TwigContext, create_namespace, create_user, generate_token, verify_password},
     config,
-    view::auth::{render_invite_success, render_login_success, render_signup_success},
-    view::{render_error, render_success},
+    http::auth::pages::{render_invite_success, render_login_success, render_signup_success},
+    http::view::{render_error, render_success},
 };
 
 // Form data types for HTMX UI submissions

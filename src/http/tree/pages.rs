@@ -306,7 +306,7 @@ async fn require_admin(
     let Some(admin_user) = server.admin_user() else {
         return Err(HttpResponse::NotFound().finish());
     };
-    let username = super::session_auth::get_username_from_request(req, auth_state).await;
+    let username = crate::http::auth::session::get_username_from_request(req, auth_state).await;
     if !username
         .as_deref()
         .is_some_and(|username| server.is_configured_admin(username))
@@ -318,7 +318,7 @@ async fn require_admin(
 
 #[get("/tree")]
 pub async fn tree_page(req: HttpRequest, auth_state: web::Data<TwigContext>) -> HttpResponse {
-    if super::session_auth::get_username_from_request(&req, &auth_state)
+    if crate::http::auth::session::get_username_from_request(&req, &auth_state)
         .await
         .is_none()
     {
@@ -399,7 +399,7 @@ pub async fn namespaces_page(
     let content = if req.headers().get("HX-Request").is_some() {
         content
     } else {
-        super::render_layout(&content, Some(&user.username), Some("Namespaces"))
+        crate::http::view::render_layout(&content, Some(&user.username), Some("Namespaces"))
     };
     HttpResponse::Ok()
         .content_type("text/html")
@@ -468,14 +468,14 @@ pub async fn repositories_page(
             Some("repositories"),
         ))
         div class="twig-bento" {
-            (super::settings::render_repo_rename_panel(&renameable_repos_by_namespace))
-            (super::settings::render_repo_deletion_panel(&deletable_repos_by_namespace))
+            (crate::http::settings::pages::render_repo_rename_panel(&renameable_repos_by_namespace))
+            (crate::http::settings::pages::render_repo_deletion_panel(&deletable_repos_by_namespace))
         }
     };
     let content = if req.headers().get("HX-Request").is_some() {
         content
     } else {
-        super::render_layout(&content, Some(&user.username), Some("Repository"))
+        crate::http::view::render_layout(&content, Some(&user.username), Some("Repository"))
     };
     HttpResponse::Ok()
         .content_type("text/html")
@@ -526,7 +526,7 @@ pub async fn data_page(
     let content = if req.headers().get("HX-Request").is_some() {
         content
     } else {
-        super::render_layout(&content, Some(&username), Some("Database Data"))
+        crate::http::view::render_layout(&content, Some(&username), Some("Database Data"))
     };
     HttpResponse::Ok()
         .content_type("text/html")

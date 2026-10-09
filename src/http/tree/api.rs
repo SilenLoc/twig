@@ -14,19 +14,6 @@ pub struct NamespaceNode {
     pub repositories: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
-pub struct VersionResponse {
-    pub version: &'static str,
-}
-
-/// Returns the current application version as JSON.
-#[get("/api/version")]
-pub async fn version_endpoint() -> impl Responder {
-    web::Json(VersionResponse {
-        version: env!("CARGO_PKG_VERSION"),
-    })
-}
-
 pub fn msgpack_responder<T: Serialize>(data: T) -> impl Responder {
     match rmp_serde::to_vec_named(&data) {
         Ok(body) => HttpResponse::Ok()
@@ -46,7 +33,7 @@ pub async fn tree_endpoint(
     server: web::Data<config::Server>,
     auth_state: web::Data<TwigContext>,
 ) -> Result<impl Responder, Error> {
-    let username = crate::view::session_auth::get_username_from_request(&req, &auth_state).await;
+    let username = crate::http::auth::session::get_username_from_request(&req, &auth_state).await;
     let is_logged_in = username.is_some();
 
     let namespaces = match auth_state.db().get_all_namespaces_with_owners().await {
@@ -96,20 +83,6 @@ mod tests {
             "secure".to_string(),
             false,
         )
-    }
-
-    #[actix_web::test]
-    async fn test_version_endpoint_returns_package_version() {
-        let app = aw_test::init_service(App::new().service(version_endpoint)).await;
-        let response = aw_test::call_service(
-            &app,
-            aw_test::TestRequest::get().uri("/api/version").to_request(),
-        )
-        .await;
-
-        assert_eq!(response.status(), actix_web::http::StatusCode::OK);
-        let body: serde_json::Value = aw_test::read_body_json(response).await;
-        assert_eq!(body["version"], env!("CARGO_PKG_VERSION"));
     }
 
     #[test]

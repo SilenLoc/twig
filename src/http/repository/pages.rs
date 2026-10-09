@@ -17,7 +17,7 @@ use crate::{
     md,
 };
 
-use super::session_auth::get_username_from_request;
+use crate::http::auth::session::get_username_from_request;
 
 /// Reading text sizes, in percent, from the default through to double size.
 /// The A−/A+ buttons step through them one entry at a time; the active size
@@ -199,12 +199,12 @@ fn render_for_request(
     if req.headers().get("HX-Request").is_some() {
         content
     } else {
-        super::render_layout(&content, username, Some(page_title))
+        crate::http::view::render_layout(&content, username, Some(page_title))
     }
 }
 
 fn render_repo_auth_error(req: &HttpRequest, page_title: &str) -> Markup {
-    let content = super::render_error_with_action(
+    let content = crate::http::view::render_error_with_action(
         "Not logged in. Please log in first.",
         "/auth/login",
         "Log in",
@@ -506,7 +506,7 @@ fn render_tab_response(
         }
     } else {
         let content = render_tab_shell(frame, active, body);
-        super::render_layout(&content, frame.username, Some(frame.page_title))
+        crate::http::view::render_layout(&content, frame.username, Some(frame.page_title))
     }
 }
 
@@ -980,7 +980,7 @@ pub async fn slide_handler(
             return if req.headers().get("HX-Request").is_some() {
                 Ok(content)
             } else {
-                Ok(super::render_layout(
+                Ok(crate::http::view::render_layout(
                     &content,
                     username.as_deref(),
                     Some(&page_title),
@@ -1001,7 +1001,7 @@ pub async fn slide_handler(
         if req.headers().get("HX-Request").is_some() {
             Ok(content)
         } else {
-            Ok(super::render_layout(
+            Ok(crate::http::view::render_layout(
                 &content,
                 username.as_deref(),
                 Some(&page_title),
@@ -1012,7 +1012,7 @@ pub async fn slide_handler(
         if req.headers().get("HX-Request").is_some() {
             Ok(content)
         } else {
-            Ok(super::render_layout(
+            Ok(crate::http::view::render_layout(
                 &content,
                 username.as_deref(),
                 Some(&page_title),
@@ -1250,7 +1250,7 @@ fn render_not_found_for_request(
     if req.headers().get("HX-Request").is_some() {
         content
     } else {
-        super::render_layout(&content, username, Some(page_title))
+        crate::http::view::render_layout(&content, username, Some(page_title))
     }
 }
 
@@ -1969,7 +1969,7 @@ fn render_slide_content(
                 {
                     "Download PDF"
                 }
-                (super::render_theme_toggle())
+                (crate::http::view::render_theme_toggle())
             }
         }
 
@@ -2090,12 +2090,12 @@ fn render_pdf_document(
                 meta charset="utf-8";
                 meta name="viewport" content="width=device-width, initial-scale=1";
                 title { (format!("{namespace}/{repo} slides")) " · Twig" }
-                link rel="icon" type="image/svg+xml" href=(crate::assets::url("twig.svg"));
-                script src=(crate::assets::url("theme.js")) {}
+                link rel="icon" type="image/svg+xml" href=(crate::http::assets::url("twig.svg"));
+                script src=(crate::http::assets::url("theme.js")) {}
                 link rel="preconnect" href="https://fonts.googleapis.com";
                 link rel="preconnect" href="https://fonts.gstatic.com" crossorigin;
                 link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&display=swap";
-                link rel="stylesheet" href=(crate::assets::url("twig.css"));
+                link rel="stylesheet" href=(crate::http::assets::url("twig.css"));
             }
             body class="twig-pdf" {
                 main class="twig-pdf-binder" {
@@ -2371,7 +2371,7 @@ fn render_paper_toolbar(page_count: usize) -> Markup {
                         }
                     }
                 }
-                (super::render_theme_toggle())
+                (crate::http::view::render_theme_toggle())
             }
         }
     }
@@ -2518,7 +2518,7 @@ fn render_commit(commit: &Commit) -> Markup {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::view::test_util::{classes_in, index_of};
+    use crate::http::view::test_util::{classes_in, index_of};
 
     /// A tab frame with nothing configured. Tests override only the fields they
     /// exercise, which keeps each assertion pinned to one input.

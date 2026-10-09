@@ -5,10 +5,10 @@ use actix_web::{HttpRequest, HttpResponse, Responder, get, post, web};
 use log::info;
 use serde::Deserialize;
 
-use super::{render_error, render_error_with_action, render_success};
 use crate::auth::TwigContext;
 use crate::config;
 use crate::git;
+use crate::http::view::{render_error, render_error_with_action, render_success};
 
 #[derive(Deserialize)]
 struct UpdateEmailForm {
@@ -249,7 +249,7 @@ pub async fn settings_page(
     let content = render_settings(&user);
 
     let content = maud::html! {
-        (super::tree::render_tree_hub(
+        (crate::http::tree::pages::render_tree_hub(
             server.is_test_user_enabled(),
             server.is_configured_admin(&user.username),
             Some("account"),
@@ -260,7 +260,7 @@ pub async fn settings_page(
     if req.headers().get("HX-Request").is_some() {
         Ok(content)
     } else {
-        Ok(crate::view::render_layout(
+        Ok(crate::http::view::render_layout(
             &content,
             Some(&user.username),
             Some("Account"),
@@ -273,7 +273,7 @@ fn render_settings_auth_error(req: &HttpRequest, message: &str) -> maud::Markup 
     if req.headers().get("HX-Request").is_some() {
         content
     } else {
-        crate::view::render_layout(&content, None, Some("Account"))
+        crate::http::view::render_layout(&content, None, Some("Account"))
     }
 }
 
@@ -749,7 +749,7 @@ pub async fn delete_namespace(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::view::test_util::{classes_in, index_of};
+    use crate::http::view::test_util::{classes_in, index_of};
 
     fn user_fixture(email: Option<&str>) -> crate::auth::User {
         crate::auth::User {

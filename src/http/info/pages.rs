@@ -1,7 +1,8 @@
 //! The "Docs" page at `/_info`: tabs for bundled documentation and an
 //! about page, both sourced from hardcoded data compiled into the binary
-//! (see `crate::info`). Registered before `view::namespace::handler`, whose
-//! `/{namespace}` pattern would otherwise swallow `/_info`.
+//! (see `crate::info`). Registered before
+//! `crate::http::namespace::pages::handler`, whose `/{namespace}` pattern would
+//! otherwise swallow `/_info`.
 //!
 //! Every page carries a copy button that puts the page's Markdown source on
 //! the clipboard, so a reader can paste a whole doc elsewhere without
@@ -14,9 +15,9 @@ use actix_web::Result as AwResult;
 use actix_web::{HttpRequest, get, web};
 use serde::Deserialize;
 
-use super::render_layout;
-use super::session_auth::get_username_from_request;
 use crate::auth::TwigContext;
+use crate::http::auth::session::get_username_from_request;
+use crate::http::view::render_layout;
 use crate::info::{self, DocPage, Page};
 
 #[derive(Deserialize)]
@@ -222,7 +223,7 @@ pub async fn index(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::view::test_util::classes_in;
+    use crate::http::view::test_util::classes_in;
 
     fn anchor_containing<'a>(html: &'a str, needle: &str) -> &'a str {
         html.split("<a ")

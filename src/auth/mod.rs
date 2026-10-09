@@ -8,7 +8,6 @@ use uuid::Uuid;
 
 use crate::db::Database;
 
-pub mod handlers;
 pub mod session_store;
 
 #[derive(Debug, Clone)]

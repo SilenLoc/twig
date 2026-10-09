@@ -1,15 +1,5 @@
 use maud::DOCTYPE;
 
-pub mod auth;
-pub mod info;
-pub mod namespace;
-pub mod overview;
-pub mod repo;
-pub mod session_auth;
-pub mod settings;
-pub mod test_page;
-pub mod tree;
-
 #[cfg(test)]
 pub(crate) mod test_util;
 
@@ -31,16 +21,16 @@ pub fn render_layout(
                         "Twig"
                     }
                 }
-                link rel="icon" type="image/svg+xml" href=(crate::assets::url("twig.svg"));
-                script src=(crate::assets::url("theme.js")) {}
+                link rel="icon" type="image/svg+xml" href=(crate::http::assets::url("twig.svg"));
+                script src=(crate::http::assets::url("theme.js")) {}
                 link rel="preconnect" href="https://fonts.googleapis.com";
                 link rel="preconnect" href="https://fonts.gstatic.com" crossorigin;
                 link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&display=swap";
-                link rel="stylesheet" href=(crate::assets::url("t.css"));
-                link rel="stylesheet" href=(crate::assets::url("twig.css"));
+                link rel="stylesheet" href=(crate::http::assets::url("t.css"));
+                link rel="stylesheet" href=(crate::http::assets::url("twig.css"));
                 meta name="htmx-config" content=(r#"{"implicitInheritance":true,"noSwap":[204,304]}"#);
-                script src=(crate::assets::url("h.js")) {}
-                script src=(crate::assets::url("hx-live.js")) {}
+                script src=(crate::http::assets::url("h.js")) {}
+                script src=(crate::http::assets::url("hx-live.js")) {}
             }
             body
                 class="twig-shell"
@@ -150,7 +140,7 @@ pub fn render_success(message: &str) -> maud::Markup {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::view::test_util::{classes_in, index_of};
+    use crate::http::view::test_util::{classes_in, index_of};
 
     fn layout_html(username: Option<&str>) -> String {
         let content = maud::html! { p { "hello" } };
@@ -227,8 +217,8 @@ mod tests {
             );
         }
         assert!(
-            index_of(&html, &crate::assets::url("t.css"))
-                < index_of(&html, &crate::assets::url("twig.css")),
+            index_of(&html, &crate::http::assets::url("t.css"))
+                < index_of(&html, &crate::http::assets::url("twig.css")),
             "twig.css must override t.css: {html}"
         );
     }
@@ -240,8 +230,8 @@ mod tests {
             assert!(html.contains("Toggle light and dark mode"), "{html}");
             assert!(html.contains("twig-theme-toggle"), "{html}");
             assert!(
-                index_of(&html, &crate::assets::url("theme.js"))
-                    < index_of(&html, &crate::assets::url("twig.css")),
+                index_of(&html, &crate::http::assets::url("theme.js"))
+                    < index_of(&html, &crate::http::assets::url("twig.css")),
                 "restore the theme before the stylesheet paints: {html}"
             );
         }
@@ -253,11 +243,14 @@ mod tests {
         assert!(html.contains("implicitInheritance"), "{html}");
         assert!(html.contains("&quot;noSwap&quot;:[204,304]"), "{html}");
         assert!(html.contains("hx-status:4xx=\"swap:none\""), "{html}");
-        assert!(html.contains(&crate::assets::url("h.js")), "{html}");
-        assert!(html.contains(&crate::assets::url("hx-live.js")), "{html}");
+        assert!(html.contains(&crate::http::assets::url("h.js")), "{html}");
         assert!(
-            index_of(&html, &crate::assets::url("h.js"))
-                < index_of(&html, &crate::assets::url("hx-live.js")),
+            html.contains(&crate::http::assets::url("hx-live.js")),
+            "{html}"
+        );
+        assert!(
+            index_of(&html, &crate::http::assets::url("h.js"))
+                < index_of(&html, &crate::http::assets::url("hx-live.js")),
             "hx-live must load after htmx: {html}"
         );
     }
@@ -273,7 +266,7 @@ mod tests {
             "hx-live.js",
             "twig.svg",
         ] {
-            let versioned = crate::assets::url(name);
+            let versioned = crate::http::assets::url(name);
             assert!(html.contains(&versioned), "{versioned} missing: {html}");
             assert!(
                 !html.contains(&format!("/assets/{name}")),

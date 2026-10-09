@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::{auth, config, db::Database, view};
+    use crate::{auth, config, db::Database, http::repository::pages as repo_pages};
     use actix_http::Request;
     use actix_web::{App, http::StatusCode, test, web};
 
@@ -65,7 +65,7 @@ mod tests {
                     session_db,
                     actix_web::cookie::Key::generate(),
                 ))
-                .configure(crate::configure_routes),
+                .configure(crate::http::routes::configure_routes),
         )
         .await;
         (app, test_db)
@@ -266,7 +266,7 @@ mod tests {
                     db.clone(),
                     actix_web::cookie::Key::generate(),
                 ))
-                .configure(crate::configure_routes),
+                .configure(crate::http::routes::configure_routes),
         )
         .await;
 
@@ -815,12 +815,12 @@ mod tests {
             App::new()
                 .app_data(web::Data::new(config))
                 .app_data(auth_state)
-                .service(view::repo::handler)
-                .service(view::repo::tab_handler)
-                .service(view::repo::content_tab_handler)
-                .service(view::repo::commits_tab_handler)
-                .service(view::repo::content_handler)
-                .service(view::repo::markdown_handler),
+                .service(repo_pages::handler)
+                .service(repo_pages::tab_handler)
+                .service(repo_pages::content_tab_handler)
+                .service(repo_pages::commits_tab_handler)
+                .service(repo_pages::content_handler)
+                .service(repo_pages::markdown_handler),
         )
         .await
     }
@@ -1964,7 +1964,7 @@ scripts = [{ name = "Install", path = "scripts/install.sh" }]
                     session_db,
                     actix_web::cookie::Key::generate(),
                 ))
-                .configure(crate::configure_routes),
+                .configure(crate::http::routes::configure_routes),
         )
         .await;
 

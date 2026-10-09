@@ -5,6 +5,7 @@ use actix_web::{HttpRequest, HttpResponse, web};
 use crate::auth::{TwigContext, User, extract_basic_auth, verify_password};
 use crate::config;
 use crate::git::repo::bare_init;
+pub mod backend;
 pub mod bare;
 pub mod repo;
 pub mod reserved;
@@ -38,7 +39,7 @@ pub async fn git_handler(
         repo.clone()
     };
 
-    let git_backend_config = crate::git_backend::Config::new(server.project_root());
+    let git_backend_config = crate::git::backend::Config::new(server.project_root());
 
     let method = req.method().as_str();
     let query = req.query_string();
@@ -50,7 +51,7 @@ pub async fn git_handler(
 
     let path_info = format!("/{clean_repo}/{endpoint}");
 
-    let git_req = crate::git_backend::GitRequest::new(method, path_info, query, content_type);
+    let git_req = crate::git::backend::GitRequest::new(method, path_info, query, content_type);
 
     let kind = git_req.kind();
 
@@ -73,7 +74,7 @@ pub async fn git_handler(
     let body_bytes = body.to_vec();
     let namespace_clone = namespace.clone();
     let result = web::block(move || {
-        crate::git_backend::run_with_config(
+        crate::git::backend::run_with_config(
             &git_backend_config,
             &namespace_clone,
             &req,
@@ -131,13 +132,13 @@ async fn authenticate_git_request(
     auth_state: &web::Data<TwigContext>,
     namespace: &str,
     repo: &str,
-    kind: &crate::git_backend::GitRequestKind,
+    kind: &crate::git::backend::GitRequestKind,
 ) -> Result<Option<String>, HttpResponse> {
     let is_write = matches!(
         kind,
-        crate::git_backend::GitRequestKind::Push
-            | crate::git_backend::GitRequestKind::AdvertiseRefs(
-                crate::git_backend::GitService::WriteRef,
+        crate::git::backend::GitRequestKind::Push
+            | crate::git::backend::GitRequestKind::AdvertiseRefs(
+                crate::git::backend::GitService::WriteRef,
             )
     );
 
