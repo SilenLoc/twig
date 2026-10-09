@@ -387,14 +387,19 @@ fn paper_body(ctx: &RepoContext) -> Markup {
 /// The Scripts tab: the active group's scripts with their copyable `curl`
 /// commands. `group` selects a group by its slash-joined key; `None` and
 /// unknown keys fall back to the first configured group.
-fn scripts_body(ctx: &RepoContext, group: Option<&str>) -> Markup {
+fn scripts_body(
+    ctx: &RepoContext,
+    group: Option<&str>,
+    releases: &[crate::db::binaries::BinaryRelease],
+    binaries_unavailable: bool,
+) -> Markup {
     let active = ctx
         .script_groups
         .iter()
         .find(|node| Some(node.key.as_str()) == group)
         .or_else(|| ctx.script_groups.first());
     match active {
-        Some(node) => render_scripts_view(ctx, node),
+        Some(node) => render_scripts_view(ctx, node, releases, binaries_unavailable),
         None => render_empty(
             "NO SCRIPTS",
             "No scripts are configured. Add a [scripts.<group>] section with a scripts list to .twig.toml.",
@@ -405,14 +410,20 @@ fn scripts_body(ctx: &RepoContext, group: Option<&str>) -> Markup {
 /// Renders a tab by name. Only the requested tab's data is loaded, so a Commits
 /// request never reads markdown, slides, or paper pages. `group` selects a
 /// Scripts sub-group and is ignored by every other tab.
-fn tab_body(ctx: &RepoContext, tab: &str, group: Option<&str>) -> Result<Markup, git2::Error> {
+fn tab_body(
+    ctx: &RepoContext,
+    tab: &str,
+    group: Option<&str>,
+    releases: &[crate::db::binaries::BinaryRelease],
+    binaries_unavailable: bool,
+) -> Result<Markup, git2::Error> {
     match tab {
         "content" => Ok(content_body(ctx)),
         "config" => Ok(config_body(ctx)),
         "present" => Ok(present_body(ctx)),
         "paper" => Ok(paper_body(ctx)),
         "license" => Ok(license_body(ctx)),
-        "scripts" => Ok(scripts_body(ctx, group)),
+        "scripts" => Ok(scripts_body(ctx, group, releases, binaries_unavailable)),
         "commits" => commits_body(ctx),
         // Documentation, and the fallback for an unknown tab name.
         _ => Ok(markdown_body(ctx)),
@@ -434,7 +445,18 @@ async fn respond_tab(
         Ok(ctx) => ctx,
         Err(rendered) => return Ok(rendered),
     };
-    let body = match tab_body(&ctx, tab, group) {
+    let (releases, binaries_unavailable) = if tab == "scripts" {
+        match auth_state.db().list_binary_releases(namespace, repo).await {
+            Ok(releases) => (releases, false),
+            Err(error) => {
+                log::error!("Failed to load binaries for {namespace}/{repo}: {error}");
+                (Vec::new(), true)
+            }
+        }
+    } else {
+        (Vec::new(), false)
+    };
+    let body = match tab_body(&ctx, tab, group, &releases, binaries_unavailable) {
         Ok(body) => body,
         Err(e) => {
             let content = render_git_error(&e);
@@ -526,7 +548,26 @@ pub async fn handler(
     let body = if tab == "markdown" {
         markdown_body_from(&ctx, &files)
     } else {
-        match tab_body(&ctx, tab, None) {
+        let (releases, binaries_unavailable) = if tab == "scripts" {
+            match auth_state
+                .db()
+                .list_binary_releases(&params.namespace, &params.repo)
+                .await
+            {
+                Ok(releases) => (releases, false),
+                Err(error) => {
+                    log::error!(
+                        "Failed to load binaries for {}/{}: {error}",
+                        params.namespace,
+                        params.repo
+                    );
+                    (Vec::new(), true)
+                }
+            }
+        } else {
+            (Vec::new(), false)
+        };
+        match tab_body(&ctx, tab, None, &releases, binaries_unavailable) {
             Ok(body) => body,
             Err(e) => {
                 let content = render_git_error(&e);
@@ -1579,7 +1620,12 @@ fn render_content_file(namespace: &str, repo: &str, path: &str, bytes: &[u8]) ->
 /// The Scripts tab: each configured group becomes a sub-tab labelled with the
 /// group name, and the active group lists its scripts with a copyable
 /// download-and-run command and its nested groups as links.
-fn render_scripts_view(ctx: &RepoContext, node: &ScriptGroupNode) -> Markup {
+fn render_scripts_view(
+    ctx: &RepoContext,
+    node: &ScriptGroupNode,
+    releases: &[crate::db::binaries::BinaryRelease],
+    binaries_unavailable: bool,
+) -> Markup {
     let is_private = ctx.twig_result.config.private;
     maud::html! {
         div class="twig-stack" id="scripts-container" {
@@ -1612,6 +1658,36 @@ fn render_scripts_view(ctx: &RepoContext, node: &ScriptGroupNode) -> Markup {
                             }
                             @for child in &node.children {
                                 (render_script_group_row(ctx, child))
+                            }
+                        }
+                    }
+                }
+                h2 class="twig-section" { "Available binaries" }
+                @if binaries_unavailable {
+                    (render_empty("BINARY REGISTRY ERROR", "Uploaded binaries could not be loaded."))
+                } @else if releases.is_empty() {
+                    (render_empty("NO BINARIES", "No binaries have been uploaded yet."))
+                } @else {
+                    p class="twig-hint" {
+                        "Download a build directly, or fetch it from a script using "
+                        code class="twig-mono" { (format!("/{}/{}/binaries/latest/…", ctx.namespace, ctx.repo)) }
+                        "."
+                    }
+                    @for release in releases {
+                        section class="twig-panel twig-stack twig-stack--tight" {
+                            h3 class="twig-section" { "v" (release.version) }
+                            div class="twig-list" {
+                                @for asset in &release.assets {
+                                    @let href = format!(
+                                        "/{}/{}/binaries/{}/{}",
+                                        ctx.namespace, ctx.repo, release.version, asset.filename
+                                    );
+                                    div class="twig-row" {
+                                        span class="twig-row-id" { (asset.filename) }
+                                        span class="twig-row-meta" { (asset.size_bytes) " bytes" }
+                                        a class="twig-btn twig-btn--quiet" href=(href) { "Download" }
+                                    }
+                                }
                             }
                         }
                     }

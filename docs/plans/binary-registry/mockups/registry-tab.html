@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scripts · twig/example</title>
+  <style>
+    :root { color-scheme: light dark; font: 16px/1.5 system-ui, sans-serif; }
+    body { max-width: 900px; margin: 3rem auto; padding: 0 1.25rem; }
+    header, nav, .release, .command { border: 1px solid #8886; border-radius: 8px; padding: 1rem; }
+    header { margin-bottom: 1rem; }
+    nav { display: flex; gap: 1.25rem; border: 0; padding: .5rem 0; }
+    nav a { color: inherit; }
+    nav .active { font-weight: 700; text-decoration-thickness: 3px; text-underline-offset: 6px; }
+    h1, h2, p { margin-top: 0; }
+    .command { display: flex; justify-content: space-between; align-items: center; gap: 1rem; background: #8881; }
+    code { overflow-wrap: anywhere; }
+    .release { border: 1px solid #8886; border-radius: 8px; padding: 1rem; margin: .75rem 0; }
+    .asset { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: .75rem 0; border-top: 1px solid #8884; }
+    .muted { opacity: .7; }
+    button, .download { padding: .5rem .8rem; border: 1px solid #8888; border-radius: 6px; color: inherit; background: transparent; }
+  </style>
+</head>
+<body>
+  <header>
+    <p class="muted">Public repository</p>
+    <h1>twig / example</h1>
+    <nav aria-label="Repository">
+      <a href="#">Code</a><a href="#">Issues</a><a class="active" href="#">Scripts</a>
+    </nav>
+  </header>
+  <main>
+    <h2>Install scripts</h2>
+    <p>Copy a configured installer command, or download the script from the repository.</p>
+    <div class="command">
+      <code>curl -fsSL https://twig.example/twig/example/raw/scripts/install.sh | bash</code>
+      <button type="button">Copy</button>
+    </div>
+    <p class="muted" style="margin-top: 1rem">macOS</p>
+    <div class="command">
+      <code>curl -fsSL https://twig.example/twig/example/raw/scripts/install-macos.sh | bash</code>
+      <button type="button">Copy</button>
+    </div>
+    <h2 style="margin-top: 2rem">Available binaries</h2>
+    <p class="muted">Showing all assets for the three highest versions. Download URLs also work directly in scripts.</p>
+    <div class="command">
+      <code>curl -fsSL https://twig.example/twig/example/binaries/latest/example-linux-x86_64 -o example</code>
+    </div>
+    <section class="release" aria-labelledby="version-142">
+      <h3 id="version-142">v1.4.2</h3>
+      <div class="asset"><span><strong>Linux x86_64</strong><br><span class="muted">example-linux-x86_64 · 12.8 MB</span></span><a class="download" href="/twig/example/binaries/v1.4.2/example-linux-x86_64">Download</a></div>
+      <div class="asset"><span><strong>macOS arm64</strong><br><span class="muted">example-darwin-arm64 · 11.9 MB</span></span><a class="download" href="/twig/example/binaries/v1.4.2/example-darwin-arm64">Download</a></div>
+      <div class="asset"><span><strong>Windows x86_64</strong><br><span class="muted">example-windows-x86_64.exe · 13.1 MB</span></span><a class="download" href="/twig/example/binaries/v1.4.2/example-windows-x86_64.exe">Download</a></div>
+    </section>
+    <section class="release" aria-labelledby="version-141">
+      <h3 id="version-141">v1.4.1</h3>
+      <div class="asset"><span><strong>Linux x86_64</strong><br><span class="muted">example-linux-x86_64 · 12.7 MB</span></span><a class="download" href="/twig/example/binaries/v1.4.1/example-linux-x86_64">Download</a></div>
+      <div class="asset"><span><strong>macOS arm64</strong><br><span class="muted">example-darwin-arm64 · 11.8 MB</span></span><a class="download" href="/twig/example/binaries/v1.4.1/example-darwin-arm64">Download</a></div>
+    </section>
+    <section class="release" aria-labelledby="version-130">
+      <h3 id="version-130">v1.3.0</h3>
+      <div class="asset"><span><strong>Linux x86_64</strong><br><span class="muted">example-linux-x86_64 · 12.4 MB</span></span><a class="download" href="/twig/example/binaries/v1.3.0/example-linux-x86_64">Download</a></div>
+      <div class="asset"><span><strong>macOS arm64</strong><br><span class="muted">example-darwin-arm64 · 11.2 MB</span></span><a class="download" href="/twig/example/binaries/v1.3.0/example-darwin-arm64">Download</a></div>
+    </section>
+  </main>
+</body>
+</html>

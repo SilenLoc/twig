@@ -12,6 +12,7 @@ use log::{info, warn};
 mod api;
 mod assets;
 mod auth;
+mod binaries;
 mod config;
 mod db;
 mod git;
@@ -126,6 +127,8 @@ pub(crate) fn configure_routes(cfg: &mut web::ServiceConfig) {
         .service(view::namespace::handler)
         .service(view::namespace::create_repo_form_handler)
         .service(view::namespace::create_repo_handler)
+        .service(binaries::upload_binary)
+        .service(binaries::download_binary)
         .service(view::repo::handler)
         .service(view::repo::tab_handler)
         .service(view::repo::markdown_tab_handler)
@@ -194,7 +197,7 @@ fn main() -> std::io::Result<()> {
             App::new()
                 .app_data(config.clone())
                 .app_data(auth_state.clone())
-                // Increase payload limit to 512MB for large git pushes
+                // Shared payload ceiling for large Git pushes and binary uploads.
                 .app_data(web::PayloadConfig::new(1 << 29))
                 .wrap(IdentityMiddleware::default())
                 .wrap(auth::session_store::middleware(

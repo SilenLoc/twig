@@ -108,6 +108,24 @@ const MIGRATIONS: &[Migration] = &[
             created_at TEXT NOT NULL
         );",
     },
+    Migration {
+        name: "create_repository_binaries_table",
+        sql: r"CREATE TABLE IF NOT EXISTS repository_binaries (
+            namespace TEXT NOT NULL,
+            repo TEXT NOT NULL,
+            version TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            content BLOB NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            uploaded_at TEXT NOT NULL,
+            PRIMARY KEY (namespace, repo, version, filename)
+        );",
+    },
+    Migration {
+        name: "create_repository_binaries_lookup_index",
+        sql: r"CREATE INDEX IF NOT EXISTS idx_repository_binaries_lookup
+            ON repository_binaries(namespace, repo, version, filename);",
+    },
 ];
 
 impl Database {
@@ -233,6 +251,7 @@ mod tests {
         assert!(tables.contains(&"invites".to_string()));
         assert!(tables.contains(&"tokens".to_string()));
         assert!(tables.contains(&"test_pins".to_string()));
+        assert!(tables.contains(&"repository_binaries".to_string()));
         assert!(tables.contains(&"_migrations".to_string()));
         assert!(
             !tables.contains(&"tickets".to_string()),

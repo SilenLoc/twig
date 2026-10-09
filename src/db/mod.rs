@@ -5,6 +5,7 @@ use std::time::Duration;
 use tokio::sync::OnceCell;
 use turso::Builder;
 
+pub mod binaries;
 pub mod data;
 pub mod invites;
 pub mod migration;
