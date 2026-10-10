@@ -1062,6 +1062,151 @@ body.twig-shell {
     border-color: var(--twig-signal-danger);
 }
 
+.twig-editor {
+    max-inline-size: var(--twig-measure-prose);
+}
+
+.twig-editor-panel {
+    overflow: hidden;
+}
+
+.twig-editor-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--twig-space-3);
+}
+
+.twig-editor-modes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--twig-space-2);
+}
+
+.twig-editor-modes .twig-btn[aria-pressed="true"] {
+    border-color: var(--twig-accent-500);
+    color: var(--twig-accent-300);
+}
+
+.twig-editor [hidden] {
+    display: none !important;
+}
+
+.twig-editor-toolbar.ql-toolbar.ql-snow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--twig-space-1);
+    border-color: var(--twig-rule);
+    background-color: var(--twig-surface-1);
+}
+
+.twig-editor-rich.ql-container.ql-snow {
+    border-color: var(--twig-rule);
+    background-color: var(--twig-surface-0);
+    color: var(--twig-ink-primary);
+    font-family: var(--twig-sans);
+    font-size: var(--twig-t-body);
+}
+
+.twig-editor-rich .ql-editor {
+    min-block-size: 26rem;
+    color: var(--twig-ink-primary);
+    line-height: 1.65;
+}
+
+.twig-editor-rich .ql-editor.ql-blank::before {
+    color: var(--twig-ink-tertiary);
+    font-style: normal;
+}
+
+.twig-editor .ql-snow .ql-stroke {
+    stroke: var(--twig-ink-secondary);
+}
+
+.twig-editor .ql-snow .ql-fill {
+    fill: var(--twig-ink-secondary);
+}
+
+.twig-editor .ql-snow .ql-picker {
+    color: var(--twig-ink-secondary);
+}
+
+.twig-editor .ql-snow .ql-picker-options {
+    border-color: var(--twig-rule-strong);
+    background-color: var(--twig-surface-1);
+}
+
+.twig-editor .ql-snow button:hover .ql-stroke,
+.twig-editor .ql-snow button:focus .ql-stroke,
+.twig-editor .ql-snow .ql-picker-label:hover .ql-stroke,
+.twig-editor .ql-snow .ql-picker-label:focus .ql-stroke {
+    stroke: var(--twig-accent-300);
+}
+
+.twig-editor .ql-snow button:hover .ql-fill,
+.twig-editor .ql-snow button:focus .ql-fill,
+.twig-editor .ql-snow .ql-picker-label:hover .ql-fill,
+.twig-editor .ql-snow .ql-picker-label:focus .ql-fill {
+    fill: var(--twig-accent-300);
+}
+
+.twig-editor .ql-snow .ql-tooltip {
+    z-index: 2;
+    border-color: var(--twig-rule-strong);
+    background-color: var(--twig-surface-2);
+    color: var(--twig-ink-primary);
+}
+
+.twig-editor .ql-snow .ql-tooltip input[type="text"] {
+    border-color: var(--twig-rule-strong);
+    background-color: var(--twig-surface-0);
+    color: var(--twig-ink-primary);
+}
+
+.twig-editor-source {
+    display: block;
+    inline-size: 100%;
+    min-block-size: 26rem;
+    padding: var(--twig-space-5);
+    resize: vertical;
+    border: 0;
+    border-block-end: 1px solid var(--twig-rule);
+    background-color: var(--twig-surface-0);
+    color: var(--twig-ink-primary);
+    font-family: var(--twig-mono);
+    font-size: var(--twig-t-body-sm);
+    line-height: 1.65;
+    tab-size: 4;
+}
+
+.twig-editor-commit {
+    display: grid;
+    gap: var(--twig-space-3);
+    padding: var(--twig-space-5);
+}
+
+.twig-editor-commit .twig-form-actions {
+    justify-content: space-between;
+    margin-block-start: var(--twig-space-2);
+}
+
+.twig-editor-file-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.twig-editor-status:empty {
+    display: none;
+}
+
+.twig-editor-status {
+    margin: 0;
+    color: var(--twig-signal-danger);
+    font-size: var(--twig-t-body-sm);
+    overflow-wrap: anywhere;
+}
+
 .twig-hint {
     margin: 0;
     color: var(--twig-ink-tertiary);

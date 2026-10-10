@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Edit README.md · Twig</title>
+  <style>
+    :root { color-scheme: light; --ink: #212b27; --muted: #66716b; --line: #dce2de; --paper: #fff; --wash: #f5f7f5; --green: #306b4f; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--wash); color: var(--ink); font: 16px/1.5 system-ui, sans-serif; }
+    main { max-width: 900px; margin: 48px auto; padding: 0 24px; }
+    .crumbs { color: var(--muted); font: 14px ui-monospace, monospace; margin-bottom: 24px; }
+    .crumbs strong { color: var(--ink); }
+    h1 { font-size: 27px; margin: 0 0 8px; }
+    .hint { color: var(--muted); margin: 0 0 24px; }
+    .panel { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+    .panel-head { border-bottom: 1px solid var(--line); padding: 18px 22px; }
+    .file { font: 14px ui-monospace, monospace; }
+    .editor { min-height: 350px; padding: 22px; }
+    .toolbar { display: flex; gap: 6px; border-bottom: 1px solid var(--line); padding: 10px 14px; background: #fbfcfb; }
+    .toolbar button { background: white; border: 1px solid var(--line); border-radius: 4px; padding: 5px 9px; color: var(--ink); }
+    .modes { display: flex; gap: 6px; margin-left: auto; }
+    .modes button { border: 1px solid var(--line); border-radius: 4px; background: white; padding: 5px 9px; color: var(--muted); }
+    .modes button[aria-pressed="true"] { border-color: var(--green); color: var(--green); }
+    .editor h2 { font-size: 23px; margin: 0 0 12px; }
+    .editor p { margin: 0 0 12px; }
+    .commit { border-top: 1px solid var(--line); padding: 18px 22px; background: #fbfcfb; }
+    label { display: block; font-size: 13px; font-weight: 650; margin-bottom: 6px; }
+    input { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 5px; font: inherit; }
+    .actions { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; }
+    .back { color: var(--muted); }
+    .save { background: var(--green); color: white; border: 0; border-radius: 5px; padding: 10px 15px; font: 600 14px system-ui; }
+    @media (max-width: 600px) { main { margin: 24px auto; padding: 0 14px; } .actions { align-items: stretch; flex-direction: column; gap: 14px; } .save { width: 100%; } }
+  </style>
+</head>
+<body>
+  <main>
+    <nav class="crumbs" aria-label="Breadcrumb">Namespaces / acme / <strong>twig</strong></nav>
+    <h1>Edit file</h1>
+    <p class="hint">Changes are saved as a new commit in this repository.</p>
+    <section class="panel" aria-label="File editor">
+      <header class="panel-head"><span class="file">README.md</span></header>
+      <div class="toolbar" role="toolbar" aria-label="Formatting">
+        <button aria-label="Heading">H</button><button aria-label="Bold"><strong>B</strong></button><button aria-label="Italic"><i>I</i></button><button aria-label="Bulleted list">• List</button><button aria-label="Link">Link</button>
+        <nav class="modes" aria-label="Editing mode"><button aria-pressed="true">Rich text</button><button aria-pressed="false">Markdown source</button></nav>
+      </div>
+      <div class="editor" contenteditable="true" aria-label="README.md contents">
+        <h2>Welcome to Twig</h2>
+        <p>A small Git server for your projects.</p>
+        <p><strong>Getting started</strong></p>
+        <p>Clone the repository and start building.</p>
+      </div>
+      <form class="commit">
+        <label for="message">Commit message</label>
+        <input id="message" value="Update project introduction" placeholder="Describe this change">
+        <div class="actions"><a class="back" href="#">Cancel</a><button class="save" type="button">Commit changes</button></div>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

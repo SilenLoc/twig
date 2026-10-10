@@ -169,6 +169,12 @@ struct ContentParams {
 }
 
 #[derive(Deserialize)]
+struct ContentQuery {
+    committed: Option<String>,
+    conflict_copy: Option<bool>,
+}
+
+#[derive(Deserialize)]
 struct PaperParams {
     namespace: String,
     repo: String,
@@ -925,6 +931,7 @@ pub async fn content_handler(
     server: web::Data<config::Server>,
     auth_state: web::Data<TwigContext>,
     params: web::Path<ContentParams>,
+    query: web::Query<ContentQuery>,
 ) -> AwResult<Markup> {
     let path = params.path.trim_matches('/').to_string();
     let ctx = match open_repo(&req, &server, &auth_state, &params.namespace, &params.repo).await {
@@ -950,13 +957,34 @@ pub async fn content_handler(
         ctx.handle.read_blob_bytes(&path).ok().flatten()
     };
 
-    let body = render_content_view(
+    let file_view = render_content_view(
         &ctx.namespace,
         &ctx.repo,
         &path,
         &entries,
         file_bytes.as_deref(),
     );
+    let saved_commit = query
+        .committed
+        .as_deref()
+        .and_then(|oid| git2::Oid::from_str(oid).ok());
+    let is_saved_commit =
+        saved_commit.is_some_and(|oid| ctx.handle.head_oid().ok().flatten() == Some(oid));
+    let body = if is_saved_commit {
+        let message = if query.conflict_copy.unwrap_or(false) {
+            "Draft saved as a conflict copy."
+        } else {
+            "Changes committed successfully."
+        };
+        maud::html! {
+            div class="twig-stack" {
+                (crate::http::view::render_success(message))
+                (file_view)
+            }
+        }
+    } else {
+        file_view
+    };
     Ok(render_tab_response(&req, &ctx.frame(), "content", &body))
 }
 
@@ -1599,6 +1627,17 @@ fn render_content_file(namespace: &str, repo: &str, path: &str, bytes: &[u8]) ->
                 ))
             } @else {
                 @let text = String::from_utf8_lossy(bytes).into_owned();
+                @if std::str::from_utf8(bytes).is_ok() {
+                    div class="twig-editor-file-actions" {
+                        a
+                            class="twig-btn twig-btn--quiet"
+                            href=(format!(
+                                "/{namespace}/{repo}/edit/{}",
+                                super::editor::encode_file_path(path)
+                            ))
+                        { "Edit file" }
+                    }
+                }
                 @if crate::md::is_markdown(path) {
                     div class="twig-md twig-md--boxed" {
                         (maud::PreEscaped(markdown_to_html(&text, namespace, repo, parent_path(path))))
@@ -3665,6 +3704,7 @@ mod tests {
 
         let html = render_content_file("acme", "my-project", "logo.png", &[0, 1, 2]).into_string();
         assert!(html.contains(">BINARY FILE<"), "{html}");
+        assert!(!html.contains("Edit file"), "{html}");
         assert!(
             html.contains("Binary file (3 bytes). Not displayed."),
             "{html}"
@@ -3676,6 +3716,8 @@ mod tests {
             html.contains(r#"<pre class="twig-code" tabindex="0" aria-label="main.rs contents">"#),
             "{html}"
         );
+        assert!(html.contains("/acme/my-project/edit/main.rs"), "{html}");
+        assert!(html.contains(">Edit file</a>"), "{html}");
         assert!(
             html.contains(r#"<span aria-current="page">main.rs</span>"#),
             "the filename remains in the inner breadcrumb: {html}"
@@ -3698,6 +3740,15 @@ mod tests {
         assert!(
             html.contains("/acme/my-project/md/docs/c.md"),
             "link rewriting still resolves against the containing directory: {html}"
+        );
+        assert!(html.contains("/acme/my-project/edit/docs/a.md"), "{html}");
+
+        let invalid_utf8 =
+            render_content_file("acme", "my-project", "raw.txt", &[0xff]).into_string();
+        assert!(!invalid_utf8.contains("Edit file"), "{invalid_utf8}");
+        assert!(
+            !html.contains("https://"),
+            "no remote editor scripts: {html}"
         );
     }
 

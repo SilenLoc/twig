@@ -65,6 +65,8 @@ pub(crate) fn configure_routes(cfg: &mut web::ServiceConfig) {
         .service(repository::pages::paper_tab_handler)
         .service(repository::pages::scripts_tab_handler)
         .service(repository::pages::scripts_group_handler)
+        .service(repository::editor::edit_file_page)
+        .service(repository::editor::commit_file_handler)
         .service(repository::pages::raw_handler)
         .service(repository::pages::license_tab_handler)
         .service(repository::pages::slide_handler)

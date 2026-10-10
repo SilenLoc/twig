@@ -61,6 +61,42 @@ const ASSETS: &[Asset] = &[
         body: include_str!("../../assets/hx-live.js"),
     },
     Asset {
+        stem: "repository-editor",
+        extension: "js",
+        content_type: "application/javascript; charset=utf-8",
+        body: include_str!("../../assets/repository-editor.js"),
+    },
+    Asset {
+        stem: "quill",
+        extension: "js",
+        content_type: "application/javascript; charset=utf-8",
+        body: include_str!("../../assets/vendor/quill/quill.min.js"),
+    },
+    Asset {
+        stem: "quill.snow",
+        extension: "css",
+        content_type: "text/css; charset=utf-8",
+        body: include_str!("../../assets/vendor/quill/quill.snow.css"),
+    },
+    Asset {
+        stem: "marked",
+        extension: "js",
+        content_type: "application/javascript; charset=utf-8",
+        body: include_str!("../../assets/vendor/marked/marked.umd.js"),
+    },
+    Asset {
+        stem: "purify",
+        extension: "js",
+        content_type: "application/javascript; charset=utf-8",
+        body: include_str!("../../assets/vendor/dompurify/purify.min.js"),
+    },
+    Asset {
+        stem: "turndown",
+        extension: "js",
+        content_type: "application/javascript; charset=utf-8",
+        body: include_str!("../../assets/vendor/turndown/turndown.js"),
+    },
+    Asset {
         stem: "twig",
         extension: "svg",
         content_type: "image/svg+xml",
@@ -169,6 +205,12 @@ mod tests {
             "theme.js",
             "h.js",
             "hx-live.js",
+            "repository-editor.js",
+            "quill.js",
+            "quill.snow.css",
+            "marked.js",
+            "purify.js",
+            "turndown.js",
             "twig.svg",
             "twig.schema.json",
         ] {
@@ -186,6 +228,14 @@ mod tests {
         assert_eq!(
             url("hx-live.js"),
             format!("/assets/hx-live-{ASSET_VERSION}.js")
+        );
+        assert_eq!(
+            url("quill.snow.css"),
+            format!("/assets/quill.snow-{ASSET_VERSION}.css")
+        );
+        assert_eq!(
+            url("repository-editor.js"),
+            format!("/assets/repository-editor-{ASSET_VERSION}.js")
         );
         assert_eq!(url("twig.svg"), format!("/assets/twig-{ASSET_VERSION}.svg"));
         assert_eq!(url("nope.txt"), "/assets/nope.txt");
@@ -382,6 +432,12 @@ mod tests {
             ("theme.js", "application/javascript"),
             ("h.js", "application/javascript"),
             ("hx-live.js", "application/javascript"),
+            ("repository-editor.js", "application/javascript"),
+            ("quill.js", "application/javascript"),
+            ("quill.snow.css", "text/css"),
+            ("marked.js", "application/javascript"),
+            ("purify.js", "application/javascript"),
+            ("turndown.js", "application/javascript"),
             ("twig.svg", "image/svg+xml"),
             ("twig.schema.json", "application/schema+json"),
         ] {
