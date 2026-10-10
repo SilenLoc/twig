@@ -196,8 +196,9 @@ fn render_user_management(
                                                 "No namespace membership"
                                             }
                                         } @else {
-                                            @for (namespace, role) in &user.memberships {
-                                                span class="twig-row-meta" {
+                                            span class="twig-row-meta" {
+                                                @for (index, (namespace, role)) in user.memberships.iter().enumerate() {
+                                                    @if index > 0 { ", " }
                                                     (namespace) " · " (role.display_name())
                                                 }
                                             }
@@ -656,6 +657,23 @@ mod tests {
         let markup = render_user_management(&scope(), "users", &[], &[]).into_string();
         assert!(markup.contains("hx-get=\"/tree/users?tab=users\""));
         assert!(markup.contains("No users found."));
+    }
+
+    #[test]
+    fn user_memberships_render_in_a_single_table_cell() {
+        let user = UserManagementEntry {
+            username: "silen".to_string(),
+            email: Some("silen@example.com".to_string()),
+            memberships: vec![
+                ("experiments".to_string(), NamespaceRole::Owner),
+                ("hco".to_string(), NamespaceRole::Owner),
+            ],
+        };
+
+        let markup = render_user_management(&scope(), "users", &[], &[user]).into_string();
+
+        assert!(markup.contains("experiments · Owner, hco · Owner"));
+        assert_eq!(markup.matches("class=\"twig-row-meta\"").count(), 2);
     }
 
     #[test]
