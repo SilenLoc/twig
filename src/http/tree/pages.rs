@@ -26,6 +26,7 @@ const MAX_DATA_OFFSET: usize = 1_000_000;
 pub(crate) fn render_tree_hub(
     test_enabled: bool,
     data_enabled: bool,
+    user_management_enabled: bool,
     active: Option<&str>,
 ) -> maud::Markup {
     maud::html! {
@@ -38,6 +39,9 @@ pub(crate) fn render_tree_hub(
             }
             @if data_enabled {
                 a class="twig-tab" aria-current=[(active == Some("data")).then_some("page")] href="/tree/data" { "Data" }
+            }
+            @if user_management_enabled {
+                a class="twig-tab" aria-current=[(active == Some("users")).then_some("page")] href="/tree/users" { "User Management" }
             }
         }
     }
@@ -223,7 +227,7 @@ fn render_data_page(
     test_enabled: bool,
 ) -> maud::Markup {
     maud::html! {
-        (render_tree_hub(test_enabled, true, Some("data")))
+        (render_tree_hub(test_enabled, true, true, Some("data")))
         section class="twig-panel" {
             header class="twig-panel-head" {
                 h1 class="twig-eyebrow" { "Database tables" }
@@ -355,7 +359,7 @@ pub async fn namespaces_page(
             .insert_header(("Location", "/auth/login"))
             .finish();
     };
-    let namespaces = match db.get_namespaces_for_user(&user_id).await {
+    let namespaces = match db.get_owned_namespaces_for_user(&user_id).await {
         Ok(namespaces) => namespaces,
         Err(error) => {
             log::error!("Failed to load namespaces for namespace tree: {error}");
@@ -364,9 +368,10 @@ pub async fn namespaces_page(
     };
     let owned_namespaces: Vec<String> = namespaces
         .iter()
-        .filter(|namespace| namespace.owner_id == user_id)
         .map(|namespace| namespace.name.clone())
         .collect();
+    let user_management_enabled =
+        server.is_configured_admin(&user.username) || !owned_namespaces.is_empty();
     let deletable_namespaces: Vec<String> = owned_namespaces
         .iter()
         .filter(|namespace| {
@@ -388,6 +393,7 @@ pub async fn namespaces_page(
         (render_tree_hub(
             server.is_test_user_enabled(),
             server.is_configured_admin(&user.username),
+            user_management_enabled,
             Some("namespaces"),
         ))
         (render_namespaces_page(
@@ -429,13 +435,15 @@ pub async fn repositories_page(
             .insert_header(("Location", "/auth/login"))
             .finish();
     };
-    let namespaces = match db.get_namespaces_for_user(&user_id).await {
+    let namespaces = match db.get_owned_namespaces_for_user(&user_id).await {
         Ok(namespaces) => namespaces,
         Err(error) => {
             log::error!("Failed to load namespaces for repository tree: {error}");
             return HttpResponse::InternalServerError().finish();
         }
     };
+    let user_management_enabled =
+        server.is_configured_admin(&user.username) || !namespaces.is_empty();
     let mut renameable_repos_by_namespace: Vec<(String, Vec<git::bare::RepoInfo>)> = Vec::new();
     let mut deletable_repos_by_namespace: Vec<(String, Vec<git::bare::RepoInfo>)> = Vec::new();
     for namespace in namespaces {
@@ -465,6 +473,7 @@ pub async fn repositories_page(
         (render_tree_hub(
             server.is_test_user_enabled(),
             server.is_configured_admin(&user.username),
+            user_management_enabled,
             Some("repositories"),
         ))
         div class="twig-bento" {
@@ -569,14 +578,14 @@ mod tests {
 
     #[test]
     fn tree_hub_only_renders_enabled_sections() {
-        let minimal = render_tree_hub(false, false, None).into_string();
+        let minimal = render_tree_hub(false, false, false, None).into_string();
         assert!(minimal.contains(">Account</a>"));
         assert!(minimal.contains("href=\"/tree/repositories\">Repository</a>"));
         assert!(minimal.contains("href=\"/tree/namespaces\""));
         assert!(!minimal.contains(">Test</a>"));
         assert!(!minimal.contains(">Data</a>"));
 
-        let enabled = render_tree_hub(true, true, Some("data")).into_string();
+        let enabled = render_tree_hub(true, true, true, Some("data")).into_string();
         assert!(enabled.contains("href=\"/_test\""));
         assert!(enabled.contains("href=\"/tree/namespaces\""));
         assert!(
@@ -584,7 +593,9 @@ mod tests {
         );
         assert!(enabled.contains("href=\"/tree/data\""));
         assert!(enabled.contains("aria-current=\"page\" href=\"/tree/data\""));
-        let repository_active = render_tree_hub(false, false, Some("repositories")).into_string();
+        assert!(enabled.contains("href=\"/tree/users\">User Management</a>"));
+        let repository_active =
+            render_tree_hub(false, false, false, Some("repositories")).into_string();
         assert!(
             repository_active
                 .contains("aria-current=\"page\" href=\"/tree/repositories\">Repository</a>")

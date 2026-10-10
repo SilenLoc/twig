@@ -11,7 +11,16 @@
 | `RESET_DB` | Set to exactly `true` to delete the database file at startup and seed a development `admin` / `admin` account with automatic local login. | `false` |
 | `CACHE_CONTROL` | `Cache-Control` header value for versioned static assets (see [Assets](#assets)) | `public, max-age=31536000, immutable` |
 | `TEST_USER` | Username allowed to access the endpoint test page and manage session PINs. Set to `true` as a shortcut for `admin`. If unset, the test page is disabled. | unset |
-| `ADMIN_USER` | Username allowed to inspect database tables and values in Tree → Data. If unset, database browsing is disabled. | unset |
+| `ADMIN_USER` | Username allowed to inspect database tables and values in Tree → Data and manage users/invites globally. If unset, global administration is disabled. | unset |
+| `RESEND_API_KEY` | Secret API key used to send namespace invitation emails. If unset, invitations are saved and shown as links without attempting email delivery. | unset |
+| `RESEND_FROM` | Sender address used for invitation emails; configure a sender/domain allowed by Resend. | `onboarding@resend.dev` |
+| `PUBLIC_BASE_URL` | Canonical `http://` or `https://` origin used to build invitation links sent by email. Required for Resend delivery; do not include a path or query. | unset |
+
+Store the real `RESEND_API_KEY` in the runtime environment or secret manager,
+not in tracked files. Replace the sample `re_xxxxxxxxx` value with the real key
+in your local deployment environment. `onboarding@resend.dev` is suitable for
+Resend's test setup; production sending to arbitrary recipients requires a
+verified sender domain.
 
 For local development, `mise.toml` overrides several values, including
 `PORT=8080`, `PROJECT_ROOT=tests/git/srv`, `RESET_DB=true`, and

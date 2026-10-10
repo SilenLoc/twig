@@ -71,6 +71,116 @@ mod tests {
         (app, test_db)
     }
 
+    async fn create_admin_test_service() -> (
+        impl actix_web::dev::Service<
+            Request,
+            Response = actix_web::dev::ServiceResponse,
+            Error = actix_web::Error,
+        >,
+        String,
+        String,
+        String,
+        Database,
+        String,
+    ) {
+        let project_root = format!("/tmp/test_twig_admin_root_{}", uuid::Uuid::new_v4());
+        let config = config::Server::new(
+            ("127.0.0.1".to_string(), 8080),
+            "debug".to_string(),
+            project_root.clone(),
+            format!("/tmp/test_twig_admin_{}.db", uuid::Uuid::new_v4()),
+            "secure".to_string(),
+            false,
+        )
+        .with_admin_user(Some("admin".to_string()));
+        let db = Database::new(config.db_path());
+        db.init_tables().await.expect("init tables");
+        let user = auth::create_user(
+            "admin".to_string(),
+            "admin@example.com".to_string(),
+            "password123",
+        )
+        .expect("create admin");
+        db.create_user(&user).await.expect("persist admin");
+        let namespace = auth::create_namespace("acme".to_string(), user.id.clone());
+        db.create_namespace(&namespace)
+            .await
+            .expect("create namespace");
+        let contributor = auth::create_user(
+            "contributor".to_string(),
+            "contributor@example.com".to_string(),
+            "password123",
+        )
+        .expect("create contributor");
+        db.create_user(&contributor)
+            .await
+            .expect("persist contributor");
+        db.conn()
+            .await
+            .expect("connect to membership DB")
+            .execute(
+                "INSERT INTO namespace_members (namespace_id, user_id, role, added_at)
+                 VALUES (?1, ?2, 'contributor', ?3)",
+                turso::params![
+                    namespace.id.clone(),
+                    contributor.id.clone(),
+                    chrono::Utc::now().to_rfc3339()
+                ],
+            )
+            .await
+            .expect("add contributor membership");
+        let owner = auth::create_user(
+            "owner".to_string(),
+            "owner@example.com".to_string(),
+            "password123",
+        )
+        .expect("create namespace owner");
+        db.create_user(&owner)
+            .await
+            .expect("persist namespace owner");
+        let owned_namespace = auth::create_namespace("docs-team".to_string(), owner.id.clone());
+        db.create_namespace(&owned_namespace)
+            .await
+            .expect("create owned namespace");
+
+        let auth_state = web::Data::new(auth::TwigContext::new(db, "secure".to_string()));
+        let session = auth_state
+            .create_session(user.id)
+            .await
+            .expect("create admin session");
+        let owner_session = auth_state
+            .create_session(owner.id)
+            .await
+            .expect("create owner session");
+        let contributor_session = auth_state
+            .create_session(contributor.id)
+            .await
+            .expect("create contributor session");
+        let session_db = auth_state.db().clone();
+        let test_db = auth_state.db().clone();
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(config))
+                .app_data(auth_state)
+                .app_data(web::PayloadConfig::new(1 << 29))
+                .wrap(actix_identity::IdentityMiddleware::default())
+                .wrap(crate::auth::session_store::middleware(
+                    session_db,
+                    actix_web::cookie::Key::generate(),
+                ))
+                .configure(crate::http::routes::configure_routes),
+        )
+        .await;
+        (
+            app,
+            session,
+            owner_session,
+            contributor_session,
+            test_db,
+            project_root,
+        )
+    }
+
     #[actix_web::test]
     async fn test_health_endpoint() {
         let app = create_test_service().await;
@@ -103,6 +213,414 @@ mod tests {
         assert!(body_str.contains("<title>Create Account · Twig</title>"));
         assert!(body_str.contains("Create Account"));
         assert!(body_str.contains("Signup Invite"));
+    }
+
+    #[actix_web::test]
+    async fn test_user_management_renders_admin_page_and_htmx_tabs() {
+        let (app, session, owner_session, _, _, _) = create_admin_test_service().await;
+        let req = test::TestRequest::get().uri("/tree/users").to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::FOUND);
+        assert_eq!(resp.headers().get("Location").unwrap(), "/auth/login");
+
+        let req = test::TestRequest::get()
+            .uri("/tree/users")
+            .cookie(actix_web::cookie::Cookie::new("session", session.clone()))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = test::read_body(resp).await;
+        let body = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body.contains("<title>User Management · Twig</title>"));
+        assert!(body.contains("User Management"));
+        assert!(body.contains("hx-post=\"/tree/invites\""));
+        assert!(body.contains("value=\"contributor\" selected"));
+        assert!(body.contains("value=\"acme\""));
+        assert!(body.contains("value=\"docs-team\""));
+
+        let req = test::TestRequest::get()
+            .uri("/tree/users?tab=users")
+            .cookie(actix_web::cookie::Cookie::new("session", session))
+            .insert_header(("HX-Request", "true"))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = test::read_body(resp).await;
+        let body = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body.contains("contributor"));
+        assert!(body.contains("owner"));
+        assert!(body.contains("admin"));
+        assert!(!body.contains("<title>"));
+
+        let req = test::TestRequest::get()
+            .uri("/tree/users?tab=users")
+            .cookie(actix_web::cookie::Cookie::new("session", owner_session))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = test::read_body(resp).await;
+        let body = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body.contains("owner@example.com"));
+        assert!(body.contains("docs-team"));
+        assert!(!body.contains("admin@example.com"));
+        assert!(!body.contains("contributor@example.com"));
+    }
+
+    #[actix_web::test]
+    async fn test_created_invitation_completes_account_and_membership_setup() {
+        let (app, session, _, _, db, _) = create_admin_test_service().await;
+        let req = test::TestRequest::post()
+            .uri("/tree/invites")
+            .cookie(actix_web::cookie::Cookie::new("session", session.clone()))
+            .set_form([
+                ("email", "sam@example.com"),
+                ("namespace", "acme"),
+                ("role", "contributor"),
+                ("expires", "7d"),
+            ])
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = test::read_body(resp).await;
+        let body = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body.contains("/auth/accept-invite/"));
+        assert!(body.contains("No email was sent"));
+        assert!(body.contains("INVITATION CREATED"));
+        assert!(body.contains("hx-swap-oob=\"outerHTML\""));
+        let link_start = body
+            .find("href=\"/auth/accept-invite/")
+            .map(|index| index + "href=\"".len())
+            .expect("accept link should be present");
+        let link_end = link_start + body[link_start..].find('"').unwrap();
+        let invite_path = &body[link_start..link_end];
+        let token = invite_path.rsplit('/').next().unwrap();
+
+        let req = test::TestRequest::post()
+            .uri(&format!("/tree/invites/{token}/resend"))
+            .cookie(actix_web::cookie::Cookie::new("session", session))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = test::read_body(resp).await;
+        let body = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body.contains("RESEND_API_KEY is not set"));
+        assert!(body.contains("hx-swap-oob=\"outerHTML\""));
+
+        let req = test::TestRequest::get().uri(invite_path).to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = test::read_body(resp).await;
+        let body = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body.contains("value=\"sam@example.com\" readonly"));
+        assert!(body.contains("Join the acme namespace"));
+        assert!(body.contains("invited as a Contributor"));
+        assert!(body.contains("name=\"username\""));
+        assert!(body.contains("name=\"password\""));
+
+        let req = test::TestRequest::post()
+            .uri(invite_path)
+            .set_form([
+                ("username", "sa"),
+                ("password", "short"),
+                ("email", "attacker@example.com"),
+            ])
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let body = test::read_body(resp).await;
+        assert!(
+            String::from_utf8(body.to_vec())
+                .unwrap()
+                .contains("Username must be at least 3 characters")
+        );
+
+        let req = test::TestRequest::post()
+            .uri(invite_path)
+            .set_form([
+                ("username", "sammy"),
+                ("password", "password123"),
+                ("email", "attacker@example.com"),
+            ])
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = test::read_body(resp).await;
+        let body = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body.contains("ACCOUNT CREATED"));
+        assert!(body.contains("sammy"));
+        assert!(body.contains("acme namespace"));
+        assert!(body.contains("href=\"/auth/login\""));
+
+        let user = db
+            .get_user_by_username("sammy")
+            .await
+            .expect("load created user")
+            .expect("user was created");
+        assert_eq!(user.email.as_deref(), Some("sam@example.com"));
+        assert!(auth::verify_password("password123", &user.password_hash).unwrap());
+        let accepted = db
+            .get_namespace_invitation(token)
+            .await
+            .expect("load accepted invitation")
+            .expect("invitation retained");
+        assert!(accepted.accepted_at.is_some());
+        assert_eq!(accepted.accepted_user_id.as_deref(), Some(user.id.as_str()));
+        let mut membership_rows = db
+            .conn()
+            .await
+            .unwrap()
+            .query(
+                "SELECT role FROM namespace_members WHERE namespace_id = ?1 AND user_id = ?2",
+                turso::params![accepted.namespace_id, user.id],
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            membership_rows
+                .next()
+                .await
+                .unwrap()
+                .expect("namespace membership")
+                .get::<String>(0)
+                .unwrap(),
+            "contributor"
+        );
+
+        let req = test::TestRequest::get().uri(invite_path).to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::GONE);
+        let body = test::read_body(resp).await;
+        assert!(
+            String::from_utf8(body.to_vec())
+                .unwrap()
+                .contains("already been accepted")
+        );
+    }
+
+    #[actix_web::test]
+    async fn namespace_owner_can_invite_only_to_owned_namespace() {
+        let (app, _, owner_session, _, _, _) = create_admin_test_service().await;
+        let req = test::TestRequest::post()
+            .uri("/tree/invites")
+            .cookie(actix_web::cookie::Cookie::new(
+                "session",
+                owner_session.clone(),
+            ))
+            .set_form([
+                ("email", "invitee@example.com"),
+                ("namespace", "docs-team"),
+                ("role", "owner"),
+                ("expires", "never"),
+            ])
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = test::read_body(resp).await;
+        assert!(
+            String::from_utf8(body.to_vec())
+                .unwrap()
+                .contains("invitee@example.com")
+        );
+
+        let req = test::TestRequest::post()
+            .uri("/tree/invites")
+            .cookie(actix_web::cookie::Cookie::new("session", owner_session))
+            .set_form([
+                ("email", "other@example.com"),
+                ("namespace", "acme"),
+                ("role", "contributor"),
+                ("expires", "7d"),
+            ])
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[actix_web::test]
+    async fn contributor_cannot_create_namespaces_or_repositories_but_can_access_existing_repo() {
+        let (app, _, _, contributor_session, _, project_root) = create_admin_test_service().await;
+        let existing_repo = std::path::Path::new(&project_root).join("acme/existing");
+        std::fs::create_dir_all(&existing_repo).unwrap();
+        crate::git::repo::bare_init(&existing_repo, "main", "Twig Test", "twig@example.com")
+            .unwrap();
+
+        let req = test::TestRequest::get()
+            .uri("/acme")
+            .cookie(actix_web::cookie::Cookie::new(
+                "session",
+                contributor_session.clone(),
+            ))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = test::read_body(resp).await;
+        let body = String::from_utf8(body.to_vec()).unwrap();
+        assert!(!body.contains(">Create repo</button>"));
+        assert!(!body.contains("create-repo-container"));
+
+        let req = test::TestRequest::get()
+            .uri("/acme/create-repo-form")
+            .cookie(actix_web::cookie::Cookie::new(
+                "session",
+                contributor_session.clone(),
+            ))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+        let req = test::TestRequest::post()
+            .uri("/acme/create-repo")
+            .cookie(actix_web::cookie::Cookie::new(
+                "session",
+                contributor_session.clone(),
+            ))
+            .set_form([("repo_name", "ui-created")])
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+        assert!(
+            !std::path::Path::new(&project_root)
+                .join("acme/ui-created")
+                .exists()
+        );
+
+        let req = test::TestRequest::post()
+            .uri("/auth/namespace")
+            .cookie(actix_web::cookie::Cookie::new(
+                "session",
+                contributor_session.clone(),
+            ))
+            .set_form([("name", "contrib-new-space")])
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+        let req = test::TestRequest::post()
+            .uri("/init")
+            .insert_header(("Authorization", basic_auth("contributor", "password123")))
+            .set_form([("namespace", "acme"), ("repo", "init-created")])
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+        assert!(
+            !std::path::Path::new(&project_root)
+                .join("acme/init-created")
+                .exists()
+        );
+
+        let req = test::TestRequest::get()
+            .uri("/acme/from-git/info/refs?service=git-receive-pack")
+            .insert_header(("User-Agent", "git/2.43.0"))
+            .insert_header(("Authorization", basic_auth("contributor", "password123")))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+        assert!(
+            !std::path::Path::new(&project_root)
+                .join("acme/from-git")
+                .exists()
+        );
+
+        let req = test::TestRequest::get()
+            .uri("/contrib-new-space/repo/info/refs?service=git-receive-pack")
+            .insert_header(("User-Agent", "git/2.43.0"))
+            .insert_header(("Authorization", basic_auth("contributor", "password123")))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+        let req = test::TestRequest::get()
+            .uri("/acme/existing/info/refs?service=git-receive-pack")
+            .insert_header(("User-Agent", "git/2.43.0"))
+            .insert_header(("Authorization", basic_auth("contributor", "password123")))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let req = test::TestRequest::post()
+            .uri("/settings/rename-namespace")
+            .cookie(actix_web::cookie::Cookie::new(
+                "session",
+                contributor_session.clone(),
+            ))
+            .set_form([("namespace", "acme"), ("new_name", "renamed-acme")])
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+        let req = test::TestRequest::post()
+            .uri("/settings/rename-repo")
+            .cookie(actix_web::cookie::Cookie::new(
+                "session",
+                contributor_session.clone(),
+            ))
+            .set_form([
+                ("namespace", "acme"),
+                ("repo_name", "existing"),
+                ("new_name", "renamed"),
+            ])
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+        let req = test::TestRequest::get()
+            .uri("/acme/existing")
+            .cookie(actix_web::cookie::Cookie::new(
+                "session",
+                contributor_session.clone(),
+            ))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = test::read_body(resp).await;
+        assert!(
+            String::from_utf8(body.to_vec())
+                .unwrap()
+                .contains("acme/existing")
+        );
+
+        let req = test::TestRequest::get()
+            .uri("/tree/users")
+            .cookie(actix_web::cookie::Cookie::new(
+                "session",
+                contributor_session,
+            ))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+        let _ = std::fs::remove_dir_all(&project_root);
+    }
+
+    #[actix_web::test]
+    async fn expired_namespace_invitation_link_returns_gone() {
+        let (app, _, _, _, db, _) = create_admin_test_service().await;
+        let namespace = db
+            .get_namespace_by_name("acme")
+            .await
+            .expect("load namespace")
+            .expect("namespace exists");
+        let invitation = db
+            .create_namespace_invitation(&auth::NewNamespaceInvitation {
+                email: "expired@example.com".to_string(),
+                namespace_id: namespace.id,
+                role: auth::NamespaceRole::Contributor,
+                expires_at: Some((chrono::Utc::now() - chrono::Duration::days(1)).to_rfc3339()),
+            })
+            .await
+            .expect("create expired invitation");
+
+        let req = test::TestRequest::get()
+            .uri(&format!("/auth/accept-invite/{}", invitation.token))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::GONE);
+        let body = test::read_body(resp).await;
+        assert!(
+            String::from_utf8(body.to_vec())
+                .unwrap()
+                .contains("This invitation has expired")
+        );
     }
 
     #[actix_web::test]

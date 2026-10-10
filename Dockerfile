@@ -25,10 +25,10 @@ WORKDIR /app
 
 # mold links the final binary several times faster than GNU ld.
 # gcc 12 (bookworm) drives it via -fuse-ld=mold, so no clang needed.
-# No pkg-config/libssl-dev: git2 is built with default-features off and
-# vendors libgit2, and nothing in the tree links OpenSSL.
+# No libssl-dev: git2 is built with default-features off and vendors libgit2,
+# and HTTP clients use Rustls. CMake is needed to build Rustls' AWS-LC provider.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends mold \
+    && apt-get install -y --no-install-recommends mold cmake \
     && rm -rf /var/lib/apt/lists/*
 
 ENV RUSTFLAGS="-C link-arg=-fuse-ld=mold" \

@@ -1,6 +1,7 @@
 use actix_web::http::header::HeaderValue;
 
 pub const DEFAULT_CACHE_CONTROL: &str = "public, max-age=31536000, immutable";
+pub const DEFAULT_RESEND_FROM: &str = "onboarding@resend.dev";
 
 #[derive(Clone)]
 pub struct Server {
@@ -12,6 +13,9 @@ pub struct Server {
     reset_db: bool,
     test_user: Option<String>,
     admin_user: Option<String>,
+    resend_api_key: Option<String>,
+    resend_from: String,
+    public_base_url: Option<String>,
     cache_control: HeaderValue,
     session_key: actix_web::cookie::Key,
 }
@@ -35,6 +39,9 @@ impl Server {
             reset_db,
             test_user: None,
             admin_user: None,
+            resend_api_key: None,
+            resend_from: DEFAULT_RESEND_FROM.to_string(),
+            public_base_url: None,
             cache_control: HeaderValue::from_static(DEFAULT_CACHE_CONTROL),
             session_key: actix_web::cookie::Key::generate(),
         }
@@ -53,6 +60,30 @@ impl Server {
     pub fn with_admin_user(mut self, admin_user: Option<String>) -> Self {
         self.admin_user = admin_user;
         self
+    }
+
+    pub fn with_resend_settings(
+        mut self,
+        api_key: Option<String>,
+        from: String,
+        public_base_url: Option<String>,
+    ) -> Self {
+        self.resend_api_key = api_key.filter(|key| !key.trim().is_empty());
+        self.resend_from = from;
+        self.public_base_url = public_base_url;
+        self
+    }
+
+    pub fn resend_api_key(&self) -> Option<&str> {
+        self.resend_api_key.as_deref()
+    }
+
+    pub fn resend_from(&self) -> &str {
+        &self.resend_from
+    }
+
+    pub fn public_base_url(&self) -> Option<&str> {
+        self.public_base_url.as_deref()
     }
 
     pub fn admin_user(&self) -> Option<&str> {
@@ -181,6 +212,19 @@ pub fn from_env() -> Server {
         .ok()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
+    let resend_api_key = std::env::var("RESEND_API_KEY")
+        .ok()
+        .map(|key| key.trim().to_string())
+        .filter(|key| !key.is_empty());
+    let resend_from = std::env::var("RESEND_FROM")
+        .ok()
+        .map(|from| from.trim().to_string())
+        .filter(|from| !from.is_empty())
+        .unwrap_or_else(|| DEFAULT_RESEND_FROM.to_string());
+    let public_base_url = std::env::var("PUBLIC_BASE_URL")
+        .ok()
+        .map(|url| url.trim().trim_end_matches('/').to_string())
+        .filter(|url| !url.is_empty());
     let cache_control = std::env::var("CACHE_CONTROL")
         .unwrap_or_else(|_| DEFAULT_CACHE_CONTROL.to_string())
         .parse::<HeaderValue>()
@@ -201,6 +245,7 @@ pub fn from_env() -> Server {
     .with_session_key(session_key)
     .with_test_user(test_user)
     .with_admin_user(admin_user)
+    .with_resend_settings(resend_api_key, resend_from, public_base_url)
 }
 
 fn ascii(server: &Server) -> String {
@@ -390,5 +435,36 @@ mod tests {
         .with_admin_user(None);
 
         assert_eq!(server.admin_user(), None);
+    }
+
+    #[test]
+    fn test_resend_settings_are_optional_and_keep_sender_configuration() {
+        let server = Server::new(
+            ("0.0.0.0".to_string(), 8080),
+            "info".to_string(),
+            "/srv/git".to_string(),
+            "twig.db".to_string(),
+            "key".to_string(),
+            false,
+        );
+        assert_eq!(server.resend_api_key(), None);
+        assert_eq!(server.resend_from(), DEFAULT_RESEND_FROM);
+        assert_eq!(server.public_base_url(), None);
+
+        let configured = server.with_resend_settings(
+            Some("re_example_secret".to_string()),
+            "Twig <invites@example.com>".to_string(),
+            Some("https://twig.example".to_string()),
+        );
+        assert_eq!(configured.resend_api_key(), Some("re_example_secret"));
+        assert_eq!(configured.resend_from(), "Twig <invites@example.com>");
+        assert_eq!(configured.public_base_url(), Some("https://twig.example"));
+
+        let blank = configured.with_resend_settings(
+            Some("  ".to_string()),
+            DEFAULT_RESEND_FROM.to_string(),
+            None,
+        );
+        assert_eq!(blank.resend_api_key(), None);
     }
 }

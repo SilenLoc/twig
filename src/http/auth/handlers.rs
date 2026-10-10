@@ -305,6 +305,19 @@ pub async fn create_namespace_ui_handler(
         return HttpResponse::Unauthorized().body(render_error(message).into_string());
     };
 
+    match db.user_can_create_namespace(&user_id).await {
+        Ok(true) => {}
+        Ok(false) => {
+            return HttpResponse::Forbidden()
+                .body(render_error("Contributors cannot create namespaces").into_string());
+        }
+        Err(error) => {
+            log::error!("Failed to check namespace creation permission: {error}");
+            return HttpResponse::InternalServerError()
+                .body(render_error("Failed to check namespace permission").into_string());
+        }
+    }
+
     // Create namespace
     let namespace = create_namespace(form.name.clone(), user_id.clone());
 

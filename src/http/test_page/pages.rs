@@ -371,6 +371,7 @@ pub fn render_test_page(
         (crate::http::tree::pages::render_tree_hub(
             true,
             data_enabled,
+            role.is_admin(),
             Some("test"),
         ))
         (render_pagehead(role))

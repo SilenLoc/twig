@@ -126,6 +126,30 @@ const MIGRATIONS: &[Migration] = &[
         sql: r"CREATE INDEX IF NOT EXISTS idx_repository_binaries_lookup
             ON repository_binaries(namespace, repo, version, filename);",
     },
+    Migration {
+        name: "create_namespace_invitations_table",
+        sql: r"CREATE TABLE IF NOT EXISTS namespace_invitations (
+            token TEXT PRIMARY KEY,
+            email TEXT NOT NULL,
+            namespace_id TEXT NOT NULL,
+            role TEXT NOT NULL CHECK (role IN ('owner', 'contributor')),
+            created_at TEXT NOT NULL,
+            expires_at TEXT,
+            accepted_at TEXT,
+            accepted_user_id TEXT,
+            FOREIGN KEY (namespace_id) REFERENCES namespaces(id),
+            FOREIGN KEY (accepted_user_id) REFERENCES users(id)
+        );",
+    },
+    Migration {
+        name: "create_namespace_invitations_namespace_created_index",
+        sql: r"CREATE INDEX IF NOT EXISTS idx_namespace_invitations_namespace_created
+            ON namespace_invitations(namespace_id, created_at DESC);",
+    },
+    Migration {
+        name: "normalize_legacy_namespace_member_role",
+        sql: r"UPDATE namespace_members SET role = 'contributor' WHERE role = 'member';",
+    },
 ];
 
 impl Database {
@@ -249,6 +273,7 @@ mod tests {
         assert!(tables.contains(&"namespaces".to_string()));
         assert!(tables.contains(&"namespace_members".to_string()));
         assert!(tables.contains(&"invites".to_string()));
+        assert!(tables.contains(&"namespace_invitations".to_string()));
         assert!(tables.contains(&"tokens".to_string()));
         assert!(tables.contains(&"test_pins".to_string()));
         assert!(tables.contains(&"repository_binaries".to_string()));
@@ -296,6 +321,70 @@ mod tests {
         }
 
         // Cleanup
+        let _ = std::fs::remove_file(&db_path);
+    }
+
+    #[tokio::test]
+    async fn test_legacy_member_roles_migrate_to_contributors() {
+        use crate::auth::{User, create_namespace};
+
+        let db_path = format!("/tmp/test_twig_role_migration_{}.db", uuid::Uuid::new_v4());
+        let db = Database::new(&db_path);
+        db.init_tables().await.expect("init tables");
+        let owner = User {
+            id: uuid::Uuid::new_v4().to_string(),
+            username: "role-owner".to_string(),
+            email: Some("owner@example.com".to_string()),
+            password_hash: "hash".to_string(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+        };
+        let member = User {
+            id: uuid::Uuid::new_v4().to_string(),
+            username: "role-member".to_string(),
+            email: Some("member@example.com".to_string()),
+            password_hash: "hash".to_string(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+        };
+        db.create_user(&owner).await.expect("create owner");
+        db.create_user(&member).await.expect("create member");
+        let namespace = create_namespace("role-migration".to_string(), owner.id.clone());
+        db.create_namespace(&namespace)
+            .await
+            .expect("create namespace");
+        db.conn()
+            .await
+            .unwrap()
+            .execute(
+                "INSERT INTO namespace_members (namespace_id, user_id, role, added_at)
+                 VALUES (?1, ?2, 'member', ?3)",
+                turso::params![
+                    namespace.id.clone(),
+                    member.id.clone(),
+                    chrono::Utc::now().to_rfc3339()
+                ],
+            )
+            .await
+            .expect("insert legacy member role");
+        db.conn()
+            .await
+            .unwrap()
+            .execute(
+                "DELETE FROM _migrations WHERE name = ?1",
+                turso::params!["normalize_legacy_namespace_member_role"],
+            )
+            .await
+            .expect("mark role migration unapplied");
+
+        db.create_tables()
+            .await
+            .expect("apply role normalization migration");
+
+        let role = db
+            .get_namespace_role(&member.id, &namespace.name)
+            .await
+            .expect("read normalized role");
+        assert_eq!(role, Some(crate::auth::NamespaceRole::Contributor));
+
         let _ = std::fs::remove_file(&db_path);
     }
 }

@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>User Management — Invites</title>
+  <style>
+    :root { color-scheme: light; font: 16px/1.5 system-ui, sans-serif; color: #20252b; background: #f4f6f8; }
+    body { margin: 0; }
+    header { background: #18232f; color: white; padding: 1rem max(1rem, calc((100% - 960px) / 2)); }
+    main { max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
+    h1, h2 { line-height: 1.2; }
+    .tabs { display: flex; gap: 1.5rem; border-bottom: 1px solid #cbd2d9; margin: 1.5rem 0; }
+    .tabs a { padding: .65rem .1rem; color: #425466; text-decoration: none; }
+    .tabs a[aria-current="page"] { color: #135ea8; border-bottom: 3px solid #1976d2; font-weight: 650; }
+    section, .invite { background: white; border: 1px solid #d8dee5; border-radius: 8px; padding: 1.25rem; margin: 1rem 0; }
+    .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+    label { display: grid; gap: .35rem; font-weight: 600; }
+    input, select { box-sizing: border-box; width: 100%; padding: .65rem; border: 1px solid #9ca9b5; border-radius: 5px; background: white; font: inherit; }
+    .help { color: #596775; font-size: .9rem; font-weight: 400; }
+    button { margin-top: 1rem; border: 0; border-radius: 5px; background: #1769aa; color: white; padding: .7rem 1rem; font: inherit; font-weight: 650; }
+    .invite { display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
+    .invite p { margin: .15rem 0; }
+    .status { color: #596775; }
+    @media (max-width: 600px) { .form-grid { grid-template-columns: 1fr; } .invite { align-items: flex-start; flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <header><strong>Twig</strong> / Admin</header>
+  <main>
+    <p>Administration / User Management</p>
+    <h1>User Management</h1>
+    <nav class="tabs" aria-label="User management">
+      <a href="#users">Users</a>
+      <a href="#invites" aria-current="page">Invites</a>
+    </nav>
+    <section>
+      <h2>Invite someone</h2>
+      <p>They’ll receive a link to set up their account.</p>
+      <form>
+        <div class="form-grid">
+          <label>Email address
+            <input type="email" placeholder="person@example.com" required>
+          </label>
+          <label>Namespace
+            <select required>
+              <option value="">Choose a namespace</option>
+              <option selected>acme</option>
+              <option>docs-team</option>
+            </select>
+          </label>
+          <label>Role in namespace
+            <select>
+              <option>Contributor</option>
+              <option>Owner</option>
+            </select>
+            <span class="help">Contributors can work in repositories, but can’t invite people or create namespaces or repositories. They can’t force-push to main.</span>
+          </label>
+          <label>Link expires
+            <select>
+              <option>In 1 day</option>
+              <option selected>In 7 days</option>
+              <option>In 30 days</option>
+              <option>Never</option>
+            </select>
+          </label>
+        </div>
+        <button type="button">Send invitation</button>
+      </form>
+    </section>
+    <section>
+      <h2>Invitations</h2>
+      <article class="invite">
+        <div><strong>sam@example.com</strong><p>acme · Contributor</p></div>
+        <p class="status">Pending · expires Oct 17, 2026</p>
+      </article>
+      <article class="invite">
+        <div><strong>lee@example.com</strong><p>docs-team · Owner</p></div>
+        <p class="status">Accepted</p>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

@@ -11,7 +11,7 @@ use crate::{
     git::{self, repo::bare_init},
 };
 
-async fn user_has_namespace_access(
+async fn user_can_create_repositories(
     req: &HttpRequest,
     auth_state: &web::Data<TwigContext>,
     namespace: &str,
@@ -22,10 +22,10 @@ async fn user_has_namespace_access(
 
     let db = auth_state.db();
 
-    match db.user_has_namespace_access(&user_id, namespace).await {
-        Ok(access) => access,
+    match db.user_owns_namespace(&user_id, namespace).await {
+        Ok(is_owner) => is_owner,
         Err(e) => {
-            log::error!("Failed to check namespace access: {e}");
+            log::error!("Failed to check repository creation permission: {e}");
             false
         }
     }
@@ -79,7 +79,7 @@ fn format_date(date: &chrono::DateTime<chrono::Utc>) -> String {
 fn render_namespace(
     namespace: &str,
     search_query: &str,
-    has_access: bool,
+    can_create_repositories: bool,
     repos: &[git::bare::RepoInfo],
 ) -> maud::Markup {
     let namespace_href = format!("/{namespace}");
@@ -91,7 +91,7 @@ fn render_namespace(
                 span class="twig-crumb-sep" aria-hidden="true" { "/" }
                 h1 class="twig-crumb-current" aria-current="page" { (namespace) }
             }
-            @if has_access {
+            @if can_create_repositories {
                 div class="twig-cluster" {
                     button
                         type="button"
@@ -123,7 +123,7 @@ fn render_namespace(
                 }
             }
 
-            @if has_access {
+            @if can_create_repositories {
                 div id="create-repo-container" {}
             }
 
@@ -133,7 +133,13 @@ fn render_namespace(
                         @if search_query.is_empty() {
                             div class="twig-empty" {
                                 p class="twig-eyebrow" { "NO REPOSITORIES" }
-                                p class="twig-empty-body" { "No repositories yet. Click 'Create repo' to add one!" }
+                                p class="twig-empty-body" {
+                                    @if can_create_repositories {
+                                        "No repositories yet. Click 'Create repo' to add one!"
+                                    } @else {
+                                        "There are no repositories in this namespace yet."
+                                    }
+                                }
                             }
                         } @else {
                             div class="twig-empty" {
@@ -181,7 +187,7 @@ pub async fn handler(
     let namespace = &params.namespace;
     let search_query = query.q.as_deref().unwrap_or("");
     let username = get_username_from_request(&req, &auth_state).await;
-    let has_access = user_has_namespace_access(&req, &auth_state, namespace).await;
+    let can_create_repositories = user_can_create_repositories(&req, &auth_state, namespace).await;
 
     let repos = if search_query.is_empty() {
         git::bare::get_repos_with_info(server.project_root(), namespace)
@@ -195,7 +201,7 @@ pub async fn handler(
         repos.into_iter().filter(|r| !r.is_private).collect()
     };
 
-    let content = render_namespace(namespace, search_query, has_access, &repos);
+    let content = render_namespace(namespace, search_query, can_create_repositories, &repos);
 
     if req.headers().get("HX-Request").is_some() {
         Ok(content)
@@ -267,10 +273,17 @@ fn render_create_repo_form(namespace: &str) -> maud::Markup {
 
 #[get("/{namespace}/create-repo-form")]
 pub async fn create_repo_form_handler(
-    _req: HttpRequest,
+    req: HttpRequest,
+    auth_state: web::Data<TwigContext>,
     params: web::Path<Params>,
-) -> AwResult<maud::Markup> {
-    Ok(render_create_repo_form(&params.namespace))
+) -> impl Responder {
+    if !user_can_create_repositories(&req, &auth_state, &params.namespace).await {
+        return HttpResponse::Forbidden()
+            .body(render_error("Only namespace owners can create repositories").into_string());
+    }
+    HttpResponse::Ok()
+        .content_type("text/html")
+        .body(render_create_repo_form(&params.namespace).into_string())
 }
 
 #[post("/{namespace}/create-repo")]
@@ -294,11 +307,11 @@ pub async fn create_repo_handler(
 
     let db = auth_state.db();
 
-    match db.user_has_namespace_access(&user_id, namespace).await {
+    match db.user_owns_namespace(&user_id, namespace).await {
         Ok(true) => {}
         Ok(false) => {
             return HttpResponse::Forbidden()
-                .body(render_error("Access denied to namespace").into_string());
+                .body(render_error("Only namespace owners can create repositories").into_string());
         }
         Err(e) => {
             log::error!("Database error: {e}");

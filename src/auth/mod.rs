@@ -36,6 +36,64 @@ pub struct Invite {
     pub used_at: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NamespaceRole {
+    Owner,
+    Contributor,
+}
+
+impl NamespaceRole {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Owner => "owner",
+            Self::Contributor => "contributor",
+        }
+    }
+
+    pub fn display_name(self) -> &'static str {
+        match self {
+            Self::Owner => "Owner",
+            Self::Contributor => "Contributor",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "owner" => Some(Self::Owner),
+            "contributor" | "member" => Some(Self::Contributor),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct NamespaceInvitation {
+    pub token: String,
+    pub email: String,
+    pub namespace_id: String,
+    pub namespace_name: String,
+    pub role: NamespaceRole,
+    pub created_at: String,
+    pub expires_at: Option<String>,
+    pub accepted_at: Option<String>,
+    pub accepted_user_id: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewNamespaceInvitation {
+    pub email: String,
+    pub namespace_id: String,
+    pub role: NamespaceRole,
+    pub expires_at: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UserManagementEntry {
+    pub username: String,
+    pub email: Option<String>,
+    pub memberships: Vec<(String, NamespaceRole)>,
+}
+
 pub fn hash_password(password: &str) -> Result<String, String> {
     let argon2 = Argon2::default();
     let password_hash = argon2

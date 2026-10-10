@@ -1,0 +1,45 @@
+#!/bin/sh
+# TWIG_MANAGED_PRE_RECEIVE_V1
+
+set -eu
+
+updates=$(mktemp "${TMPDIR:-/tmp}/twig-pre-receive.XXXXXX") || exit 1
+trap 'rm -f "$updates"' EXIT
+trap 'exit 1' HUP INT TERM
+
+cat > "$updates" || exit 1
+
+is_zero_oid() {
+    case "$1" in
+        ''|*[!0]*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+# An absent or unexpected role must fail closed as Contributor. HTTP Git requests
+# receive this value from Twig's authenticated server-side environment.
+role=${TWIG_NAMESPACE_ROLE:-contributor}
+if [ "$role" != "owner" ]; then
+    while IFS=' ' read -r old_oid new_oid ref_name; do
+        [ "$ref_name" = "refs/heads/main" ] || continue
+
+        if is_zero_oid "$new_oid"; then
+            echo "Twig: Contributors cannot delete main." >&2
+            exit 1
+        fi
+
+        if ! is_zero_oid "$old_oid" && ! git merge-base --is-ancestor "$old_oid" "$new_oid"; then
+            echo "Twig: Contributors cannot rewrite history on main." >&2
+            exit 1
+        fi
+    done < "$updates"
+fi
+
+# Custom hooks are preserved beside this managed hook and run after Twig's
+# policy check, receiving the original ref-update lines and CGI environment.
+hook_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+for user_hook in "$hook_dir"/pre-receive.twig-user*; do
+    [ -f "$user_hook" ] || continue
+    [ -x "$user_hook" ] || continue
+    "$user_hook" < "$updates"
+done

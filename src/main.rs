@@ -11,6 +11,7 @@ use log::{info, warn};
 mod auth;
 mod config;
 mod db;
+mod email;
 mod git;
 mod http;
 mod info;

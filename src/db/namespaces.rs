@@ -1,4 +1,5 @@
 use crate::auth::Namespace;
+use crate::auth::NamespaceRole;
 use crate::db::Database;
 
 impl Database {
@@ -136,6 +137,102 @@ impl Database {
         Ok(rows.next().await.map_err(|e| e.to_string())?.is_some())
     }
 
+    pub async fn get_namespace_role(
+        &self,
+        user_id: &str,
+        namespace_name: &str,
+    ) -> Result<Option<NamespaceRole>, String> {
+        let mut rows = self
+            .conn()
+            .await?
+            .query(
+                "SELECT CASE WHEN n.owner_id = ?2 THEN 'owner' ELSE nm.role END
+                 FROM namespaces n
+                 LEFT JOIN namespace_members nm ON n.id = nm.namespace_id AND nm.user_id = ?2
+                 WHERE n.name = ?1 AND (n.owner_id = ?2 OR nm.user_id = ?2)
+                 LIMIT 1",
+                turso::params![namespace_name, user_id],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+
+        let Some(row) = rows.next().await.map_err(|error| error.to_string())? else {
+            return Ok(None);
+        };
+        let role: String = row.get(0).map_err(|error| error.to_string())?;
+        NamespaceRole::parse(&role)
+            .map(Some)
+            .ok_or_else(|| format!("Unknown namespace role: {role}"))
+    }
+
+    pub async fn user_owns_namespace(
+        &self,
+        user_id: &str,
+        namespace_name: &str,
+    ) -> Result<bool, String> {
+        Ok(self.get_namespace_role(user_id, namespace_name).await? == Some(NamespaceRole::Owner))
+    }
+
+    pub async fn get_owned_namespaces_for_user(
+        &self,
+        user_id: &str,
+    ) -> Result<Vec<Namespace>, String> {
+        let mut rows = self
+            .conn()
+            .await?
+            .query(
+                "SELECT DISTINCT n.id, n.name, n.owner_id, n.created_at
+                 FROM namespaces n
+                 LEFT JOIN namespace_members nm ON n.id = nm.namespace_id AND nm.user_id = ?1
+                 WHERE n.owner_id = ?1 OR (nm.user_id = ?1 AND nm.role = 'owner')
+                 ORDER BY n.name",
+                turso::params![user_id],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+
+        let mut namespaces = Vec::new();
+        while let Some(row) = rows.next().await.map_err(|error| error.to_string())? {
+            namespaces.push(Namespace {
+                id: row.get(0).map_err(|error| error.to_string())?,
+                name: row.get(1).map_err(|error| error.to_string())?,
+                owner_id: row.get(2).map_err(|error| error.to_string())?,
+                created_at: row.get(3).map_err(|error| error.to_string())?,
+            });
+        }
+        Ok(namespaces)
+    }
+
+    pub async fn user_can_create_namespace(&self, user_id: &str) -> Result<bool, String> {
+        let mut rows = self
+            .conn()
+            .await?
+            .query(
+                "SELECT CASE
+                    WHEN NOT EXISTS (
+                        SELECT 1 FROM namespace_members WHERE user_id = ?1
+                    ) THEN 1
+                    WHEN EXISTS (
+                        SELECT 1 FROM namespaces n
+                        LEFT JOIN namespace_members nm
+                            ON n.id = nm.namespace_id AND nm.user_id = ?1
+                        WHERE n.owner_id = ?1 OR (nm.user_id = ?1 AND nm.role = 'owner')
+                    ) THEN 1
+                    ELSE 0
+                 END",
+                turso::params![user_id],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        let row = rows
+            .next()
+            .await
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| "Namespace creation permission query returned no result".to_string())?;
+        let allowed: i64 = row.get(0).map_err(|error| error.to_string())?;
+        Ok(allowed != 0)
+    }
+
     pub async fn user_has_any_namespaces(&self, user_id: &str) -> Result<bool, String> {
         let mut rows = self
             .conn()
@@ -150,6 +247,9 @@ impl Database {
         Ok(rows.next().await.map_err(|e| e.to_string())?.is_some())
     }
 
+    /// Lists all member-visible namespaces; owner-only management panels use
+    /// `get_owned_namespaces_for_user` instead.
+    #[allow(dead_code)]
     pub async fn get_namespaces_for_user(&self, user_id: &str) -> Result<Vec<Namespace>, String> {
         let mut rows = self
             .conn()
@@ -341,6 +441,97 @@ mod tests {
 
         // Cleanup
         let _ = std::fs::remove_file(&db_path);
+    }
+
+    #[tokio::test]
+    async fn namespace_roles_control_owner_scopes_and_creation_permissions() {
+        let (db, db_path, owner_id) = setup_db_with_user().await;
+        let namespace = test_namespace(&owner_id);
+        db.create_namespace(&namespace)
+            .await
+            .expect("create owner namespace");
+
+        assert_eq!(
+            db.get_namespace_role(&owner_id, &namespace.name)
+                .await
+                .expect("get owner role"),
+            Some(crate::auth::NamespaceRole::Owner)
+        );
+        assert!(
+            db.user_owns_namespace(&owner_id, &namespace.name)
+                .await
+                .expect("owner permission")
+        );
+        assert_eq!(
+            db.get_owned_namespaces_for_user(&owner_id)
+                .await
+                .expect("list owned namespaces")
+                .len(),
+            1
+        );
+        assert!(
+            db.user_can_create_namespace(&owner_id)
+                .await
+                .expect("owner may create a namespace")
+        );
+
+        let contributor_id = uuid::Uuid::new_v4().to_string();
+        let contributor = User {
+            id: contributor_id.clone(),
+            username: "namespace-contributor".to_string(),
+            email: Some("contributor@example.com".to_string()),
+            password_hash: "hash".to_string(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+        };
+        db.create_user(&contributor)
+            .await
+            .expect("create contributor");
+        db.conn()
+            .await
+            .unwrap()
+            .execute(
+                "INSERT INTO namespace_members (namespace_id, user_id, role, added_at)
+                 VALUES (?1, ?2, 'contributor', ?3)",
+                turso::params![
+                    namespace.id.clone(),
+                    contributor_id.clone(),
+                    chrono::Utc::now().to_rfc3339()
+                ],
+            )
+            .await
+            .expect("add contributor membership");
+
+        assert_eq!(
+            db.get_namespace_role(&contributor_id, &namespace.name)
+                .await
+                .expect("get contributor role"),
+            Some(crate::auth::NamespaceRole::Contributor)
+        );
+        assert!(
+            !db.user_owns_namespace(&contributor_id, &namespace.name)
+                .await
+                .expect("contributor is not an owner")
+        );
+        assert!(
+            db.get_owned_namespaces_for_user(&contributor_id)
+                .await
+                .expect("list contributor-owned namespaces")
+                .is_empty()
+        );
+        assert!(
+            !db.user_can_create_namespace(&contributor_id)
+                .await
+                .expect("contributor cannot create a namespace")
+        );
+
+        let new_user_id = uuid::Uuid::new_v4().to_string();
+        assert!(
+            db.user_can_create_namespace(&new_user_id)
+                .await
+                .expect("a user with no memberships may create their first namespace")
+        );
+
+        let _ = std::fs::remove_file(db_path);
     }
 
     #[tokio::test]

@@ -1,6 +1,6 @@
 [package]
 name = "twig"
-version = "0.2.9"
+version = "0.2.11"
 edition = "2024"
 
 [workspace]
@@ -19,6 +19,7 @@ hex = "0.4"
 log = "0.4"
 pulldown-cmark = "0.13"
 qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
+resend-rs = { version = "0.34.0", default-features = false, features = ["rustls-tls"] }
 semver = "1"
 toml = "1.1"
 turso = { version = "0.8.2", default-features = false }

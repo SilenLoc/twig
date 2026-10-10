@@ -7,6 +7,7 @@ use serde::Deserialize;
 
 use crate::auth::TwigContext;
 use crate::config;
+use crate::db::Database;
 use crate::git;
 use crate::http::view::{render_error, render_error_with_action, render_success};
 
@@ -39,6 +40,23 @@ struct RenameRepoForm {
 struct RenameNamespaceForm {
     namespace: String,
     new_name: String,
+}
+
+async fn require_namespace_owner(
+    db: &Database,
+    user_id: &str,
+    namespace: &str,
+) -> Result<(), HttpResponse> {
+    match db.user_owns_namespace(user_id, namespace).await {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(HttpResponse::Forbidden()
+            .body(render_error("Namespace owner access required").into_string())),
+        Err(error) => {
+            log::error!("Failed to check namespace owner permission: {error}");
+            Err(HttpResponse::InternalServerError()
+                .body(render_error("Database error").into_string()))
+        }
+    }
 }
 
 /// Renders the settings page body shared by the full-page and HTMX responses.
@@ -246,12 +264,25 @@ pub async fn settings_page(
         return Ok(render_error("Failed to load user."));
     };
 
+    let user_management_enabled = if server.is_configured_admin(&user.username) {
+        true
+    } else {
+        match db.get_owned_namespaces_for_user(&user_id).await {
+            Ok(namespaces) => !namespaces.is_empty(),
+            Err(error) => {
+                log::error!("Failed to check User Management access: {error}");
+                false
+            }
+        }
+    };
+
     let content = render_settings(&user);
 
     let content = maud::html! {
         (crate::http::tree::pages::render_tree_hub(
             server.is_test_user_enabled(),
             server.is_configured_admin(&user.username),
+            user_management_enabled,
             Some("account"),
         ))
         (content)
@@ -328,21 +359,8 @@ pub async fn delete_repo(
 
     let db = auth_state.db();
 
-    // Verify user has access to the namespace
-    match db
-        .user_has_namespace_access(&user_id, &form.namespace)
-        .await
-    {
-        Ok(true) => {}
-        Ok(false) => {
-            return HttpResponse::Forbidden()
-                .body(render_error("Access denied to namespace").into_string());
-        }
-        Err(e) => {
-            log::error!("Database error: {e}");
-            return HttpResponse::InternalServerError()
-                .body(render_error("Database error").into_string());
-        }
+    if let Err(response) = require_namespace_owner(db, &user_id, &form.namespace).await {
+        return response;
     }
 
     // Build the repository path
@@ -422,7 +440,7 @@ pub async fn move_repo(
         (&form.source_namespace, "source"),
         (&form.target_namespace, "destination"),
     ] {
-        let namespace = match db.get_namespace_by_name(name).await {
+        let _namespace = match db.get_namespace_by_name(name).await {
             Ok(Some(namespace)) => namespace,
             Ok(None) => {
                 return HttpResponse::NotFound().body(
@@ -435,11 +453,8 @@ pub async fn move_repo(
                     .body(render_error("Database error").into_string());
             }
         };
-        if namespace.owner_id != user_id {
-            return HttpResponse::Forbidden().body(
-                render_error("Repositories can only be moved between namespaces you own")
-                    .into_string(),
-            );
+        if let Err(response) = require_namespace_owner(db, &user_id, name).await {
+            return response;
         }
     }
 
@@ -522,7 +537,7 @@ pub async fn rename_repo(
     };
 
     let db = auth_state.db();
-    let namespace = match db.get_namespace_by_name(&form.namespace).await {
+    let _namespace = match db.get_namespace_by_name(&form.namespace).await {
         Ok(Some(namespace)) => namespace,
         Ok(None) => {
             return HttpResponse::NotFound()
@@ -534,10 +549,8 @@ pub async fn rename_repo(
                 .body(render_error("Database error").into_string());
         }
     };
-    if namespace.owner_id != user_id {
-        return HttpResponse::Forbidden().body(
-            render_error("Repositories can only be renamed by their namespace owner").into_string(),
-        );
+    if let Err(response) = require_namespace_owner(db, &user_id, &form.namespace).await {
+        return response;
     }
 
     let namespace_dir = Path::new(server.project_root()).join(&form.namespace);
@@ -626,9 +639,8 @@ pub async fn rename_namespace(
                 .body(render_error("Database error").into_string());
         }
     };
-    if namespace.owner_id != user_id {
-        return HttpResponse::Forbidden()
-            .body(render_error("Only the namespace owner can rename it").into_string());
+    if let Err(response) = require_namespace_owner(db, &user_id, &form.namespace).await {
+        return response;
     }
 
     match db.get_namespace_by_name(&form.new_name).await {
@@ -711,9 +723,8 @@ pub async fn delete_namespace(
         }
     };
 
-    if namespace.owner_id != user_id {
-        return HttpResponse::Forbidden()
-            .body(render_error("Only the namespace owner can delete it").into_string());
+    if let Err(response) = require_namespace_owner(db, &user_id, &form.namespace).await {
+        return response;
     }
 
     if git::bare::namespace::has_any_repository(server.project_root(), &form.namespace) {

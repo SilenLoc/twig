@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Set up your Twig account</title>
+  <style>
+    :root { color-scheme: light; font: 16px/1.5 system-ui, sans-serif; color: #20252b; background: #f4f6f8; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 1rem; box-sizing: border-box; }
+    main { box-sizing: border-box; width: min(100%, 440px); background: white; border: 1px solid #d8dee5; border-radius: 8px; padding: 2rem; }
+    h1 { line-height: 1.2; }
+    label { display: grid; gap: .35rem; margin: 1rem 0; font-weight: 600; }
+    input { box-sizing: border-box; width: 100%; padding: .7rem; border: 1px solid #9ca9b5; border-radius: 5px; font: inherit; }
+    input[readonly] { background: #f2f4f6; color: #56616c; }
+    .hint { color: #596775; font-size: .9rem; font-weight: 400; }
+    button { width: 100%; margin-top: .5rem; border: 0; border-radius: 5px; background: #1769aa; color: white; padding: .75rem 1rem; font: inherit; font-weight: 650; }
+  </style>
+</head>
+<body>
+  <main>
+    <p><strong>Twig</strong></p>
+    <h1>Join the acme namespace</h1>
+    <p>You’ve been invited as a <strong>Contributor</strong>. Set up your account to accept the invitation.</p>
+    <form>
+      <label>Email address
+        <input type="email" value="sam@example.com" readonly>
+      </label>
+      <label>Username
+        <input type="text" placeholder="Choose a username" autocomplete="username" required>
+      </label>
+      <label>Password
+        <input type="password" placeholder="Choose a password" autocomplete="new-password" required>
+        <span class="hint">Choose a password for your new account.</span>
+      </label>
+      <button type="button">Create account and join namespace</button>
+    </form>
+  </main>
+</body>
+</html>

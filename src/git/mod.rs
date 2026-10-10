@@ -2,7 +2,7 @@ use std::path::Path;
 
 use actix_web::{HttpRequest, HttpResponse, web};
 
-use crate::auth::{TwigContext, User, extract_basic_auth, verify_password};
+use crate::auth::{NamespaceRole, TwigContext, User, extract_basic_auth, verify_password};
 use crate::config;
 use crate::git::repo::bare_init;
 pub mod backend;
@@ -55,7 +55,7 @@ pub async fn git_handler(
 
     let kind = git_req.kind();
 
-    let username = match authenticate_git_request(
+    let authenticated_user = match authenticate_git_request(
         &req,
         &server,
         &auth_state,
@@ -65,9 +65,13 @@ pub async fn git_handler(
     )
     .await
     {
-        Ok(username) => username,
+        Ok(authenticated_user) => authenticated_user,
         Err(response) => return response,
     };
+    let username = authenticated_user
+        .as_ref()
+        .map(|authenticated_user| authenticated_user.username.clone());
+    let namespace_role = authenticated_user.map(|authenticated_user| authenticated_user.role);
 
     // Run in blocking thread — xshell/process::Command is blocking
     let req = git_req.clone();
@@ -80,6 +84,7 @@ pub async fn git_handler(
             &req,
             body_bytes,
             username.as_deref(),
+            namespace_role,
         )
     })
     .await;
@@ -133,7 +138,7 @@ async fn authenticate_git_request(
     namespace: &str,
     repo: &str,
     kind: &crate::git::backend::GitRequestKind,
-) -> Result<Option<String>, HttpResponse> {
+) -> Result<Option<AuthenticatedGitUser>, HttpResponse> {
     let is_write = matches!(
         kind,
         crate::git::backend::GitRequestKind::Push
@@ -154,13 +159,24 @@ async fn authenticate_git_request(
                         HttpResponse::InternalServerError().body("Failed to create namespace")
                     );
                 }
+                let repo_exists = Path::new(server.project_root())
+                    .join(namespace)
+                    .join(repo)
+                    .exists();
+                if !repo_exists && auth_result.role != NamespaceRole::Owner {
+                    return Err(HttpResponse::Forbidden()
+                        .body("Only namespace owners can create repositories"));
+                }
                 if let Err(e) = ensure_repo_exists(server.project_root(), namespace, repo) {
                     log::error!("Failed to ensure repo exists: {e}");
                     return Err(
                         HttpResponse::InternalServerError().body("Failed to create repository")
                     );
                 }
-                Ok(Some(auth_result.user.username))
+                Ok(Some(AuthenticatedGitUser {
+                    username: auth_result.user.username,
+                    role: auth_result.role,
+                }))
             }
             Ok(None) => Err(HttpResponse::Forbidden().body("Access denied to namespace")),
             Err(response) => Err(response),
@@ -171,7 +187,10 @@ async fn authenticate_git_request(
                 if !auth_result.namespace_exists {
                     return Err(HttpResponse::NotFound().body("Repository not found"));
                 }
-                Ok(Some(auth_result.user.username))
+                Ok(Some(AuthenticatedGitUser {
+                    username: auth_result.user.username,
+                    role: auth_result.role,
+                }))
             }
             Ok(None) => Err(HttpResponse::Forbidden().body("Access denied to namespace")),
             Err(response) => Err(response),
@@ -181,9 +200,15 @@ async fn authenticate_git_request(
     }
 }
 
+struct AuthenticatedGitUser {
+    username: String,
+    role: NamespaceRole,
+}
+
 struct AuthResult {
     user: User,
     namespace_exists: bool,
+    role: NamespaceRole,
 }
 
 async fn is_authenticated(
@@ -234,23 +259,25 @@ async fn is_authenticated(
         }
     }
 
-    // Check if user has access to namespace (or if namespace doesn't exist yet, allow creation)
+    // Resolve the user's namespace role. Unknown namespaces can only be
+    // bootstrapped by users who still have namespace-creation permission.
     log::debug!(
         "Checking namespace access: user_id='{}' namespace='{}'",
         user.id,
         namespace_name
     );
-    match db.user_has_namespace_access(&user.id, namespace_name).await {
-        Ok(true) => {
+    match db.get_namespace_role(&user.id, namespace_name).await {
+        Ok(Some(role)) => {
             log::info!(
                 "Git auth success: user='{username}' has access to namespace='{namespace_name}'"
             );
             Ok(Some(AuthResult {
                 user,
                 namespace_exists: true,
+                role,
             }))
         }
-        Ok(false) => {
+        Ok(None) => {
             // Check if namespace exists at all
             match db.get_namespace_by_name(namespace_name).await {
                 Ok(Some(_)) => {
@@ -263,16 +290,30 @@ async fn is_authenticated(
                     );
                     Ok(None)
                 }
-                Ok(None) => {
-                    // Namespace doesn't exist - allow auto-creation by returning the user
-                    log::info!(
-                        "Git auth success: user='{username}' can create namespace='{namespace_name}' (doesn't exist)"
-                    );
-                    Ok(Some(AuthResult {
-                        user,
-                        namespace_exists: false,
-                    }))
-                }
+                Ok(None) => match db.user_can_create_namespace(&user.id).await {
+                    Ok(true) => {
+                        log::info!(
+                            "Git auth success: user='{username}' can create namespace='{namespace_name}' (doesn't exist)"
+                        );
+                        Ok(Some(AuthResult {
+                            user,
+                            namespace_exists: false,
+                            role: NamespaceRole::Owner,
+                        }))
+                    }
+                    Ok(false) => {
+                        log::warn!(
+                            "Git auth denied namespace creation for contributor '{username}'"
+                        );
+                        Ok(None)
+                    }
+                    Err(error) => {
+                        log::error!(
+                            "Database error checking namespace creation for '{username}': {error}"
+                        );
+                        Err(HttpResponse::InternalServerError().body("Database error"))
+                    }
+                },
                 Err(e) => {
                     log::error!(
                         "Database error checking namespace existence for user '{username}': {e}"
@@ -319,8 +360,8 @@ fn ensure_repo_exists(project_root: &str, namespace: &str, repo_name: &str) -> R
     let repo_path = Path::new(project_root).join(namespace).join(repo_name);
 
     if repo_path.exists() {
-        // Repo already exists
-        return Ok(());
+        // Install/update policy hooks on repositories created by older Twig versions.
+        return repo::install_pre_receive_hook(&repo_path);
     }
 
     // Create namespace directory if needed
