@@ -90,12 +90,7 @@ async fn user_management_scope(
     })
 }
 
-fn render_user_management(
-    scope: &UserManagementScope,
-    active_tab: &str,
-    invitations: &[NamespaceInvitation],
-    users: &[UserManagementEntry],
-) -> Markup {
+fn render_user_management_tabs(active_tab: &str) -> Markup {
     let is_invites = active_tab == "invites";
 
     html! {
@@ -117,90 +112,100 @@ fn render_user_management(
                 hx-push-url="true"
             { "Invites" }
         }
-        div id="user-management-content" {
-            @if is_invites {
-                section class="twig-panel" aria-labelledby="invite-heading" {
-                    header class="twig-panel-head" {
-                        h1 class="twig-eyebrow" id="invite-heading" { "Invite someone" }
-                    }
-                    div class="twig-panel-body twig-stack" {
-                        p class="twig-body-sm twig-ink-secondary" {
-                            "Create a namespace invitation. Copy and share the link; email delivery is not wired yet."
-                        }
-                        form
-                            class="twig-form"
-                            hx-post="/tree/invites"
-                            hx-target="#invite-result"
-                            hx-swap="innerHTML"
-                            "hx-status:4xx"="swap:innerHTML target:#invite-result"
-                            "hx-status:5xx"="swap:innerHTML target:#invite-result"
-                        {
-                            div class="twig-field" {
-                                label class="twig-label" for="invite-email" { "Email address" }
-                                input class="twig-input" id="invite-email" name="email" type="email" required placeholder="person@example.com";
-                            }
-                            div class="twig-field" {
-                                label class="twig-label" for="invite-namespace" { "Namespace" }
-                                select class="twig-input" id="invite-namespace" name="namespace" required {
-                                    @for namespace in &scope.namespaces {
-                                        option value=(namespace.name) { (namespace.name) }
-                                    }
-                                }
-                            }
-                            div class="twig-field" {
-                                label class="twig-label" for="invite-role" { "Role in namespace" }
-                                select class="twig-input" id="invite-role" name="role" {
-                                    option value="contributor" selected { "Contributor" }
-                                    option value="owner" { "Owner" }
-                                }
-                            }
-                            div class="twig-field" {
-                                label class="twig-label" for="invite-expires" { "Link expires" }
-                                select class="twig-input" id="invite-expires" name="expires" {
-                                    option value="1d" { "In 1 day" }
-                                    option value="7d" selected { "In 7 days" }
-                                    option value="30d" { "In 30 days" }
-                                    option value="never" { "Never" }
-                                }
-                            }
-                            div class="twig-form-actions" {
-                                button class="twig-btn twig-btn--primary" type="submit" { "Create invitation" }
-                            }
-                        }
-                        div id="invite-result" aria-live="polite" {}
-                    }
+    }
+}
+
+fn render_user_management_content(
+    scope: &UserManagementScope,
+    active_tab: &str,
+    invitations: &[NamespaceInvitation],
+    users: &[UserManagementEntry],
+) -> Markup {
+    let is_invites = active_tab == "invites";
+
+    html! {
+        @if is_invites {
+            section class="twig-panel" aria-labelledby="invite-heading" {
+                header class="twig-panel-head" {
+                    h1 class="twig-eyebrow" id="invite-heading" { "Invite someone" }
                 }
-                (render_invitation_list(invitations, false))
-            } @else {
-                section class="twig-panel" aria-labelledby="users-heading" {
-                    header class="twig-panel-head" {
-                        h1 class="twig-eyebrow" id="users-heading" { "Users" }
+                div class="twig-panel-body twig-stack" {
+                    p class="twig-body-sm twig-ink-secondary" {
+                        "Create a namespace invitation. Copy and share the link; email delivery is not wired yet."
                     }
-                    div class="twig-panel-body" {
-                        @if users.is_empty() {
-                            p class="twig-empty-body" { "No users found." }
-                        } @else {
-                            div class="twig-list" {
-                                @for user in users {
-                                    div class="twig-row" {
-                                        span class="twig-row-id" { (&user.username) }
-                                        span class="twig-row-meta" {
-                                            @if let Some(email) = &user.email {
-                                                (email)
-                                            } @else {
-                                                "Email not set"
-                                            }
-                                        }
-                                        @if user.memberships.is_empty() {
-                                            span class="twig-row-meta" {
-                                                "No namespace membership"
-                                            }
+                    form
+                        class="twig-form"
+                        hx-post="/tree/invites"
+                        hx-target="#invite-result"
+                        hx-swap="innerHTML"
+                        "hx-status:4xx"="swap:innerHTML target:#invite-result"
+                        "hx-status:5xx"="swap:innerHTML target:#invite-result"
+                    {
+                        div class="twig-field" {
+                            label class="twig-label" for="invite-email" { "Email address" }
+                            input class="twig-input" id="invite-email" name="email" type="email" required placeholder="person@example.com";
+                        }
+                        div class="twig-field" {
+                            label class="twig-label" for="invite-namespace" { "Namespace" }
+                            select class="twig-input" id="invite-namespace" name="namespace" required {
+                                @for namespace in &scope.namespaces {
+                                    option value=(namespace.name) { (namespace.name) }
+                                }
+                            }
+                        }
+                        div class="twig-field" {
+                            label class="twig-label" for="invite-role" { "Role in namespace" }
+                            select class="twig-input" id="invite-role" name="role" {
+                                option value="contributor" selected { "Contributor" }
+                                option value="owner" { "Owner" }
+                            }
+                        }
+                        div class="twig-field" {
+                            label class="twig-label" for="invite-expires" { "Link expires" }
+                            select class="twig-input" id="invite-expires" name="expires" {
+                                option value="1d" { "In 1 day" }
+                                option value="7d" selected { "In 7 days" }
+                                option value="30d" { "In 30 days" }
+                                option value="never" { "Never" }
+                            }
+                        }
+                        div class="twig-form-actions" {
+                            button class="twig-btn twig-btn--primary" type="submit" { "Create invitation" }
+                        }
+                    }
+                    div id="invite-result" aria-live="polite" {}
+                }
+            }
+            (render_invitation_list(invitations, false))
+        } @else {
+            section class="twig-panel" aria-labelledby="users-heading" {
+                header class="twig-panel-head" {
+                    h1 class="twig-eyebrow" id="users-heading" { "Users" }
+                }
+                div class="twig-panel-body" {
+                    @if users.is_empty() {
+                        p class="twig-empty-body" { "No users found." }
+                    } @else {
+                        div class="twig-list" {
+                            @for user in users {
+                                div class="twig-row" {
+                                    span class="twig-row-id" { (&user.username) }
+                                    span class="twig-row-meta" {
+                                        @if let Some(email) = &user.email {
+                                            (email)
                                         } @else {
-                                            span class="twig-row-meta" {
-                                                @for (index, (namespace, role)) in user.memberships.iter().enumerate() {
-                                                    @if index > 0 { ", " }
-                                                    (namespace) " · " (role.display_name())
-                                                }
+                                            "Email not set"
+                                        }
+                                    }
+                                    @if user.memberships.is_empty() {
+                                        span class="twig-row-meta" {
+                                            "No namespace membership"
+                                        }
+                                    } @else {
+                                        span class="twig-row-meta" {
+                                            @for (index, (namespace, role)) in user.memberships.iter().enumerate() {
+                                                @if index > 0 { ", " }
+                                                (namespace) " · " (role.display_name())
                                             }
                                         }
                                     }
@@ -210,6 +215,20 @@ fn render_user_management(
                     }
                 }
             }
+        }
+    }
+}
+
+fn render_user_management(
+    scope: &UserManagementScope,
+    active_tab: &str,
+    invitations: &[NamespaceInvitation],
+    users: &[UserManagementEntry],
+) -> Markup {
+    html! {
+        (render_user_management_tabs(active_tab))
+        div id="user-management-content" {
+            (render_user_management_content(scope, active_tab, invitations, users))
         }
     }
 }
@@ -426,9 +445,8 @@ pub async fn user_management_page(
     } else {
         Vec::new()
     };
-    let content = render_user_management(&scope, active_tab, &invitations, &users);
     let content = if req.headers().contains_key("HX-Request") {
-        content
+        render_user_management_content(&scope, active_tab, &invitations, &users).into_string()
     } else {
         let page = maud::html! {
             (crate::http::tree::pages::render_tree_hub(
@@ -437,13 +455,11 @@ pub async fn user_management_page(
                 true,
                 Some("users"),
             ))
-            (content)
+            (render_user_management(&scope, active_tab, &invitations, &users))
         };
-        render_layout(&page, Some(&scope.user.username), Some("User Management"))
+        render_layout(&page, Some(&scope.user.username), Some("User Management")).into_string()
     };
-    HttpResponse::Ok()
-        .content_type("text/html")
-        .body(content.into_string())
+    HttpResponse::Ok().content_type("text/html").body(content)
 }
 
 #[post("/tree/invites")]
@@ -631,6 +647,28 @@ mod tests {
             expires_at: Some((chrono::Utc::now() + chrono::Duration::days(7)).to_rfc3339()),
             accepted_at: None,
             accepted_user_id: None,
+        }
+    }
+
+    #[test]
+    fn full_user_management_render_has_one_link_per_tab() {
+        let markup = render_user_management(&scope(), "invites", &[], &[]).into_string();
+
+        assert_eq!(markup.matches("href=\"/tree/users?tab=users\"").count(), 1);
+        assert_eq!(
+            markup.matches("href=\"/tree/users?tab=invites\"").count(),
+            1
+        );
+    }
+
+    #[test]
+    fn htmx_user_management_response_contains_content_without_tabs() {
+        for tab in ["users", "invites"] {
+            let markup = render_user_management_content(&scope(), tab, &[], &[]).into_string();
+
+            assert!(!markup.contains("href=\"/tree/users?tab=users\""));
+            assert!(!markup.contains("href=\"/tree/users?tab=invites\""));
+            assert!(!markup.contains("id=\"user-management-content\""));
         }
     }
 

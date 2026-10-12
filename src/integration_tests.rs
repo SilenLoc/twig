@@ -233,6 +233,16 @@ mod tests {
         let body = String::from_utf8(body.to_vec()).unwrap();
         assert!(body.contains("<title>User Management · Twig</title>"));
         assert!(body.contains("User Management"));
+        assert_eq!(
+            body.matches("href=\"/tree/users?tab=users\"").count(),
+            1,
+            "full page should contain one Users tab"
+        );
+        assert_eq!(
+            body.matches("href=\"/tree/users?tab=invites\"").count(),
+            1,
+            "full page should contain one Invites tab"
+        );
         assert!(body.contains("hx-post=\"/tree/invites\""));
         assert!(body.contains("value=\"contributor\" selected"));
         assert!(body.contains("value=\"acme\""));
@@ -240,7 +250,7 @@ mod tests {
 
         let req = test::TestRequest::get()
             .uri("/tree/users?tab=users")
-            .cookie(actix_web::cookie::Cookie::new("session", session))
+            .cookie(actix_web::cookie::Cookie::new("session", session.clone()))
             .insert_header(("HX-Request", "true"))
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -251,6 +261,22 @@ mod tests {
         assert!(body.contains("owner"));
         assert!(body.contains("admin"));
         assert!(!body.contains("<title>"));
+        assert!(!body.contains("href=\"/tree/users?tab=users\""));
+        assert!(!body.contains("href=\"/tree/users?tab=invites\""));
+
+        let req = test::TestRequest::get()
+            .uri("/tree/users?tab=invites")
+            .cookie(actix_web::cookie::Cookie::new("session", session))
+            .insert_header(("HX-Request", "true"))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = test::read_body(resp).await;
+        let body = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body.contains("Create invitation"));
+        assert!(body.contains("No invitations yet."));
+        assert!(!body.contains("href=\"/tree/users?tab=users\""));
+        assert!(!body.contains("href=\"/tree/users?tab=invites\""));
 
         let req = test::TestRequest::get()
             .uri("/tree/users?tab=users")
