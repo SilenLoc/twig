@@ -475,8 +475,8 @@ pub async fn move_repo(
         (&form.source_namespace, "source"),
         (&form.target_namespace, "destination"),
     ] {
-        let _namespace = match db.get_namespace_by_name(name).await {
-            Ok(Some(namespace)) => namespace,
+        match db.get_namespace_by_name(name).await {
+            Ok(Some(_)) => {}
             Ok(None) => {
                 return HttpResponse::NotFound().body(
                     render_error(&format!("{description} namespace not found")).into_string(),
@@ -487,7 +487,7 @@ pub async fn move_repo(
                 return HttpResponse::InternalServerError()
                     .body(render_error("Database error").into_string());
             }
-        };
+        }
         if let Err(response) = require_namespace_permission(
             db,
             &server,
@@ -580,8 +580,8 @@ pub async fn rename_repo(
     };
 
     let db = auth_state.db();
-    let _namespace = match db.get_namespace_by_name(&form.namespace).await {
-        Ok(Some(namespace)) => namespace,
+    match db.get_namespace_by_name(&form.namespace).await {
+        Ok(Some(_)) => {}
         Ok(None) => {
             return HttpResponse::NotFound()
                 .body(render_error("Namespace not found").into_string());
@@ -591,7 +591,7 @@ pub async fn rename_repo(
             return HttpResponse::InternalServerError()
                 .body(render_error("Database error").into_string());
         }
-    };
+    }
     if let Err(response) = require_namespace_permission(
         db,
         &server,

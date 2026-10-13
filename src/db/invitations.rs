@@ -8,11 +8,30 @@ const SELECT_INVITATION: &str = "SELECT i.token, i.email, i.namespace_id, n.name
     FROM namespace_invitations i
     JOIN namespaces n ON n.id = i.namespace_id";
 
+struct ValidatedInvitation {
+    namespace_id: String,
+    role: NamespaceRole,
+}
+
 async fn accept_invitation_in_transaction(
     conn: &turso::Connection,
     token: &str,
     user: &User,
 ) -> Result<(), String> {
+    let invitation = validate_invitation_for_user(conn, token, user).await?;
+    ensure_username_available(conn, &user.username).await?;
+    insert_invited_user(conn, user).await?;
+
+    let now = chrono::Utc::now().to_rfc3339();
+    add_invited_user_to_namespace(conn, &invitation, user, &now).await?;
+    mark_invitation_accepted(conn, token, &user.id, &now).await
+}
+
+async fn validate_invitation_for_user(
+    conn: &turso::Connection,
+    token: &str,
+    user: &User,
+) -> Result<ValidatedInvitation, String> {
     let mut rows = conn
         .query(
             "SELECT email, namespace_id, role, expires_at, accepted_at, accepted_user_id
@@ -46,11 +65,14 @@ async fn accept_invitation_in_transaction(
     }
     let role = NamespaceRole::parse(&role_name)
         .ok_or_else(|| format!("Unknown namespace invitation role: {role_name}"))?;
+    Ok(ValidatedInvitation { namespace_id, role })
+}
 
+async fn ensure_username_available(conn: &turso::Connection, username: &str) -> Result<(), String> {
     let mut rows = conn
         .query(
             "SELECT 1 FROM users WHERE username = ?1 LIMIT 1",
-            turso::params![user.username.clone()],
+            turso::params![username],
         )
         .await
         .map_err(|error| error.to_string())?;
@@ -62,7 +84,10 @@ async fn accept_invitation_in_transaction(
     {
         return Err("Username already exists".to_string());
     }
+    Ok(())
+}
 
+async fn insert_invited_user(conn: &turso::Connection, user: &User) -> Result<(), String> {
     conn.execute(
         "INSERT INTO users (id, username, email, password_hash, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -75,25 +100,46 @@ async fn accept_invitation_in_transaction(
         ],
     )
     .await
-    .map_err(|error| error.to_string())?;
+    .map(|_| ())
+    .map_err(|error| error.to_string())
+}
 
-    let now = chrono::Utc::now().to_rfc3339();
+async fn add_invited_user_to_namespace(
+    conn: &turso::Connection,
+    invitation: &ValidatedInvitation,
+    user: &User,
+    now: &str,
+) -> Result<(), String> {
     conn.execute(
         "INSERT INTO namespace_members (namespace_id, user_id, role, added_at)
          VALUES (?1, ?2, ?3, ?4)",
-        turso::params![namespace_id, user.id.clone(), role.as_str(), now.clone()],
+        turso::params![
+            invitation.namespace_id.clone(),
+            user.id.clone(),
+            invitation.role.as_str(),
+            now,
+        ],
     )
     .await
-    .map_err(|error| error.to_string())?;
+    .map(|_| ())
+    .map_err(|error| error.to_string())
+}
+
+async fn mark_invitation_accepted(
+    conn: &turso::Connection,
+    token: &str,
+    user_id: &str,
+    now: &str,
+) -> Result<(), String> {
     conn.execute(
         "UPDATE namespace_invitations
          SET accepted_at = ?1, accepted_user_id = ?2
-         WHERE token = ?3 AND accepted_at IS NULL",
-        turso::params![now, user.id.clone(), token],
+          WHERE token = ?3 AND accepted_at IS NULL",
+        turso::params![now, user_id, token],
     )
     .await
-    .map_err(|error| error.to_string())?;
-    Ok(())
+    .map(|_| ())
+    .map_err(|error| error.to_string())
 }
 
 impl Database {

@@ -252,7 +252,6 @@ impl Database {
 
     /// Lists all member-visible namespaces; owner-only management panels use
     /// `get_owned_namespaces_for_user` instead.
-    #[allow(dead_code)]
     pub async fn get_namespaces_for_user(&self, user_id: &str) -> Result<Vec<Namespace>, String> {
         let mut rows = self
             .conn()

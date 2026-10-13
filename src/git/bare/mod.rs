@@ -11,7 +11,7 @@ mod listing;
 mod path;
 
 pub use config::{PresentConfig, ScriptEntry, ScriptGroupNode, TwigConfig, TwigConfigWithRaw};
-#[allow(unused_imports)]
+#[cfg(test)]
 pub use handle::CommitFileOutcome;
 pub use handle::{CommitChangesOutcome, RepoEditChange, RepoHandle, TreeEntry};
 pub use history::{Commit, MAX_COMMITS};

@@ -245,11 +245,16 @@ struct RepoContext {
     script_groups: Vec<ScriptGroupNode>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum OptionalTab {
+    Config,
+    Present,
+    Paper,
+    Scripts,
+}
+
 /// The frame every tab shares: the breadcrumb, the tab bar, and the
 /// configuration-error banner. None of it depends on the active tab.
-// One flag per optional view; each is a plain yes/no, so four bools are the
-// honest shape here.
-#[allow(clippy::struct_excessive_bools)]
 struct TabFrame<'a> {
     namespace: &'a str,
     repo: &'a str,
@@ -258,14 +263,31 @@ struct TabFrame<'a> {
     twig_error: Option<&'a str>,
     twig_filename: Option<&'a str>,
     tabs_config: &'a [String],
-    has_config: bool,
-    has_present: bool,
-    has_paper: bool,
-    has_scripts: bool,
+    optional_tabs: Vec<OptionalTab>,
+}
+
+impl TabFrame<'_> {
+    fn has_optional_tab(&self, tab: OptionalTab) -> bool {
+        self.optional_tabs.contains(&tab)
+    }
 }
 
 impl RepoContext {
     fn frame(&self) -> TabFrame<'_> {
+        let mut optional_tabs = Vec::with_capacity(4);
+        if self.twig_result.raw.is_some() {
+            optional_tabs.push(OptionalTab::Config);
+        }
+        if !self.twig_result.config.present.files.is_empty() {
+            optional_tabs.push(OptionalTab::Present);
+        }
+        if !self.paper_pages.is_empty() {
+            optional_tabs.push(OptionalTab::Paper);
+        }
+        if !self.script_groups.is_empty() {
+            optional_tabs.push(OptionalTab::Scripts);
+        }
+
         TabFrame {
             namespace: &self.namespace,
             repo: &self.repo,
@@ -274,10 +296,7 @@ impl RepoContext {
             twig_error: self.twig_result.error.as_deref(),
             twig_filename: self.twig_result.filename.as_deref(),
             tabs_config: &self.twig_result.config.tabs,
-            has_config: self.twig_result.raw.is_some(),
-            has_present: !self.twig_result.config.present.files.is_empty(),
-            has_paper: !self.paper_pages.is_empty(),
-            has_scripts: !self.script_groups.is_empty(),
+            optional_tabs,
         }
     }
 }
@@ -1383,50 +1402,57 @@ fn render_repo_crumbs(namespace: &str, repo: &str) -> Markup {
 
 /// Renders a tab navigation bar. `tabs_config` lists the only tabs to show
 /// when set; every tab additionally requires its content to exist.
+const DEFAULT_TABS: [(&str, &str, Option<OptionalTab>); 8] = [
+    ("markdown", "Documentation", None),
+    ("paper", "Paper", Some(OptionalTab::Paper)),
+    ("content", "Content", None),
+    ("commits", "Commits", None),
+    ("config", "Config", Some(OptionalTab::Config)),
+    ("present", "Present", Some(OptionalTab::Present)),
+    ("scripts", "Scripts", Some(OptionalTab::Scripts)),
+    ("license", "License", None),
+];
+
+fn available_tabs(frame: &TabFrame<'_>) -> Vec<(&'static str, &'static str)> {
+    if frame.tabs_config.is_empty() {
+        DEFAULT_TABS
+            .into_iter()
+            .filter_map(|(id, label, requirement)| {
+                requirement
+                    .is_none_or(|tab| frame.has_optional_tab(tab))
+                    .then_some((id, label))
+            })
+            .collect()
+    } else {
+        frame
+            .tabs_config
+            .iter()
+            .filter_map(|tab| configured_tab(tab, frame))
+            .collect()
+    }
+}
+
+fn configured_tab(tab: &str, frame: &TabFrame<'_>) -> Option<(&'static str, &'static str)> {
+    let (id, label, requirement) = match tab {
+        "markdown" => ("markdown", "Documentation", None),
+        "paper" => ("paper", "Paper", Some(OptionalTab::Paper)),
+        "content" => ("content", "Content", None),
+        "commits" => ("commits", "Commits", None),
+        "config" => ("config", "Config", Some(OptionalTab::Config)),
+        "present" => ("present", "Present", Some(OptionalTab::Present)),
+        "scripts" => ("scripts", "Scripts", Some(OptionalTab::Scripts)),
+        "license" => ("license", "License", None),
+        _ => return None,
+    };
+    requirement
+        .is_none_or(|tab| frame.has_optional_tab(tab))
+        .then_some((id, label))
+}
+
 fn render_tabs(frame: &TabFrame<'_>, active_tab: &str) -> Markup {
     let namespace = frame.namespace;
     let repo = frame.repo;
-    let tabs_config = frame.tabs_config;
-
-    // Build the list of available tabs
-    let mut all_tabs: Vec<(&str, &str)> = vec![];
-
-    // Only add markdown tab if there are markdown files
-    if tabs_config.is_empty() {
-        // Show all available tabs
-        all_tabs.push(("markdown", "Documentation"));
-        if frame.has_paper {
-            all_tabs.push(("paper", "Paper"));
-        }
-        all_tabs.push(("content", "Content"));
-
-        all_tabs.push(("commits", "Commits"));
-        if frame.has_config {
-            all_tabs.push(("config", "Config"));
-        }
-        if frame.has_present {
-            all_tabs.push(("present", "Present"));
-        }
-        if frame.has_scripts {
-            all_tabs.push(("scripts", "Scripts"));
-        }
-        all_tabs.push(("license", "License"));
-    } else {
-        // Use configured tabs
-        for tab in tabs_config {
-            match tab.as_str() {
-                "markdown" => all_tabs.push(("markdown", "Documentation")),
-                "paper" if frame.has_paper => all_tabs.push(("paper", "Paper")),
-                "content" => all_tabs.push(("content", "Content")),
-                "commits" => all_tabs.push(("commits", "Commits")),
-                "config" if frame.has_config => all_tabs.push(("config", "Config")),
-                "present" if frame.has_present => all_tabs.push(("present", "Present")),
-                "scripts" if frame.has_scripts => all_tabs.push(("scripts", "Scripts")),
-                "license" => all_tabs.push(("license", "License")),
-                _ => {}
-            }
-        }
-    }
+    let all_tabs = available_tabs(frame);
 
     maud::html! {
         nav id="tab-nav" class="twig-tabs" aria-label="Repository views" hx-swap-oob="true" {
@@ -1719,6 +1745,9 @@ fn render_content_file(namespace: &str, repo: &str, path: &str, bytes: &[u8]) ->
                     }
                 }
                 @if crate::md::is_markdown(path) {
+                    @if let Ok(source) = std::str::from_utf8(bytes) {
+                        (render_markdown_controls(namespace, repo, path, source))
+                    }
                     div class="twig-md twig-md--boxed" {
                         (maud::PreEscaped(markdown_to_html(&text, namespace, repo, parent_path(path))))
                     }
@@ -1931,6 +1960,30 @@ navigator.clipboard.writeText(text).then(function(){done(true);},function(){done
 });
 })();";
 
+/// Each file-based Markdown view carries its own copy control and source. The
+/// script is emitted after the hidden source so it binds to exactly that page,
+/// including when htmx replaces the current document.
+const MARKDOWN_COPY_SCRIPT: &str = r"(function(){
+var s=document.currentScript;
+var src=s&&s.previousElementSibling;
+var bar=src&&src.previousElementSibling;
+var b=bar&&bar.querySelector('[data-twig-copy-markdown]');
+if(!src||!b)return;
+var done=function(ok){
+b.textContent=ok?'Copied':'Select manually';
+setTimeout(function(){b.textContent='Copy source';},1500);
+if(!ok){
+try{var range=document.createRange();range.selectNodeContents(src);var sel=window.getSelection();sel.removeAllRanges();sel.addRange(range);}catch(_){}
+}
+};
+b.addEventListener('click',function(){
+var text=src.textContent;
+if(navigator.clipboard&&navigator.clipboard.writeText){
+navigator.clipboard.writeText(text).then(function(){done(true);},function(){done(false);});
+}else{done(false);}
+});
+})();";
+
 /// The absolute origin a `curl` command should use: the request's own host,
 /// with the scheme a reverse proxy reported via `X-Forwarded-Proto` when
 /// present. Local hosts default to `http`, everything else to `https`, so a
@@ -1960,8 +2013,8 @@ fn raw_content_type(path: &str) -> &'static str {
     let extension = path.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
     match extension.as_str() {
         "sh" | "bash" | "zsh" | "py" | "rb" | "pl" | "js" | "ts" | "toml" | "yaml" | "yml"
-        | "json" | "md" | "txt" | "conf" | "cfg" | "ini" | "env" | "sql" | "rs" | "go" | "c"
-        | "h" => "text/plain; charset=utf-8",
+        | "json" | "md" | "markdown" | "txt" | "conf" | "cfg" | "ini" | "env" | "sql" | "rs"
+        | "go" | "c" | "h" => "text/plain; charset=utf-8",
         _ => "application/octet-stream",
     }
 }
@@ -2569,12 +2622,43 @@ fn render_paper_content_only(
 
     maud::html! {
         @if let Some(html) = html_content {
+            (render_markdown_controls(namespace, repo, page, content.unwrap_or_default()))
             div class="twig-md twig-md--prose" {
                 (maud::PreEscaped(html))
             }
         } @else {
             (render_empty("NOT FOUND", "File not found or empty."))
         }
+    }
+}
+
+/// The per-file actions shared by every repository view that renders a
+/// Markdown document. The Raw link reuses the existing guarded `/raw/` route;
+/// the hidden source lets Copy preserve Markdown rather than rendered HTML.
+fn render_markdown_controls(namespace: &str, repo: &str, file_path: &str, source: &str) -> Markup {
+    let raw_url = format!("/{namespace}/{repo}/raw/{file_path}");
+    maud::html! {
+        header class="twig-docbar" {
+            p class="twig-eyebrow" { "MARKDOWN SOURCE" }
+            div class="twig-cluster twig-cluster--tight" {
+                a class="twig-btn twig-btn--quiet" href=(raw_url) { "Raw" }
+                button
+                    class="twig-btn twig-btn--ghost"
+                    type="button"
+                    data-twig-copy-markdown
+                    title="Copy this document as Markdown"
+                {
+                    "Copy source"
+                }
+            }
+        }
+        // A leading comment prevents the HTML parser's special <pre> newline
+        // handling from changing a source that begins with a newline.
+        pre class="twig-sr" data-twig-markdown-source {
+            (maud::PreEscaped("<!-- -->"))
+            (source)
+        }
+        script { (maud::PreEscaped(MARKDOWN_COPY_SCRIPT)) }
     }
 }
 
@@ -2628,6 +2712,7 @@ fn render_markdown_content_only(
 
     maud::html! {
         @if let Some(html) = html_content {
+            (render_markdown_controls(namespace, repo, current_file, content.unwrap_or_default()))
             div class="twig-md twig-md--prose" {
                 (maud::PreEscaped(html))
             }
@@ -2674,21 +2759,14 @@ mod tests {
             twig_error: None,
             twig_filename: None,
             tabs_config: &[],
-            has_config: false,
-            has_present: false,
-            has_paper: false,
-            has_scripts: false,
+            optional_tabs: Vec::new(),
         }
     }
 
-    /// A frame whose optional tabs are set per flag, for tab-bar tests.
-    #[allow(clippy::fn_params_excessive_bools)]
-    fn frame_with(config: bool, present: bool, paper: bool, scripts: bool) -> TabFrame<'static> {
+    /// A frame with the given optional tabs, for tab-bar tests.
+    fn frame_with(optional_tabs: &[OptionalTab]) -> TabFrame<'static> {
         TabFrame {
-            has_config: config,
-            has_present: present,
-            has_paper: paper,
-            has_scripts: scripts,
+            optional_tabs: optional_tabs.to_vec(),
             ..base_frame()
         }
     }
@@ -2760,6 +2838,14 @@ mod tests {
             "text/plain; charset=utf-8"
         );
         assert_eq!(raw_content_type("README.md"), "text/plain; charset=utf-8");
+        assert_eq!(
+            raw_content_type("docs/guide.markdown"),
+            "text/plain; charset=utf-8"
+        );
+        assert_eq!(
+            raw_content_type("docs/GUIDE.MARKDOWN"),
+            "text/plain; charset=utf-8"
+        );
         assert_eq!(
             raw_content_type("assets/logo.bin"),
             "application/octet-stream"
@@ -2942,7 +3028,16 @@ mod tests {
 
     #[test]
     fn test_tabs_are_an_out_of_band_labelled_nav() {
-        let html = render_tabs(&frame_with(true, true, true, true), "commits").into_string();
+        let html = render_tabs(
+            &frame_with(&[
+                OptionalTab::Config,
+                OptionalTab::Present,
+                OptionalTab::Paper,
+                OptionalTab::Scripts,
+            ]),
+            "commits",
+        )
+        .into_string();
 
         assert!(
             html.contains(
@@ -2960,7 +3055,16 @@ mod tests {
 
     #[test]
     fn test_tabs_preserve_every_htmx_navigation_attribute() {
-        let html = render_tabs(&frame_with(true, true, true, true), "commits").into_string();
+        let html = render_tabs(
+            &frame_with(&[
+                OptionalTab::Config,
+                OptionalTab::Present,
+                OptionalTab::Paper,
+                OptionalTab::Scripts,
+            ]),
+            "commits",
+        )
+        .into_string();
         let tabs = [
             "markdown", "paper", "content", "commits", "config", "present", "scripts", "license",
         ];
@@ -2985,7 +3089,16 @@ mod tests {
 
     #[test]
     fn test_tabs_mark_exactly_one_current_tab() {
-        let html = render_tabs(&frame_with(true, true, true, true), "commits").into_string();
+        let html = render_tabs(
+            &frame_with(&[
+                OptionalTab::Config,
+                OptionalTab::Present,
+                OptionalTab::Paper,
+                OptionalTab::Scripts,
+            ]),
+            "commits",
+        )
+        .into_string();
 
         assert_eq!(
             count_of(&html, "aria-current=\"page\""),
@@ -3003,14 +3116,14 @@ mod tests {
 
     #[test]
     fn test_tabs_render_only_available_views_in_order() {
-        let html = render_tabs(&frame_with(false, false, false, false), "markdown").into_string();
+        let html = render_tabs(&frame_with(&[]), "markdown").into_string();
         assert_eq!(
             tab_labels(&html),
             vec!["Documentation", "Content", "Commits", "License"],
             "unconfigured repositories hide Config, Present, Paper and Scripts: {html}"
         );
 
-        let html = render_tabs(&frame_with(false, false, true, false), "paper").into_string();
+        let html = render_tabs(&frame_with(&[OptionalTab::Paper]), "paper").into_string();
         assert_eq!(
             tab_labels(&html),
             vec!["Documentation", "Paper", "Content", "Commits", "License"],
@@ -3028,7 +3141,7 @@ mod tests {
         let html = render_tabs(
             &TabFrame {
                 tabs_config: &configured,
-                ..frame_with(false, true, true, false)
+                ..frame_with(&[OptionalTab::Present, OptionalTab::Paper])
             },
             "license",
         )
@@ -3042,7 +3155,7 @@ mod tests {
         let html = render_tabs(
             &TabFrame {
                 tabs_config: &configured,
-                ..frame_with(false, true, false, false)
+                ..frame_with(&[OptionalTab::Present])
             },
             "paper",
         )
@@ -3393,12 +3506,76 @@ mod tests {
             render_markdown_content_only("acme", "my-project", "README.md", None).into_string();
         assert!(html.contains("twig-empty"), "{html}");
         assert!(html.contains("File not found or empty."), "{html}");
+        assert!(!html.contains("data-twig-copy-markdown"), "{html}");
+        assert!(!html.contains("/raw/README.md"), "{html}");
 
         let html = render_markdown_content_only("acme", "my-project", "README.md", Some("# Hi"))
             .into_string();
         assert!(
             html.contains(r#"<div class="twig-md twig-md--prose">"#),
             "{html}"
+        );
+    }
+
+    #[test]
+    fn test_markdown_controls_use_the_raw_route_and_keep_the_original_source() {
+        let source = "# Guide\n\nCopy this *Markdown* & keep it.\n";
+        let html =
+            render_markdown_content_only("acme", "my-project", "docs/guide.md", Some(source))
+                .into_string();
+
+        assert!(
+            html.contains(r#"href="/acme/my-project/raw/docs/guide.md""#),
+            "the Raw link uses the existing raw-file path: {html}"
+        );
+        assert!(
+            html.contains(r#"data-twig-copy-markdown title="Copy this document as Markdown""#),
+            "the document has an accessible source-copy button: {html}"
+        );
+        assert!(
+            html.contains("data-twig-markdown-source><!-- --># Guide\n\nCopy this *Markdown* &amp; keep it.\n</pre>"),
+            "the hidden copy source is the original Markdown, not rendered HTML: {html}"
+        );
+        assert!(
+            html.contains("navigator.clipboard.writeText(text)")
+                && html.contains("range.selectNodeContents(src)"),
+            "copy uses the clipboard and leaves a manual-selection fallback: {html}"
+        );
+    }
+
+    #[test]
+    fn test_markdown_controls_are_rendered_for_content_and_paper_pages() {
+        let source = "# A nested page\n\nIts own source.\n";
+        let content =
+            render_content_file("acme", "my-project", "docs/content.md", source.as_bytes())
+                .into_string();
+        let headings = paper_headings("paper/01.md", source);
+        let paper =
+            render_paper_content_only("acme", "my-project", "paper/01.md", Some(source), &headings)
+                .into_string();
+
+        for (html, path) in [(content, "docs/content.md"), (paper, "paper/01.md")] {
+            assert!(
+                html.contains(&format!("/acme/my-project/raw/{path}")),
+                "{path} exposes its matching raw source: {html}"
+            );
+            assert!(
+                html.contains("data-twig-copy-markdown") && html.contains("Its own source."),
+                "{path} has the copy control and its own Markdown: {html}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_markdown_copy_script_uses_clipboard_and_manual_fallback() {
+        assert!(
+            MARKDOWN_COPY_SCRIPT.contains("navigator.clipboard.writeText(text)"),
+            "copy uses the Clipboard API: {MARKDOWN_COPY_SCRIPT}"
+        );
+        assert!(
+            MARKDOWN_COPY_SCRIPT.contains("document.createRange()")
+                && MARKDOWN_COPY_SCRIPT.contains("range.selectNodeContents(src)"),
+            "a rejected copy selects the original source for manual copying: {MARKDOWN_COPY_SCRIPT}"
         );
     }
 

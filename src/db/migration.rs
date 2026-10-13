@@ -152,88 +152,106 @@ const MIGRATIONS: &[Migration] = &[
     },
 ];
 
+async fn prepare_migrations(conn: &turso::Connection) -> Result<Vec<String>, String> {
+    conn.query("PRAGMA journal_mode = WAL;", ())
+        .await
+        .map_err(|error| format!("Failed to set WAL mode: {error}"))?;
+
+    conn.execute(
+        r"CREATE TABLE IF NOT EXISTS _migrations (
+            name TEXT PRIMARY KEY,
+            applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );",
+        (),
+    )
+    .await
+    .map_err(|error| format!("Failed to create migrations table: {error}"))?;
+
+    let mut rows = conn
+        .query("SELECT name FROM _migrations", ())
+        .await
+        .map_err(|error| format!("Failed to list applied migrations: {error}"))?;
+
+    let mut applied = Vec::new();
+    while let Some(row) = rows.next().await.map_err(|error| error.to_string())? {
+        applied.push(row.get::<String>(0).map_err(|error| error.to_string())?);
+    }
+    Ok(applied)
+}
+
+async fn migration_was_recorded(
+    conn: &turso::Connection,
+    migration: &Migration,
+) -> Result<bool, String> {
+    let mut rows = conn
+        .query(
+            "SELECT 1 FROM _migrations WHERE name = ?1",
+            turso::params![migration.name],
+        )
+        .await
+        .map_err(|error| format!("Failed to check migration {}: {error}", migration.name))?;
+    Ok(rows
+        .next()
+        .await
+        .map_err(|error| error.to_string())?
+        .is_some())
+}
+
+async fn apply_migration_body(
+    conn: &turso::Connection,
+    migration: &Migration,
+) -> Result<bool, String> {
+    if migration_was_recorded(conn, migration).await? {
+        return Ok(false);
+    }
+
+    conn.execute(migration.sql, ())
+        .await
+        .map_err(|error| format!("Migration {} failed: {error}", migration.name))?;
+    conn.execute(
+        "INSERT INTO _migrations (name) VALUES (?1)",
+        turso::params![migration.name],
+    )
+    .await
+    .map_err(|error| format!("Failed to record migration {}: {error}", migration.name))?;
+    Ok(true)
+}
+
+async fn apply_migration(conn: &turso::Connection, migration: &Migration) -> Result<(), String> {
+    conn.execute("BEGIN IMMEDIATE", ())
+        .await
+        .map_err(|error| error.to_string())?;
+
+    match apply_migration_body(conn, migration).await {
+        Ok(true) => conn
+            .execute("COMMIT", ())
+            .await
+            .map(|_| ())
+            .map_err(|error| format!("Failed to commit migration {}: {error}", migration.name)),
+        Ok(false) => conn
+            .execute("ROLLBACK", ())
+            .await
+            .map(|_| ())
+            .map_err(|error| format!("Failed to rollback migration {}: {error}", migration.name)),
+        Err(error) => {
+            conn.execute("ROLLBACK", ())
+                .await
+                .map_err(|rollback_error| {
+                    format!("{error} (rollback also failed: {rollback_error})")
+                })?;
+            Err(error)
+        }
+    }
+}
+
 impl Database {
     pub async fn create_tables(&self) -> Result<(), String> {
         let conn = self.conn().await?;
-
-        conn.query("PRAGMA journal_mode = WAL;", ())
-            .await
-            .map_err(|e| format!("Failed to set WAL mode: {e}"))?;
-
-        conn.execute(
-            r"CREATE TABLE IF NOT EXISTS _migrations (
-                name TEXT PRIMARY KEY,
-                applied_at TEXT NOT NULL DEFAULT (datetime('now'))
-            );",
-            (),
-        )
-        .await
-        .map_err(|e| format!("Failed to create migrations table: {e}"))?;
-
-        let mut rows = conn
-            .query("SELECT name FROM _migrations", ())
-            .await
-            .map_err(|e| format!("Failed to list applied migrations: {e}"))?;
-
-        let mut applied = Vec::new();
-        while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
-            applied.push(row.get::<String>(0).map_err(|e| e.to_string())?);
-        }
+        let applied = prepare_migrations(&conn).await?;
 
         for migration in MIGRATIONS {
-            if applied.contains(&migration.name.to_string()) {
-                continue;
-            }
-
-            conn.execute("BEGIN IMMEDIATE", ())
-                .await
-                .map_err(|e| e.to_string())?;
-
-            let result: Result<bool, String> = async {
-                let mut rows = conn
-                    .query(
-                        "SELECT 1 FROM _migrations WHERE name = ?1",
-                        turso::params![migration.name],
-                    )
-                    .await
-                    .map_err(|e| format!("Failed to check migration {}: {e}", migration.name))?;
-
-                if rows.next().await.map_err(|e| e.to_string())?.is_some() {
-                    return Ok(false);
-                }
-
-                conn.execute(migration.sql, ())
-                    .await
-                    .map_err(|e| format!("Migration {} failed: {e}", migration.name))?;
-
-                conn.execute(
-                    "INSERT INTO _migrations (name) VALUES (?1)",
-                    turso::params![migration.name],
-                )
-                .await
-                .map_err(|e| format!("Failed to record migration {}: {e}", migration.name))?;
-
-                Ok(true)
-            }
-            .await;
-
-            match result {
-                Ok(true) => {
-                    conn.execute("COMMIT", ()).await.map_err(|e| {
-                        format!("Failed to commit migration {}: {e}", migration.name)
-                    })?;
-                }
-                Ok(false) => {
-                    conn.execute("ROLLBACK", ()).await.map_err(|e| {
-                        format!("Failed to rollback migration {}: {e}", migration.name)
-                    })?;
-                }
-                Err(e) => {
-                    conn.execute("ROLLBACK", ())
-                        .await
-                        .map_err(|re| format!("{e} (rollback also failed: {re})"))?;
-                    return Err(e);
-                }
+            if !applied.iter().any(|name| name == migration.name) {
+                apply_migration(&conn, migration).await?;
             }
         }
 

@@ -21,7 +21,6 @@ pub struct Server {
 }
 
 impl Server {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         address: (String, u16),
         log_level: String,

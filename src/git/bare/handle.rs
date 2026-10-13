@@ -78,8 +78,8 @@ impl RepoHandle {
     /// Create a commit replacing one regular file and move the current branch
     /// only if it still points at `expected_head`. `reference_matching` is a
     /// compare-and-swap, so a concurrent push/edit cannot be silently lost.
-    /// Kept as a compatibility helper for callers predating repository drafts.
-    #[allow(dead_code)]
+    /// Test-only compatibility helper for callers predating repository drafts.
+    #[cfg(test)]
     pub fn commit_file(
         &self,
         file_path: &str,
@@ -144,8 +144,8 @@ impl RepoHandle {
 
     /// Create a new regular file and advance the current branch only if it
     /// still points at `expected_head`. Existing paths are never replaced.
-    /// Kept as a compatibility helper for callers predating repository drafts.
-    #[allow(dead_code)]
+    /// Test-only compatibility helper for callers predating repository drafts.
+    #[cfg(test)]
     pub fn commit_new_file(
         &self,
         file_path: &str,
@@ -210,17 +210,11 @@ impl RepoHandle {
         author_email: &str,
         message: &str,
     ) -> Result<CommitChangesOutcome, git2::Error> {
-        use git2::Signature;
-
         if changes.is_empty() {
             return Err(git2::Error::from_str("There are no changes to commit"));
         }
 
-        let head_ref = self.repo.find_reference("HEAD")?;
-        let reference_name = head_ref
-            .symbolic_target()?
-            .filter(|name| name.starts_with("refs/heads/"))
-            .ok_or_else(|| git2::Error::from_str("Repository HEAD is not a branch"))?;
+        let reference_name = self.head_branch_reference_name()?;
         let current_head = self.head_oid()?;
         if current_head.unwrap_or(git2::Oid::ZERO_SHA1) != expected_head {
             return Ok(CommitChangesOutcome::Conflict);
@@ -229,26 +223,61 @@ impl RepoHandle {
         let parent = current_head
             .map(|head| self.repo.find_commit(head))
             .transpose()?;
-        let parent_tree = if let Some(parent) = &parent {
-            parent.tree()?
-        } else {
-            let empty_tree_oid = self.repo.treebuilder(None)?.write()?;
-            self.repo.find_tree(empty_tree_oid)?
-        };
-
+        let parent_tree = self.parent_tree(parent.as_ref())?;
         let tree_oid = self.create_edit_tree(changes, &parent_tree)?;
         let tree = self.repo.find_tree(tree_oid)?;
-        let signature = Signature::now(author_name, author_email)?;
-        let commit_oid = match parent.as_ref() {
+        let commit_oid =
+            self.create_edit_commit(parent.as_ref(), &tree, author_name, author_email, message)?;
+        self.advance_branch(&reference_name, commit_oid, expected_head)
+    }
+
+    fn head_branch_reference_name(&self) -> Result<String, git2::Error> {
+        self.repo
+            .find_reference("HEAD")?
+            .symbolic_target()?
+            .filter(|name| name.starts_with("refs/heads/"))
+            .map(str::to_string)
+            .ok_or_else(|| git2::Error::from_str("Repository HEAD is not a branch"))
+    }
+
+    fn parent_tree<'repo>(
+        &'repo self,
+        parent: Option<&git2::Commit<'repo>>,
+    ) -> Result<git2::Tree<'repo>, git2::Error> {
+        if let Some(parent) = parent {
+            parent.tree()
+        } else {
+            let empty_tree_oid = self.repo.treebuilder(None)?.write()?;
+            self.repo.find_tree(empty_tree_oid)
+        }
+    }
+
+    fn create_edit_commit(
+        &self,
+        parent: Option<&git2::Commit<'_>>,
+        tree: &git2::Tree<'_>,
+        author_name: &str,
+        author_email: &str,
+        message: &str,
+    ) -> Result<git2::Oid, git2::Error> {
+        let signature = git2::Signature::now(author_name, author_email)?;
+        match parent {
             Some(parent) => {
                 self.repo
-                    .commit(None, &signature, &signature, message, &tree, &[parent])?
+                    .commit(None, &signature, &signature, message, tree, &[parent])
             }
             None => self
                 .repo
-                .commit(None, &signature, &signature, message, &tree, &[])?,
-        };
+                .commit(None, &signature, &signature, message, tree, &[]),
+        }
+    }
 
+    fn advance_branch(
+        &self,
+        reference_name: &str,
+        commit_oid: git2::Oid,
+        expected_head: git2::Oid,
+    ) -> Result<CommitChangesOutcome, git2::Error> {
         match self.repo.reference_matching(
             reference_name,
             commit_oid,
@@ -305,72 +334,83 @@ impl RepoHandle {
         parent_tree: &git2::Tree<'_>,
         change: &RepoEditChange,
     ) -> Result<(), git2::Error> {
-        use git2::{FileMode, ObjectType};
-
         match change {
             RepoEditChange::Upsert { path, content } => {
-                if content.contains(&0) || std::str::from_utf8(content).is_err() {
-                    return Err(git2::Error::from_str(
-                        "Workspace edits must contain UTF-8 text without NUL bytes",
-                    ));
-                }
-                let mode = match parent_tree.get_path(Path::new(path)) {
-                    Ok(entry) => {
-                        if entry.kind() != Some(ObjectType::Blob) {
-                            return Err(git2::Error::from_str(
-                                "Only regular text files can be edited",
-                            ));
-                        }
-                        let mode = match entry.filemode() {
-                            0o100_644 => FileMode::Blob,
-                            0o100_755 => FileMode::BlobExecutable,
-                            _ => {
-                                return Err(git2::Error::from_str(
-                                    "Only regular text files can be edited",
-                                ));
-                            }
-                        };
-                        let object = entry.to_object(&self.repo)?;
-                        let blob = object.as_blob().ok_or_else(|| {
-                            git2::Error::from_str("Only regular text files can be edited")
-                        })?;
-                        let original = blob.content();
-                        if original.contains(&0) || std::str::from_utf8(original).is_err() {
-                            return Err(git2::Error::from_str(
-                                "Only UTF-8 text files can be edited",
-                            ));
-                        }
-                        mode
-                    }
-                    Err(error) if error.code() == git2::ErrorCode::NotFound => FileMode::Blob,
-                    Err(error) => return Err(error),
-                };
-                let blob_oid = self.repo.blob(content)?;
-                update.upsert(path, blob_oid, mode);
+                self.apply_upsert(update, parent_tree, path, content)?;
             }
-            RepoEditChange::Delete { path } => {
-                let entry = parent_tree.get_path(Path::new(path))?;
-                if entry.kind() != Some(ObjectType::Blob)
-                    || !matches!(entry.filemode(), 0o100_644 | 0o100_755)
-                {
-                    return Err(git2::Error::from_str(
-                        "Only regular text files can be deleted",
-                    ));
-                }
-                let object = entry.to_object(&self.repo)?;
-                let blob = object.as_blob().ok_or_else(|| {
-                    git2::Error::from_str("Only regular text files can be deleted")
-                })?;
-                let content = blob.content();
-                if content.contains(&0) || std::str::from_utf8(content).is_err() {
-                    return Err(git2::Error::from_str(
-                        "Only UTF-8 text files can be deleted",
-                    ));
-                }
-                update.remove(path);
-            }
+            RepoEditChange::Delete { path } => self.apply_delete(update, parent_tree, path)?,
         }
         Ok(())
+    }
+
+    fn apply_upsert(
+        &self,
+        update: &mut git2::build::TreeUpdateBuilder,
+        parent_tree: &git2::Tree<'_>,
+        path: &str,
+        content: &[u8],
+    ) -> Result<(), git2::Error> {
+        use git2::FileMode;
+
+        if !is_utf8_text(content) {
+            return Err(git2::Error::from_str(
+                "Workspace edits must contain UTF-8 text without NUL bytes",
+            ));
+        }
+        let mode = match parent_tree.get_path(Path::new(path)) {
+            Ok(entry) => self.regular_text_file_mode(
+                &entry,
+                "Only regular text files can be edited",
+                "Only UTF-8 text files can be edited",
+            )?,
+            Err(error) if error.code() == git2::ErrorCode::NotFound => FileMode::Blob,
+            Err(error) => return Err(error),
+        };
+        let blob_oid = self.repo.blob(content)?;
+        update.upsert(path, blob_oid, mode);
+        Ok(())
+    }
+
+    fn apply_delete(
+        &self,
+        update: &mut git2::build::TreeUpdateBuilder,
+        parent_tree: &git2::Tree<'_>,
+        path: &str,
+    ) -> Result<(), git2::Error> {
+        let entry = parent_tree.get_path(Path::new(path))?;
+        self.regular_text_file_mode(
+            &entry,
+            "Only regular text files can be deleted",
+            "Only UTF-8 text files can be deleted",
+        )?;
+        update.remove(path);
+        Ok(())
+    }
+
+    fn regular_text_file_mode(
+        &self,
+        entry: &git2::TreeEntry<'_>,
+        invalid_file_message: &'static str,
+        invalid_text_message: &'static str,
+    ) -> Result<git2::FileMode, git2::Error> {
+        use git2::{FileMode, ObjectType};
+
+        if entry.kind() != Some(ObjectType::Blob) {
+            return Err(git2::Error::from_str(invalid_file_message));
+        }
+        let mode = match entry.filemode() {
+            0o100_644 => FileMode::Blob,
+            0o100_755 => FileMode::BlobExecutable,
+            _ => return Err(git2::Error::from_str(invalid_file_message)),
+        };
+        let object = entry.to_object(&self.repo)?;
+        let blob = object
+            .as_blob()
+            .ok_or_else(|| git2::Error::from_str(invalid_file_message))?;
+        if !is_utf8_text(blob.content()) {
+            return Err(git2::Error::from_str(invalid_text_message));
+        }
+        Ok(mode)
     }
 
     pub fn get_commits(&self, limit: usize) -> Result<Vec<Commit>, git2::Error> {
@@ -563,6 +603,10 @@ impl RepoHandle {
     }
 }
 
+fn is_utf8_text(content: &[u8]) -> bool {
+    !content.contains(&0) && std::str::from_utf8(content).is_ok()
+}
+
 /// One final-tree operation from a repository edit draft.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RepoEditChange {
@@ -576,8 +620,8 @@ pub enum CommitChangesOutcome {
     Conflict,
 }
 
-/// Result of the compare-and-swap branch update for a single-file edit.
-#[allow(dead_code)]
+/// Result of the compare-and-swap branch update for a test-only single-file edit.
+#[cfg(test)]
 pub enum CommitFileOutcome {
     Committed(git2::Oid),
     Conflict,

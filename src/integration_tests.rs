@@ -2957,6 +2957,7 @@ scripts = [{ name = "Install", path = "scripts/install.sh" }]
 "#,
             &[
                 ("scripts/install.sh", "#!/bin/bash\necho install\n"),
+                ("docs/guide.MARKDOWN", "# Guide\n"),
                 ("secrets/key.txt", "DO NOT SERVE\n"),
             ],
         );
@@ -2976,6 +2977,20 @@ scripts = [{ name = "Install", path = "scripts/install.sh" }]
         let body = test::read_body(response).await;
         assert_eq!(body, "#!/bin/bash\necho install\n");
 
+        let response = test::call_service(
+            &app,
+            test::TestRequest::get()
+                .uri("/pub/toolbox/raw/docs/guide.MARKDOWN")
+                .to_request(),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get("Content-Type").unwrap(),
+            "text/plain; charset=utf-8"
+        );
+        assert_eq!(test::read_body(response).await.as_ref(), b"# Guide\n");
+
         for uri in [
             "/pub/toolbox/raw/secrets/key.txt",
             "/pub/toolbox/raw/missing.sh",
@@ -2991,6 +3006,74 @@ scripts = [{ name = "Install", path = "scripts/install.sh" }]
                 "expected 404 for {uri}"
             );
         }
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[actix_web::test]
+    async fn test_nested_markdown_document_offers_copy_and_its_matching_raw_source() {
+        let root = format!("/tmp/test_twig_markdown_raw_{}", uuid::Uuid::new_v4());
+        let repo_path = std::path::Path::new(&root).join("pub/guide");
+        let source = "# Nested guide\n\nCopy this exact Markdown.\n";
+        init_repo_with_files(
+            &repo_path,
+            "",
+            &[("README.md", "# Root guide\n"), ("docs/guide.md", source)],
+        );
+        let app = create_test_service_in(&root).await;
+
+        let (status, root_html) = body_of(&app, "/pub/guide").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(
+            root_html.contains(r#"href="/pub/guide/raw/README.md""#)
+                && root_html.contains("data-twig-copy-markdown"),
+            "the top-level README also offers both actions: {root_html}"
+        );
+
+        let (status, html) = body_of(&app, "/pub/guide/md/docs/guide.md").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(
+            html.contains(r#"href="/pub/guide/raw/docs/guide.md""#),
+            "the nested page points to its own raw source: {html}"
+        );
+        assert!(
+            html.contains("data-twig-copy-markdown") && html.contains("Copy source"),
+            "the nested page has a copy-source control: {html}"
+        );
+        assert!(
+            html.contains("Copy this exact Markdown."),
+            "the selected page is rendered: {html}"
+        );
+
+        let response = test::call_service(
+            &app,
+            test::TestRequest::get()
+                .uri("/pub/guide/md/docs/guide.md")
+                .insert_header(("HX-Request", "true"))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let htmx_body = String::from_utf8(test::read_body(response).await.to_vec()).unwrap();
+        assert!(
+            htmx_body.contains("/pub/guide/raw/docs/guide.md")
+                && htmx_body.contains("data-twig-copy-markdown"),
+            "an HTMX document change includes its matching actions: {htmx_body}"
+        );
+
+        let response = test::call_service(
+            &app,
+            test::TestRequest::get()
+                .uri("/pub/guide/raw/docs/guide.md")
+                .to_request(),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get("Content-Type").unwrap(),
+            "text/plain; charset=utf-8"
+        );
+        assert_eq!(test::read_body(response).await.as_ref(), source.as_bytes());
 
         let _ = std::fs::remove_dir_all(&root);
     }

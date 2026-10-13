@@ -821,6 +821,15 @@ fn validate_draft(context: &WorkspaceContext, draft: &WorkspaceDraft) -> Result<
     {
         return Err("The draft contains an unsafe workspace path.".to_string());
     }
+
+    validate_draft_changes(context, draft)?;
+    validate_file_parent_conflicts(draft)
+}
+
+fn validate_draft_changes(
+    context: &WorkspaceContext,
+    draft: &WorkspaceDraft,
+) -> Result<(), String> {
     let mut paths = std::collections::HashSet::new();
     for change in &draft.changes {
         if change.path.is_empty()
@@ -830,33 +839,45 @@ fn validate_draft(context: &WorkspaceContext, draft: &WorkspaceDraft) -> Result<
         {
             return Err("The draft contains an unsafe, ignored, or duplicate path.".to_string());
         }
-        match &change.state {
-            PendingFileState::Content(draft_text) => {
-                if draft_text.len() > MAX_EDIT_BYTES {
-                    return Err("Files larger than 1 MiB cannot be changed here.".to_string());
-                }
-                if draft_text.as_bytes().contains(&0) {
-                    return Err("Binary content cannot be stored in this workspace.".to_string());
-                }
-                let mode = context
-                    .handle
-                    .file_mode(&change.path)
-                    .map_err(|_| "A draft path could not be checked.".to_string())?;
-                match mode {
-                    Some(0o100_644 | 0o100_755) => {
-                        read_text_file(context, &change.path)?;
-                    }
-                    Some(_) => {
-                        return Err("Only regular text files can be changed here.".to_string());
-                    }
-                    None => validate_new_path(context, &change.path)?,
-                }
+        validate_draft_change(context, change)?;
+    }
+    Ok(())
+}
+
+fn validate_draft_change(
+    context: &WorkspaceContext,
+    change: &PendingFileChange,
+) -> Result<(), String> {
+    match &change.state {
+        PendingFileState::Content(draft_text) => {
+            if draft_text.len() > MAX_EDIT_BYTES {
+                return Err("Files larger than 1 MiB cannot be changed here.".to_string());
             }
-            PendingFileState::Deleted => {
-                read_text_file(context, &change.path)?;
+            if draft_text.as_bytes().contains(&0) {
+                return Err("Binary content cannot be stored in this workspace.".to_string());
+            }
+            let mode = context
+                .handle
+                .file_mode(&change.path)
+                .map_err(|_| "A draft path could not be checked.".to_string())?;
+            match mode {
+                Some(0o100_644 | 0o100_755) => {
+                    read_text_file(context, &change.path)?;
+                }
+                Some(_) => {
+                    return Err("Only regular text files can be changed here.".to_string());
+                }
+                None => validate_new_path(context, &change.path)?,
             }
         }
+        PendingFileState::Deleted => {
+            read_text_file(context, &change.path)?;
+        }
     }
+    Ok(())
+}
+
+fn validate_file_parent_conflicts(draft: &WorkspaceDraft) -> Result<(), String> {
     for left in &draft.changes {
         if matches!(&left.state, PendingFileState::Content(_)) {
             let prefix = format!("{}/", left.path);

@@ -4,18 +4,19 @@ Audit date (UTC): 2026-10-13
 
 ## Project summary
 
+- Audit status: **CLEAR**
 - Rust source files discovered: 63
 - Files measured: 63
 - Files skipped with read warnings: 0
-- Total source size: 982627 bytes
-- Total physical lines: 27520
-- Functions analyzed: 1043
+- Total source size: 987279 bytes
+- Total physical lines: 27724
+- Functions analyzed: 1067
 - Average estimated function complexity: 2.6
-- Maximum estimated function complexity: 24
-- Complexity review hotspots (>= 10): 48
+- Maximum estimated function complexity: 20
+- Complexity review hotspots (>= 10): 45
 - Large-file review hotspots (> 500 physical lines): 16
-- Allowed/expected lint attributes: 8
-- Likely unused underscore-prefixed bindings: 18
+- Hard-blocking lint suppressions: 0
+- Likely unused underscore-prefixed bindings: 13
 
 ## Review thresholds
 
@@ -26,34 +27,34 @@ Audit date (UTC): 2026-10-13
 
 | File | Bytes | Physical lines | Review status |
 | --- | ---: | ---: | --- |
-| `src/http/repository/pages.rs` | 143734 | 4033 | Large file |
+| `src/http/repository/pages.rs` | 144565 | 4079 | Large file |
 | `src/integration_tests.rs` | 142475 | 3500 | Large file |
-| `src/http/settings/pages.rs` | 44237 | 1239 | Large file |
-| `src/git/bare/handle.rs` | 36300 | 1035 | Large file |
-| `src/http/repo_edit/mod.rs` | 31818 | 992 | Large file |
+| `src/http/settings/pages.rs` | 44169 | 1239 | Large file |
+| `src/git/bare/handle.rs` | 36772 | 1079 | Large file |
+| `src/http/repo_edit/mod.rs` | 32193 | 1013 | Large file |
 | `src/http/tree/user_management.rs` | 31490 | 849 | Large file |
 | `src/http/namespace/pages.rs` | 30739 | 844 | Large file |
 | `src/http/tree/pages.rs` | 31328 | 795 | Large file |
 | `src/http/test_page/pages.rs` | 26030 | 778 | Large file |
-| `src/http/auth/pages.rs` | 25589 | 738 | Large file |
-| `src/git/repo.rs` | 21406 | 615 | Large file |
-| `src/db/namespaces.rs` | 20262 | 615 | Large file |
+| `src/http/auth/pages.rs` | 25506 | 738 | Large file |
+| `src/git/repo.rs` | 23173 | 648 | Large file |
+| `src/db/namespaces.rs` | 20238 | 614 | Large file |
 | `crates/twig-highlight/src/lib.rs` | 19737 | 586 | Large file |
+| `src/db/invitations.rs` | 20019 | 582 | Large file |
 | `src/git/bare/config.rs` | 19311 | 566 | Large file |
-| `src/db/invitations.rs` | 18801 | 536 | Large file |
 | `src/http/assets.rs` | 17428 | 522 | Large file |
 | `src/http/overview/pages.rs` | 17804 | 488 | — |
 | `src/auth/mod.rs` | 14295 | 485 | — |
-| `src/config.rs` | 14760 | 470 | — |
+| `src/config.rs` | 14719 | 469 | — |
 | `src/git/mod.rs` | 16257 | 458 | — |
 | `src/db/binaries.rs` | 14911 | 445 | — |
-| `src/http/auth/handlers.rs` | 14265 | 443 | — |
+| `src/http/auth/handlers.rs` | 14219 | 441 | — |
 | `src/http/info/pages.rs` | 15130 | 440 | — |
 | `src/http/repo_edit/pages.rs` | 19215 | 436 | — |
+| `src/db/migration.rs` | 13881 | 408 | — |
 | `src/http/view.rs` | 17426 | 396 | — |
 | `src/git/backend.rs` | 12539 | 392 | — |
-| `src/db/migration.rs` | 13618 | 390 | — |
-| `src/git/bare/mod.rs` | 12851 | 359 | — |
+| `src/git/bare/mod.rs` | 12839 | 359 | — |
 | `src/email.rs` | 12342 | 350 | — |
 | `src/db/users.rs` | 11332 | 323 | — |
 | `src/git/bare/listing.rs` | 11226 | 291 | — |
@@ -94,40 +95,35 @@ Audit date (UTC): 2026-10-13
 
 | File | Line | Function | Estimated complexity | Review status |
 | --- | ---: | --- | ---: | --- |
-| `src/git/bare/handle.rs` | 302 | `apply_repo_edit` | 24 | Review hotspot |
-| `src/db/invitations.rs` | 11 | `accept_invitation_in_transaction` | 23 | Review hotspot |
-| `src/git/bare/handle.rs` | 205 | `commit_changes` | 23 | Review hotspot |
-| `src/http/repo_edit/mod.rs` | 816 | `validate_draft` | 22 | Review hotspot |
-| `src/db/migration.rs` | 156 | `create_tables` | 21 | Review hotspot |
 | `src/git/bare/handle.rs` | 83 | `commit_file` | 20 | Review hotspot |
-| `src/http/repository/pages.rs` | 1386 | `render_tabs` | 20 | Review hotspot |
 | `src/git/bare/handle.rs` | 149 | `commit_new_file` | 19 | Review hotspot |
 | `src/http/repo_edit/mod.rs` | 639 | `rename_workspace_file` | 19 | Review hotspot |
+| `src/git/repo.rs` | 235 | `install_pre_receive_hook` | 18 | Review hotspot |
 | `src/http/auth/namespace_invitations.rs` | 139 | `accept_invitation_handler` | 18 | Review hotspot |
-| `src/git/repo.rs` | 234 | `install_pre_receive_hook` | 17 | Review hotspot |
+| `src/db/invitations.rs` | 30 | `validate_invitation_for_user` | 17 | Review hotspot |
 | `src/http/settings/pages.rs` | 644 | `rename_namespace` | 17 | Review hotspot |
 | `crates/twig-highlight/src/lib.rs` | 285 | `try_from` | 16 | Review hotspot |
-| `src/db/invitations.rs` | 212 | `list_namespace_invitations_for` | 16 | Review hotspot |
+| `src/db/invitations.rs` | 258 | `list_namespace_invitations_for` | 16 | Review hotspot |
 | `src/db/binaries.rs` | 201 | `store_binary_in_transaction` | 15 | Review hotspot |
-| `src/db/invitations.rs` | 129 | `get_namespace_invitation` | 15 | Review hotspot |
+| `src/db/invitations.rs` | 175 | `get_namespace_invitation` | 15 | Review hotspot |
 | `src/git/mod.rs` | 139 | `authenticate_git_request` | 15 | Review hotspot |
 | `src/http/settings/pages.rs` | 444 | `move_repo` | 15 | Review hotspot |
 | `src/db/data.rs` | 37 | `read_table_page` | 14 | Review hotspot |
 | `src/http/settings/pages.rs` | 548 | `rename_repo` | 14 | Review hotspot |
-| `src/http/auth/handlers.rs` | 113 | `signup_ui_handler` | 13 | Review hotspot |
+| `src/http/auth/handlers.rs` | 112 | `signup_ui_handler` | 13 | Review hotspot |
 | `src/db/users.rs` | 33 | `list_users_for_management_in` | 12 | Review hotspot |
 | `src/http/repo_edit/mod.rs` | 753 | `validate_new_path` | 12 | Review hotspot |
 | `src/email.rs` | 69 | `invitation_url` | 11 | Review hotspot |
 | `src/git/bare/config.rs` | 243 | `should_ignore` | 11 | Review hotspot |
-| `src/git/bare/handle.rs` | 588 | `collect_markdown_files` | 11 | Review hotspot |
+| `src/git/bare/handle.rs` | 632 | `collect_markdown_files` | 11 | Review hotspot |
 | `src/git/bare/listing.rs` | 19 | `extract_license_from_cargo_toml` | 11 | Review hotspot |
-| `src/http/auth/handlers.rs` | 267 | `create_namespace_ui_handler` | 11 | Review hotspot |
+| `src/http/auth/handlers.rs` | 265 | `create_namespace_ui_handler` | 11 | Review hotspot |
 | `src/http/namespace/pages.rs` | 96 | `format_date` | 11 | Review hotspot |
 | `src/http/overview/pages.rs` | 18 | `render_index` | 11 | Review hotspot |
 | `src/http/repo_edit/mod.rs` | 169 | `editor_file_fragment` | 11 | Review hotspot |
 | `src/http/repo_edit/mod.rs` | 695 | `delete_workspace_file` | 11 | Review hotspot |
 | `src/http/repository/binaries.rs` | 96 | `download_binary` | 11 | Review hotspot |
-| `src/http/repository/pages.rs` | 1051 | `slide_handler` | 11 | Review hotspot |
+| `src/http/repository/pages.rs` | 1070 | `slide_handler` | 11 | Review hotspot |
 | `crates/twig-highlight/src/lib.rs` | 216 | `token_kind` | 10 | Review hotspot |
 | `src/db/binaries.rs` | 89 | `list_binary_releases` | 10 | Review hotspot |
 | `src/db/binaries.rs` | 165 | `get_latest_binary` | 10 | Review hotspot |
@@ -136,10 +132,12 @@ Audit date (UTC): 2026-10-13
 | `src/db/namespaces.rs` | 86 | `namespaces_with_owners` | 10 | Review hotspot |
 | `src/db/users.rs` | 89 | `get_user_by_username` | 10 | Review hotspot |
 | `src/db/users.rs` | 112 | `get_user_by_id` | 10 | Review hotspot |
-| `src/git/bare/handle.rs` | 495 | `list_dir` | 10 | Review hotspot |
+| `src/git/bare/handle.rs` | 205 | `commit_changes` | 10 | Review hotspot |
+| `src/git/bare/handle.rs` | 535 | `list_dir` | 10 | Review hotspot |
 | `src/git/repo.rs` | 103 | `create_repo` | 10 | Review hotspot |
 | `src/http/namespace/pages.rs` | 124 | `render_namespace` | 10 | Review hotspot |
-| `src/http/repository/pages.rs` | 1742 | `render_scripts_view` | 10 | Review hotspot |
+| `src/http/repo_edit/mod.rs` | 847 | `validate_draft_change` | 10 | Review hotspot |
+| `src/http/repository/pages.rs` | 1768 | `render_scripts_view` | 10 | Review hotspot |
 | `src/http/tree/user_management.rs` | 592 | `resend_namespace_invitation` | 10 | Review hotspot |
 | `src/md/mod.rs` | 95 | `render_mermaid_blocks` | 10 | Review hotspot |
 | `crates/twig-highlight/src/lib.rs` | 33 | `class` | 9 | — |
@@ -148,27 +146,29 @@ Audit date (UTC): 2026-10-13
 | `src/db/binaries.rs` | 45 | `put_binary` | 9 | — |
 | `src/db/namespaces.rs` | 52 | `get_namespace_by_name` | 9 | — |
 | `src/db/namespaces.rs` | 179 | `get_owned_namespaces_for_user` | 9 | — |
-| `src/db/namespaces.rs` | 256 | `get_namespaces_for_user` | 9 | — |
+| `src/db/namespaces.rs` | 255 | `get_namespaces_for_user` | 9 | — |
 | `src/git/backend.rs` | 54 | `kind` | 9 | — |
 | `src/git/repo.rs` | 144 | `bare_init` | 9 | — |
 | `src/http/repo_edit/mod.rs` | 87 | `open_workspace_context` | 9 | — |
 | `src/http/repository/binaries.rs` | 29 | `upload_binary` | 9 | — |
-| `src/http/repository/pages.rs` | 816 | `raw_handler` | 9 | — |
+| `src/http/repository/pages.rs` | 835 | `raw_handler` | 9 | — |
+| `src/http/repository/pages.rs` | 1435 | `configured_tab` | 9 | — |
 | `src/http/tree/pages.rs` | 484 | `repositories_page` | 9 | — |
 | `src/http/tree/user_management.rs` | 113 | `render_user_management_content` | 9 | — |
 | `src/db/namespaces.rs` | 6 | `create_namespace` | 8 | — |
-| `src/db/namespaces.rs` | 296 | `delete_namespace` | 8 | — |
-| `src/git/bare/handle.rs` | 272 | `create_edit_tree` | 8 | — |
+| `src/db/namespaces.rs` | 295 | `delete_namespace` | 8 | — |
+| `src/git/bare/handle.rs` | 301 | `create_edit_tree` | 8 | — |
+| `src/git/bare/handle.rs` | 390 | `regular_text_file_mode` | 8 | — |
 | `src/git/mod.rs` | 17 | `git_handler` | 8 | — |
 | `src/git/mod.rs` | 239 | `is_authenticated` | 8 | — |
 | `src/git/repo.rs` | 30 | `init` | 8 | — |
-| `src/http/auth/handlers.rs` | 201 | `login_ui_handler` | 8 | — |
+| `src/http/auth/handlers.rs` | 199 | `login_ui_handler` | 8 | — |
 | `src/http/auth/namespace_invitations.rs` | 77 | `load_active_invitation` | 8 | — |
 | `src/http/repo_edit/mod.rs` | 447 | `prepare_workspace_commit` | 8 | — |
 | `src/http/repo_edit/mod.rs` | 785 | `validate_existing_text_path` | 8 | — |
-| `src/http/repository/pages.rs` | 468 | `tab_body` | 8 | — |
-| `src/http/repository/pages.rs` | 2154 | `present_print_handler` | 8 | — |
-| `src/http/repository/pages.rs` | 2434 | `paper_headings` | 8 | — |
+| `src/http/repository/pages.rs` | 487 | `tab_body` | 8 | — |
+| `src/http/repository/pages.rs` | 2180 | `present_print_handler` | 8 | — |
+| `src/http/repository/pages.rs` | 2460 | `paper_headings` | 8 | — |
 | `src/http/tree/pages.rs` | 58 | `render_namespaces_page` | 8 | — |
 | `src/http/tree/pages.rs` | 234 | `render_data_page` | 8 | — |
 | `src/http/tree/user_management.rs` | 273 | `render_invitation_list` | 8 | — |
@@ -180,15 +180,18 @@ Audit date (UTC): 2026-10-13
 | `crates/twig-highlight/src/lib.rs` | 437 | `escape_into` | 7 | — |
 | `src/auth/permissions.rs` | 29 | `display_name` | 7 | — |
 | `src/auth/permissions.rs` | 104 | `namespaces_for_user` | 7 | — |
+| `src/db/migration.rs` | 155 | `prepare_migrations` | 7 | — |
 | `src/db/namespaces.rs` | 209 | `user_can_create_namespace` | 7 | — |
 | `src/db/users.rs` | 6 | `list_users_for_management` | 7 | — |
 | `src/git/backend.rs` | 89 | `run_with_config` | 7 | — |
+| `src/git/bare/handle.rs` | 346 | `apply_upsert` | 7 | — |
 | `src/git/mod.rs` | 391 | `ensure_repo_exists` | 7 | — |
 | `src/http/namespace/pages.rs` | 345 | `create_repo_handler` | 7 | — |
 | `src/http/repo_edit/mod.rs` | 311 | `apply_operation` | 7 | — |
 | `src/http/repo_edit/mod.rs` | 800 | `read_text_file` | 7 | — |
-| `src/http/repository/pages.rs` | 288 | `open_repo` | 7 | — |
-| `src/http/repository/pages.rs` | 988 | `content_handler` | 7 | — |
+| `src/http/repo_edit/mod.rs` | 829 | `validate_draft_changes` | 7 | — |
+| `src/http/repository/pages.rs` | 307 | `open_repo` | 7 | — |
+| `src/http/repository/pages.rs` | 1007 | `content_handler` | 7 | — |
 | `src/http/settings/pages.rs` | 759 | `delete_namespace` | 7 | — |
 | `src/http/tree/user_management.rs` | 206 | `render_user_access_tree` | 7 | — |
 | `src/http/tree/user_management.rs` | 444 | `user_management_page` | 7 | — |
@@ -196,6 +199,7 @@ Audit date (UTC): 2026-10-13
 | `src/auth/mod.rs` | 223 | `user_id_from_request` | 6 | — |
 | `src/db/binaries.rs` | 134 | `get_binary` | 6 | — |
 | `src/db/data.rs` | 16 | `list_table_names` | 6 | — |
+| `src/db/migration.rs` | 248 | `create_tables` | 6 | — |
 | `src/db/namespaces.rs` | 141 | `get_namespace_role` | 6 | — |
 | `src/db/test_pins.rs` | 19 | `get_test_pin` | 6 | — |
 | `src/db/tokens.rs` | 17 | `get_token_user` | 6 | — |
@@ -203,49 +207,54 @@ Audit date (UTC): 2026-10-13
 | `src/git/backend.rs` | 176 | `prepare_cgi_env` | 6 | — |
 | `src/git/bare/config.rs` | 95 | `collect_script_groups` | 6 | — |
 | `src/git/bare/handle.rs` | 66 | `file_mode` | 6 | — |
-| `src/git/bare/handle.rs` | 404 | `read_blob_bytes` | 6 | — |
-| `src/git/bare/handle.rs` | 541 | `list_paper_pages` | 6 | — |
+| `src/git/bare/handle.rs` | 444 | `read_blob_bytes` | 6 | — |
+| `src/git/bare/handle.rs` | 581 | `list_paper_pages` | 6 | — |
 | `src/git/bare/listing.rs` | 174 | `is_repo_private` | 6 | — |
 | `src/git/bare/path.rs` | 5 | `is_safe_component` | 6 | — |
 | `src/http/overview/pages.rs` | 136 | `index` | 6 | — |
 | `src/http/repo_edit/mod.rs` | 595 | `apply_file_operation` | 6 | — |
+| `src/http/repo_edit/mod.rs` | 816 | `validate_draft` | 6 | — |
 | `src/http/repo_edit/pages.rs` | 275 | `file_editor` | 6 | — |
 | `src/http/repository/binaries.rs` | 173 | `require_namespace_writer` | 6 | — |
 | `src/http/repository/binaries.rs` | 222 | `is_safe_filename` | 6 | — |
-| `src/http/repository/pages.rs` | 588 | `handler` | 6 | — |
-| `src/http/repository/pages.rs` | 927 | `open_paper_page` | 6 | — |
-| `src/http/repository/pages.rs` | 1186 | `rewrite_markdown_link` | 6 | — |
-| `src/http/repository/pages.rs` | 1938 | `script_base_url` | 6 | — |
-| `src/http/repository/pages.rs` | 2400 | `heading_level` | 6 | — |
-| `src/http/repository/pages.rs` | 2412 | `heading_slug` | 6 | — |
+| `src/http/repository/pages.rs` | 607 | `handler` | 6 | — |
+| `src/http/repository/pages.rs` | 946 | `open_paper_page` | 6 | — |
+| `src/http/repository/pages.rs` | 1205 | `rewrite_markdown_link` | 6 | — |
+| `src/http/repository/pages.rs` | 1964 | `script_base_url` | 6 | — |
+| `src/http/repository/pages.rs` | 2426 | `heading_level` | 6 | — |
+| `src/http/repository/pages.rs` | 2438 | `heading_slug` | 6 | — |
 | `src/http/settings/pages.rs` | 375 | `delete_repo` | 6 | — |
 | `src/http/test_page/pages.rs` | 465 | `authenticate_caller` | 6 | — |
 | `src/http/tree/pages.rs` | 414 | `load_namespace_page_data` | 6 | — |
 | `src/http/tree/pages.rs` | 583 | `data_page` | 6 | — |
 | `src/http/tree/user_management.rs` | 40 | `user_management_scope` | 6 | — |
 | `src/auth/permissions.rs` | 76 | `for_user` | 5 | — |
-| `src/db/invitations.rs` | 100 | `create_namespace_invitation` | 5 | — |
-| `src/db/invitations.rs` | 183 | `accept_namespace_invitation` | 5 | — |
-| `src/db/migration.rs` | 249 | `test_create_tables_runs_all_migrations` | 5 | — |
+| `src/db/invitations.rs` | 16 | `accept_invitation_in_transaction` | 5 | — |
+| `src/db/invitations.rs` | 146 | `create_namespace_invitation` | 5 | — |
+| `src/db/invitations.rs` | 229 | `accept_namespace_invitation` | 5 | — |
+| `src/db/migration.rs` | 200 | `apply_migration_body` | 5 | — |
+| `src/db/migration.rs` | 220 | `apply_migration` | 5 | — |
+| `src/db/migration.rs` | 267 | `test_create_tables_runs_all_migrations` | 5 | — |
 | `src/db/test_pins.rs` | 46 | `validate_test_pin` | 5 | — |
 | `src/email.rs` | 124 | `send_invitation_to` | 5 | — |
-| `src/git/bare/handle.rs` | 445 | `get_license_content` | 5 | — |
+| `src/git/bare/handle.rs` | 485 | `get_license_content` | 5 | — |
 | `src/git/bare/listing.rs` | 90 | `last_commit_date` | 5 | — |
 | `src/git/bare/mod.rs` | 87 | `build_tree` | 5 | — |
 | `src/git/mod.rs` | 320 | `authenticate_git_user` | 5 | — |
-| `src/git/repo.rs` | 313 | `set_hook_executable` | 5 | — |
+| `src/git/repo.rs` | 319 | `set_hook_executable` | 5 | — |
 | `src/git/reserved.rs` | 33 | `validate_repo_name` | 5 | — |
 | `src/http/auth/handlers.rs` | 39 | `logout_ui_handler` | 5 | — |
 | `src/http/auth/pages.rs` | 488 | `test_auth_pages_label_and_describe_every_input` | 5 | — |
 | `src/http/overview/pages.rs` | 271 | `test_search_cluster_preserves_the_get_form_contract` | 5 | — |
 | `src/http/repo_edit/mod.rs` | 540 | `render_workspace_commit_result` | 5 | — |
 | `src/http/repo_edit/pages.rs` | 205 | `file_tree` | 5 | — |
-| `src/http/repository/pages.rs` | 490 | `respond_tab` | 5 | — |
-| `src/http/repository/pages.rs` | 1164 | `resolve_relative_path` | 5 | — |
-| `src/http/repository/pages.rs` | 1666 | `render_content_dir` | 5 | — |
-| `src/http/repository/pages.rs` | 1699 | `render_content_file` | 5 | — |
-| `src/http/repository/pages.rs` | 3295 | `test_print_export_is_a_chrome_free_document` | 5 | — |
-| `src/http/repository/pages.rs` | 3543 | `test_paper_view_lazy_loads_pages_with_zoom_and_font_controls` | 5 | — |
+| `src/http/repository/pages.rs` | 276 | `frame` | 5 | — |
+| `src/http/repository/pages.rs` | 509 | `respond_tab` | 5 | — |
+| `src/http/repository/pages.rs` | 1183 | `resolve_relative_path` | 5 | — |
+| `src/http/repository/pages.rs` | 1692 | `render_content_dir` | 5 | — |
+| `src/http/repository/pages.rs` | 1725 | `render_content_file` | 5 | — |
+| `src/http/repository/pages.rs` | 3341 | `test_print_export_is_a_chrome_free_document` | 5 | — |
+| `src/http/repository/pages.rs` | 3589 | `test_paper_view_lazy_loads_pages_with_zoom_and_font_controls` | 5 | — |
 | `src/http/settings/pages.rs` | 46 | `require_namespace_permission` | 5 | — |
 | `src/http/settings/pages.rs` | 270 | `settings_page` | 5 | — |
 | `src/http/test_page/pages.rs` | 246 | `render_pin_panel` | 5 | — |
@@ -258,9 +267,10 @@ Audit date (UTC): 2026-10-13
 | `crates/twig-highlight/src/lib.rs` | 126 | `highlight` | 4 | — |
 | `src/auth/session_store.rs` | 60 | `save` | 4 | — |
 | `src/auth/session_store.rs` | 77 | `update` | 4 | — |
-| `src/config.rs` | 135 | `maybe_reset_database` | 4 | — |
-| `src/config.rs` | 186 | `from_env` | 4 | — |
-| `src/db/invitations.rs` | 163 | `list_namespace_invitations` | 4 | — |
+| `src/config.rs` | 134 | `maybe_reset_database` | 4 | — |
+| `src/config.rs` | 185 | `from_env` | 4 | — |
+| `src/db/invitations.rs` | 71 | `ensure_username_available` | 4 | — |
+| `src/db/invitations.rs` | 209 | `list_namespace_invitations` | 4 | — |
 | `src/db/mod.rs` | 66 | `init_tables` | 4 | — |
 | `src/db/namespaces.rs` | 120 | `user_has_namespace_access` | 4 | — |
 | `src/db/namespaces.rs` | 239 | `user_has_any_namespaces` | 4 | — |
@@ -268,12 +278,16 @@ Audit date (UTC): 2026-10-13
 | `src/db/test_pins.rs` | 4 | `set_test_pin` | 4 | — |
 | `src/db/users.rs` | 251 | `user_management_lists_global_users_and_scopes_members_by_namespace` | 4 | — |
 | `src/git/bare/handle.rs` | 35 | `open` | 4 | — |
-| `src/git/bare/handle.rs` | 376 | `get_commits` | 4 | — |
-| `src/git/bare/handle.rs` | 476 | `list_files` | 4 | — |
+| `src/git/bare/handle.rs` | 234 | `head_branch_reference_name` | 4 | — |
+| `src/git/bare/handle.rs` | 243 | `parent_tree` | 4 | — |
+| `src/git/bare/handle.rs` | 275 | `advance_branch` | 4 | — |
+| `src/git/bare/handle.rs` | 331 | `apply_repo_edit` | 4 | — |
+| `src/git/bare/handle.rs` | 416 | `get_commits` | 4 | — |
+| `src/git/bare/handle.rs` | 516 | `list_files` | 4 | — |
 | `src/git/bare/listing.rs` | 98 | `list_repos_with_info` | 4 | — |
 | `src/git/bare/path.rs` | 18 | `is_safe_repo_path` | 4 | — |
 | `src/git/mod.rs` | 114 | `build_response` | 4 | — |
-| `src/git/repo.rs` | 299 | `next_preserved_hook_path` | 4 | — |
+| `src/git/repo.rs` | 305 | `next_preserved_hook_path` | 4 | — |
 | `src/http/auth/namespace_invitations.rs` | 16 | `render_invitation_setup` | 4 | — |
 | `src/http/auth/pages.rs` | 20 | `render_field` | 4 | — |
 | `src/http/info/pages.rs` | 73 | `render_docs_menu` | 4 | — |
@@ -284,18 +298,19 @@ Audit date (UTC): 2026-10-13
 | `src/http/repo_edit/mod.rs` | 221 | `workspace_page` | 4 | — |
 | `src/http/repo_edit/mod.rs` | 269 | `tree_fragment` | 4 | — |
 | `src/http/repo_edit/mod.rs` | 372 | `commit_workspace` | 4 | — |
-| `src/http/repo_edit/mod.rs` | 910 | `legacy_file_entry` | 4 | — |
+| `src/http/repo_edit/mod.rs` | 880 | `validate_file_parent_conflicts` | 4 | — |
+| `src/http/repo_edit/mod.rs` | 931 | `legacy_file_entry` | 4 | — |
 | `src/http/repo_edit/pages.rs` | 133 | `workspace_changes_panel` | 4 | — |
 | `src/http/repo_edit/pages.rs` | 400 | `commit_result` | 4 | — |
-| `src/http/repository/pages.rs` | 873 | `markdown_handler` | 4 | — |
-| `src/http/repository/pages.rs` | 1139 | `has_url_scheme` | 4 | — |
-| `src/http/repository/pages.rs` | 1266 | `render_paper_markdown` | 4 | — |
-| `src/http/repository/pages.rs` | 1576 | `breadcrumb_segments` | 4 | — |
-| `src/http/repository/pages.rs` | 1593 | `render_content_breadcrumbs` | 4 | — |
-| `src/http/repository/pages.rs` | 1630 | `render_content_view` | 4 | — |
-| `src/http/repository/pages.rs` | 2038 | `render_slide_content` | 4 | — |
-| `src/http/repository/pages.rs` | 2223 | `render_pdf_document` | 4 | — |
-| `src/http/repository/pages.rs` | 4013 | `test_repo_markup_carries_no_inline_presentation` | 4 | — |
+| `src/http/repository/pages.rs` | 892 | `markdown_handler` | 4 | — |
+| `src/http/repository/pages.rs` | 1158 | `has_url_scheme` | 4 | — |
+| `src/http/repository/pages.rs` | 1285 | `render_paper_markdown` | 4 | — |
+| `src/http/repository/pages.rs` | 1602 | `breadcrumb_segments` | 4 | — |
+| `src/http/repository/pages.rs` | 1619 | `render_content_breadcrumbs` | 4 | — |
+| `src/http/repository/pages.rs` | 1656 | `render_content_view` | 4 | — |
+| `src/http/repository/pages.rs` | 2064 | `render_slide_content` | 4 | — |
+| `src/http/repository/pages.rs` | 2249 | `render_pdf_document` | 4 | — |
+| `src/http/repository/pages.rs` | 4059 | `test_repo_markup_carries_no_inline_presentation` | 4 | — |
 | `src/http/settings/pages.rs` | 157 | `render_repo_deletion_panel` | 4 | — |
 | `src/http/settings/pages.rs` | 209 | `render_repo_rename_panel` | 4 | — |
 | `src/http/settings/pages.rs` | 339 | `update_email` | 4 | — |
@@ -310,7 +325,8 @@ Audit date (UTC): 2026-10-13
 | `src/auth/session_store.rs` | 100 | `update_ttl` | 3 | — |
 | `src/db/invites.rs` | 5 | `create_invite` | 3 | — |
 | `src/db/invites.rs` | 46 | `mark_invite_used` | 3 | — |
-| `src/db/namespaces.rs` | 283 | `rename_namespace` | 3 | — |
+| `src/db/migration.rs` | 182 | `migration_was_recorded` | 3 | — |
+| `src/db/namespaces.rs` | 282 | `rename_namespace` | 3 | — |
 | `src/db/sessions.rs` | 22 | `save_actix_session` | 3 | — |
 | `src/db/sessions.rs` | 39 | `update_actix_session` | 3 | — |
 | `src/db/sessions.rs` | 57 | `update_actix_session_ttl` | 3 | — |
@@ -325,9 +341,11 @@ Audit date (UTC): 2026-10-13
 | `src/git/backend.rs` | 160 | `parse_cgi_response` | 3 | — |
 | `src/git/bare/config.rs` | 433 | `test_config_parse_errors_are_reported_not_swallowed` | 3 | — |
 | `src/git/bare/handle.rs` | 46 | `head_commit` | 3 | — |
-| `src/git/bare/handle.rs` | 422 | `read_file` | 3 | — |
-| `src/git/bare/handle.rs` | 467 | `load_config_with_raw` | 3 | — |
-| `src/git/repo.rs` | 345 | `run_pre_receive` | 3 | — |
+| `src/git/bare/handle.rs` | 255 | `create_edit_commit` | 3 | — |
+| `src/git/bare/handle.rs` | 374 | `apply_delete` | 3 | — |
+| `src/git/bare/handle.rs` | 462 | `read_file` | 3 | — |
+| `src/git/bare/handle.rs` | 507 | `load_config_with_raw` | 3 | — |
+| `src/git/repo.rs` | 351 | `run_pre_receive` | 3 | — |
 | `src/http/assets.rs` | 113 | `find` | 3 | — |
 | `src/http/assets.rs` | 135 | `assets` | 3 | — |
 | `src/http/assets.rs` | 281 | `test_twig_css_confines_raw_colour_values_to_the_token_block` | 3 | — |
@@ -347,24 +365,24 @@ Audit date (UTC): 2026-10-13
 | `src/http/repo_edit/mod.rs` | 621 | `create_workspace_file` | 3 | — |
 | `src/http/repo_edit/mod.rs` | 734 | `discard_workspace_file` | 3 | — |
 | `src/http/repo_edit/pages.rs` | 388 | `operation_result` | 3 | — |
-| `src/http/repository/pages.rs` | 445 | `scripts_body` | 3 | — |
-| `src/http/repository/pages.rs` | 576 | `resolved_default_tab` | 3 | — |
-| `src/http/repository/pages.rs` | 957 | `paper_handler` | 3 | — |
-| `src/http/repository/pages.rs` | 1212 | `fix_link_tag` | 3 | — |
-| `src/http/repository/pages.rs` | 1249 | `markdown_to_html` | 3 | — |
-| `src/http/repository/pages.rs` | 1452 | `default_tab` | 3 | — |
-| `src/http/repository/pages.rs` | 1463 | `get_default_markdown_file` | 3 | — |
-| `src/http/repository/pages.rs` | 1482 | `render_commits_view` | 3 | — |
-| `src/http/repository/pages.rs` | 1649 | `render_content_row` | 3 | — |
-| `src/http/repository/pages.rs` | 1969 | `load_present_slides` | 3 | — |
-| `src/http/repository/pages.rs` | 2354 | `paper_path_slug` | 3 | — |
-| `src/http/repository/pages.rs` | 2374 | `paper_page_anchors` | 3 | — |
-| `src/http/repository/pages.rs` | 2480 | `render_paper_toolbar` | 3 | — |
-| `src/http/repository/pages.rs` | 2526 | `render_paper_view` | 3 | — |
-| `src/http/repository/pages.rs` | 2581 | `render_markdown_view` | 3 | — |
-| `src/http/repository/pages.rs` | 3271 | `test_print_export_opens_the_dialog_once_loaded` | 3 | — |
-| `src/http/repository/pages.rs` | 3456 | `test_presentation_controls_are_labelled_and_bounded` | 3 | — |
-| `src/http/repository/pages.rs` | 3996 | `test_repo_markup_uses_only_twig_design_system_classes` | 3 | — |
+| `src/http/repository/pages.rs` | 464 | `scripts_body` | 3 | — |
+| `src/http/repository/pages.rs` | 595 | `resolved_default_tab` | 3 | — |
+| `src/http/repository/pages.rs` | 976 | `paper_handler` | 3 | — |
+| `src/http/repository/pages.rs` | 1231 | `fix_link_tag` | 3 | — |
+| `src/http/repository/pages.rs` | 1268 | `markdown_to_html` | 3 | — |
+| `src/http/repository/pages.rs` | 1478 | `default_tab` | 3 | — |
+| `src/http/repository/pages.rs` | 1489 | `get_default_markdown_file` | 3 | — |
+| `src/http/repository/pages.rs` | 1508 | `render_commits_view` | 3 | — |
+| `src/http/repository/pages.rs` | 1675 | `render_content_row` | 3 | — |
+| `src/http/repository/pages.rs` | 1995 | `load_present_slides` | 3 | — |
+| `src/http/repository/pages.rs` | 2380 | `paper_path_slug` | 3 | — |
+| `src/http/repository/pages.rs` | 2400 | `paper_page_anchors` | 3 | — |
+| `src/http/repository/pages.rs` | 2506 | `render_paper_toolbar` | 3 | — |
+| `src/http/repository/pages.rs` | 2552 | `render_paper_view` | 3 | — |
+| `src/http/repository/pages.rs` | 2607 | `render_markdown_view` | 3 | — |
+| `src/http/repository/pages.rs` | 3317 | `test_print_export_opens_the_dialog_once_loaded` | 3 | — |
+| `src/http/repository/pages.rs` | 3502 | `test_presentation_controls_are_labelled_and_bounded` | 3 | — |
+| `src/http/repository/pages.rs` | 4042 | `test_repo_markup_uses_only_twig_design_system_classes` | 3 | — |
 | `src/http/settings/pages.rs` | 104 | `render_profile_panel` | 3 | — |
 | `src/http/settings/pages.rs` | 985 | `test_settings_delete_repo_rows_preserve_the_htmx_contract` | 3 | — |
 | `src/http/settings/pages.rs` | 1015 | `test_settings_rename_repo_rows_preserve_the_htmx_contract` | 3 | — |
@@ -403,7 +421,7 @@ Audit date (UTC): 2026-10-13
 | `src/auth/permissions.rs` | 134 | `owner_has_every_namespace_permission` | 2 | — |
 | `src/auth/permissions.rs` | 143 | `contributor_has_only_namespace_view_and_push` | 2 | — |
 | `src/auth/session_store.rs` | 42 | `load` | 2 | — |
-| `src/config.rs` | 169 | `effective_api_key` | 2 | — |
+| `src/config.rs` | 168 | `effective_api_key` | 2 | — |
 | `src/db/binaries.rs` | 35 | `version_order_desc` | 2 | — |
 | `src/db/binaries.rs` | 371 | `binary_database_orders_semver_and_retains_the_top_three_versions` | 2 | — |
 | `src/db/namespaces.rs` | 170 | `user_owns_namespace` | 2 | — |
@@ -421,6 +439,7 @@ Audit date (UTC): 2026-10-13
 | `src/git/bare/config.rs` | 82 | `label` | 2 | — |
 | `src/git/bare/config.rs` | 207 | `from_source` | 2 | — |
 | `src/git/bare/handle.rs` | 61 | `head_oid` | 2 | — |
+| `src/git/bare/handle.rs` | 606 | `is_utf8_text` | 2 | — |
 | `src/git/bare/mod.rs` | 26 | `has_any_repository` | 2 | — |
 | `src/git/mod.rs` | 370 | `ensure_namespace_exists` | 2 | — |
 | `src/git/reserved.rs` | 66 | `test_namespace_level_routes_are_reserved` | 2 | — |
@@ -466,40 +485,42 @@ Audit date (UTC): 2026-10-13
 | `src/http/overview/pages.rs` | 114 | `search_repo_hits` | 2 | — |
 | `src/http/overview/pages.rs` | 342 | `test_rows_keep_owner_metadata_visible_and_labelled_at_every_width` | 2 | — |
 | `src/http/overview/pages.rs` | 427 | `test_empty_states_name_their_condition_and_keep_their_copy` | 2 | — |
-| `src/http/repo_edit/mod.rs` | 880 | `file_fragment` | 2 | — |
+| `src/http/repo_edit/mod.rs` | 901 | `file_fragment` | 2 | — |
 | `src/http/repo_edit/pages.rs` | 7 | `workspace_shell` | 2 | — |
 | `src/http/repo_edit/pages.rs` | 70 | `workspace_files_panel` | 2 | — |
 | `src/http/repo_edit/pages.rs` | 111 | `workspace_document_panel` | 2 | — |
 | `src/http/repository/pages.rs` | 56 | `text_size_step` | 2 | — |
 | `src/http/repository/pages.rs` | 202 | `render_for_request` | 2 | — |
-| `src/http/repository/pages.rs` | 356 | `can_view_namespace` | 2 | — |
-| `src/http/repository/pages.rs` | 405 | `commits_body` | 2 | — |
-| `src/http/repository/pages.rs` | 534 | `render_tab_shell` | 2 | — |
-| `src/http/repository/pages.rs` | 551 | `render_tab_response` | 2 | — |
-| `src/http/repository/pages.rs` | 861 | `tab_handler` | 2 | — |
-| `src/http/repository/pages.rs` | 917 | `page_in_dir` | 2 | — |
-| `src/http/repository/pages.rs` | 1154 | `split_link_suffix` | 2 | — |
-| `src/http/repository/pages.rs` | 1307 | `render_slide_markdown` | 2 | — |
-| `src/http/repository/pages.rs` | 1355 | `render_not_found_for_request` | 2 | — |
-| `src/http/repository/pages.rs` | 1498 | `render_config_view` | 2 | — |
-| `src/http/repository/pages.rs` | 1544 | `render_license_view` | 2 | — |
-| `src/http/repository/pages.rs` | 1559 | `content_urls` | 2 | — |
-| `src/http/repository/pages.rs` | 1568 | `parent_path` | 2 | — |
-| `src/http/repository/pages.rs` | 1822 | `render_script_group_tabs` | 2 | — |
-| `src/http/repository/pages.rs` | 1853 | `render_script_row` | 2 | — |
-| `src/http/repository/pages.rs` | 1959 | `raw_content_type` | 2 | — |
-| `src/http/repository/pages.rs` | 2016 | `render_slide_nav_button` | 2 | — |
-| `src/http/repository/pages.rs` | 2121 | `render_present_view` | 2 | — |
-| `src/http/repository/pages.rs` | 2273 | `render_pdf_pagehead` | 2 | — |
-| `src/http/repository/pages.rs` | 2307 | `render_pdf_license_page` | 2 | — |
-| `src/http/repository/pages.rs` | 2342 | `paper_relative_path` | 2 | — |
-| `src/http/repository/pages.rs` | 2559 | `render_paper_content_only` | 2 | — |
-| `src/http/repository/pages.rs` | 2620 | `render_markdown_content_only` | 2 | — |
-| `src/http/repository/pages.rs` | 2962 | `test_tabs_preserve_every_htmx_navigation_attribute` | 2 | — |
-| `src/http/repository/pages.rs` | 2987 | `test_tabs_mark_exactly_one_current_tab` | 2 | — |
-| `src/http/repository/pages.rs` | 3229 | `test_print_export_renders_one_page_per_slide_with_the_license_last` | 2 | — |
-| `src/http/repository/pages.rs` | 3406 | `test_presentation_targets_its_container_and_scopes_the_keyboard` | 2 | — |
-| `src/http/repository/pages.rs` | 3753 | `test_tab_content_shows_a_config_error_on_every_tab` | 2 | — |
+| `src/http/repository/pages.rs` | 375 | `can_view_namespace` | 2 | — |
+| `src/http/repository/pages.rs` | 424 | `commits_body` | 2 | — |
+| `src/http/repository/pages.rs` | 553 | `render_tab_shell` | 2 | — |
+| `src/http/repository/pages.rs` | 570 | `render_tab_response` | 2 | — |
+| `src/http/repository/pages.rs` | 880 | `tab_handler` | 2 | — |
+| `src/http/repository/pages.rs` | 936 | `page_in_dir` | 2 | — |
+| `src/http/repository/pages.rs` | 1173 | `split_link_suffix` | 2 | — |
+| `src/http/repository/pages.rs` | 1326 | `render_slide_markdown` | 2 | — |
+| `src/http/repository/pages.rs` | 1374 | `render_not_found_for_request` | 2 | — |
+| `src/http/repository/pages.rs` | 1416 | `available_tabs` | 2 | — |
+| `src/http/repository/pages.rs` | 1452 | `render_tabs` | 2 | — |
+| `src/http/repository/pages.rs` | 1524 | `render_config_view` | 2 | — |
+| `src/http/repository/pages.rs` | 1570 | `render_license_view` | 2 | — |
+| `src/http/repository/pages.rs` | 1585 | `content_urls` | 2 | — |
+| `src/http/repository/pages.rs` | 1594 | `parent_path` | 2 | — |
+| `src/http/repository/pages.rs` | 1848 | `render_script_group_tabs` | 2 | — |
+| `src/http/repository/pages.rs` | 1879 | `render_script_row` | 2 | — |
+| `src/http/repository/pages.rs` | 1985 | `raw_content_type` | 2 | — |
+| `src/http/repository/pages.rs` | 2042 | `render_slide_nav_button` | 2 | — |
+| `src/http/repository/pages.rs` | 2147 | `render_present_view` | 2 | — |
+| `src/http/repository/pages.rs` | 2299 | `render_pdf_pagehead` | 2 | — |
+| `src/http/repository/pages.rs` | 2333 | `render_pdf_license_page` | 2 | — |
+| `src/http/repository/pages.rs` | 2368 | `paper_relative_path` | 2 | — |
+| `src/http/repository/pages.rs` | 2585 | `render_paper_content_only` | 2 | — |
+| `src/http/repository/pages.rs` | 2646 | `render_markdown_content_only` | 2 | — |
+| `src/http/repository/pages.rs` | 2990 | `test_tabs_preserve_every_htmx_navigation_attribute` | 2 | — |
+| `src/http/repository/pages.rs` | 3024 | `test_tabs_mark_exactly_one_current_tab` | 2 | — |
+| `src/http/repository/pages.rs` | 3275 | `test_print_export_renders_one_page_per_slide_with_the_license_last` | 2 | — |
+| `src/http/repository/pages.rs` | 3452 | `test_presentation_targets_its_container_and_scopes_the_keyboard` | 2 | — |
+| `src/http/repository/pages.rs` | 3799 | `test_tab_content_shows_a_config_error_on_every_tab` | 2 | — |
 | `src/http/routes.rs` | 122 | `test_is_git_guard_matches_git_user_agent` | 2 | — |
 | `src/http/routes.rs` | 142 | `test_is_git_guard_rejects_non_git_user_agent` | 2 | — |
 | `src/http/routes.rs` | 162 | `test_is_git_guard_rejects_missing_user_agent` | 2 | — |
@@ -598,40 +619,40 @@ Audit date (UTC): 2026-10-13
 | `src/auth/session_store.rs` | 30 | `middleware` | 1 | — |
 | `src/auth/session_store.rs` | 117 | `delete` | 1 | — |
 | `src/auth/session_store.rs` | 130 | `sql_session_store_saves_loads_updates_and_deletes_sessions` | 1 | — |
-| `src/config.rs` | 25 | `new` | 1 | — |
-| `src/config.rs` | 50 | `with_cache_control` | 1 | — |
-| `src/config.rs` | 55 | `with_test_user` | 1 | — |
-| `src/config.rs` | 60 | `with_admin_user` | 1 | — |
-| `src/config.rs` | 65 | `with_resend_settings` | 1 | — |
-| `src/config.rs` | 77 | `resend_api_key` | 1 | — |
-| `src/config.rs` | 81 | `resend_from` | 1 | — |
-| `src/config.rs` | 85 | `public_base_url` | 1 | — |
-| `src/config.rs` | 89 | `admin_user` | 1 | — |
-| `src/config.rs` | 93 | `is_configured_admin` | 1 | — |
-| `src/config.rs` | 97 | `address` | 1 | — |
-| `src/config.rs` | 101 | `log_level` | 1 | — |
-| `src/config.rs` | 105 | `project_root` | 1 | — |
-| `src/config.rs` | 109 | `db_path` | 1 | — |
-| `src/config.rs` | 114 | `reset_db` | 1 | — |
-| `src/config.rs` | 119 | `test_user` | 1 | — |
-| `src/config.rs` | 124 | `is_test_user_enabled` | 1 | — |
-| `src/config.rs` | 129 | `is_test_user` | 1 | — |
-| `src/config.rs` | 154 | `cache_control` | 1 | — |
-| `src/config.rs` | 158 | `session_key` | 1 | — |
-| `src/config.rs` | 162 | `with_session_key` | 1 | — |
-| `src/config.rs` | 181 | `fmt` | 1 | — |
-| `src/config.rs` | 251 | `ascii` | 1 | — |
-| `src/config.rs` | 279 | `test_server_new` | 1 | — |
-| `src/config.rs` | 299 | `test_server_cache_control_round_trip` | 1 | — |
-| `src/config.rs` | 317 | `test_server_clone` | 1 | — |
-| `src/config.rs` | 332 | `test_effective_api_key_with_set_key` | 1 | — |
-| `src/config.rs` | 345 | `test_effective_api_key_generates_when_empty` | 1 | — |
-| `src/config.rs` | 360 | `test_maybe_reset_database_no_flag` | 1 | — |
-| `src/config.rs` | 373 | `test_address_returns_clone` | 1 | — |
-| `src/config.rs` | 387 | `test_server_test_user` | 1 | — |
-| `src/config.rs` | 408 | `test_server_admin_user_is_independent_from_test_user` | 1 | — |
-| `src/config.rs` | 426 | `test_blank_admin_user_is_not_configured` | 1 | — |
-| `src/config.rs` | 441 | `test_resend_settings_are_optional_and_keep_sender_configuration` | 1 | — |
+| `src/config.rs` | 24 | `new` | 1 | — |
+| `src/config.rs` | 49 | `with_cache_control` | 1 | — |
+| `src/config.rs` | 54 | `with_test_user` | 1 | — |
+| `src/config.rs` | 59 | `with_admin_user` | 1 | — |
+| `src/config.rs` | 64 | `with_resend_settings` | 1 | — |
+| `src/config.rs` | 76 | `resend_api_key` | 1 | — |
+| `src/config.rs` | 80 | `resend_from` | 1 | — |
+| `src/config.rs` | 84 | `public_base_url` | 1 | — |
+| `src/config.rs` | 88 | `admin_user` | 1 | — |
+| `src/config.rs` | 92 | `is_configured_admin` | 1 | — |
+| `src/config.rs` | 96 | `address` | 1 | — |
+| `src/config.rs` | 100 | `log_level` | 1 | — |
+| `src/config.rs` | 104 | `project_root` | 1 | — |
+| `src/config.rs` | 108 | `db_path` | 1 | — |
+| `src/config.rs` | 113 | `reset_db` | 1 | — |
+| `src/config.rs` | 118 | `test_user` | 1 | — |
+| `src/config.rs` | 123 | `is_test_user_enabled` | 1 | — |
+| `src/config.rs` | 128 | `is_test_user` | 1 | — |
+| `src/config.rs` | 153 | `cache_control` | 1 | — |
+| `src/config.rs` | 157 | `session_key` | 1 | — |
+| `src/config.rs` | 161 | `with_session_key` | 1 | — |
+| `src/config.rs` | 180 | `fmt` | 1 | — |
+| `src/config.rs` | 250 | `ascii` | 1 | — |
+| `src/config.rs` | 278 | `test_server_new` | 1 | — |
+| `src/config.rs` | 298 | `test_server_cache_control_round_trip` | 1 | — |
+| `src/config.rs` | 316 | `test_server_clone` | 1 | — |
+| `src/config.rs` | 331 | `test_effective_api_key_with_set_key` | 1 | — |
+| `src/config.rs` | 344 | `test_effective_api_key_generates_when_empty` | 1 | — |
+| `src/config.rs` | 359 | `test_maybe_reset_database_no_flag` | 1 | — |
+| `src/config.rs` | 372 | `test_address_returns_clone` | 1 | — |
+| `src/config.rs` | 386 | `test_server_test_user` | 1 | — |
+| `src/config.rs` | 407 | `test_server_admin_user_is_independent_from_test_user` | 1 | — |
+| `src/config.rs` | 425 | `test_blank_admin_user_is_not_configured` | 1 | — |
+| `src/config.rs` | 440 | `test_resend_settings_are_optional_and_keep_sender_configuration` | 1 | — |
 | `src/db/binaries.rs` | 300 | `test_db_path` | 1 | — |
 | `src/db/binaries.rs` | 304 | `version` | 1 | — |
 | `src/db/binaries.rs` | 309 | `binary_database_round_trips_arbitrary_blob_bytes` | 1 | — |
@@ -640,36 +661,39 @@ Audit date (UTC): 2026-10-13
 | `src/db/data.rs` | 91 | `table_reader_lists_tables_and_pages_values` | 1 | — |
 | `src/db/data.rs` | 134 | `table_reader_rejects_an_oversized_page_loudly` | 1 | — |
 | `src/db/data.rs` | 148 | `table_reader_returns_an_empty_page_past_the_end_of_the_table` | 1 | — |
-| `src/db/invitations.rs` | 256 | `setup_db` | 1 | — |
-| `src/db/invitations.rs` | 279 | `create_get_and_scope_list_namespace_invitations` | 1 | — |
-| `src/db/invitations.rs` | 331 | `pending_invitation` | 1 | — |
-| `src/db/invitations.rs` | 348 | `invited_user` | 1 | — |
-| `src/db/invitations.rs` | 354 | `acceptance_creates_account_membership_and_consumes_invite_atomically` | 1 | — |
-| `src/db/invitations.rs` | 412 | `failed_acceptance_rolls_back_account_membership_and_invite_state` | 1 | — |
-| `src/db/invitations.rs` | 458 | `expired_or_mismatched_invitation_cannot_be_accepted` | 1 | — |
-| `src/db/invitations.rs` | 506 | `concurrent_acceptance_only_creates_one_account_and_membership` | 1 | — |
+| `src/db/invitations.rs` | 90 | `insert_invited_user` | 1 | — |
+| `src/db/invitations.rs` | 107 | `add_invited_user_to_namespace` | 1 | — |
+| `src/db/invitations.rs` | 128 | `mark_invitation_accepted` | 1 | — |
+| `src/db/invitations.rs` | 302 | `setup_db` | 1 | — |
+| `src/db/invitations.rs` | 325 | `create_get_and_scope_list_namespace_invitations` | 1 | — |
+| `src/db/invitations.rs` | 377 | `pending_invitation` | 1 | — |
+| `src/db/invitations.rs` | 394 | `invited_user` | 1 | — |
+| `src/db/invitations.rs` | 400 | `acceptance_creates_account_membership_and_consumes_invite_atomically` | 1 | — |
+| `src/db/invitations.rs` | 458 | `failed_acceptance_rolls_back_account_membership_and_invite_state` | 1 | — |
+| `src/db/invitations.rs` | 504 | `expired_or_mismatched_invitation_cannot_be_accepted` | 1 | — |
+| `src/db/invitations.rs` | 552 | `concurrent_acceptance_only_creates_one_account_and_membership` | 1 | — |
 | `src/db/invites.rs` | 65 | `setup_db` | 1 | — |
 | `src/db/invites.rs` | 72 | `test_invite` | 1 | — |
 | `src/db/invites.rs` | 83 | `test_create_and_get_invite` | 1 | — |
 | `src/db/invites.rs` | 101 | `test_mark_invite_used` | 1 | — |
 | `src/db/invites.rs` | 121 | `test_get_invite_not_found` | 1 | — |
-| `src/db/migration.rs` | 328 | `test_legacy_member_roles_migrate_to_contributors` | 1 | — |
+| `src/db/migration.rs` | 346 | `test_legacy_member_roles_migrate_to_contributors` | 1 | — |
 | `src/db/mod.rs` | 26 | `new` | 1 | — |
 | `src/db/mod.rs` | 84 | `test_database_new_stores_path` | 1 | — |
 | `src/db/mod.rs` | 90 | `test_database_conn_creates_file` | 1 | — |
 | `src/db/mod.rs` | 106 | `test_database_init_tables_succeeds` | 1 | — |
 | `src/db/namespaces.rs` | 75 | `get_all_namespaces_with_owners` | 1 | — |
 | `src/db/namespaces.rs` | 79 | `search_namespaces_with_owners` | 1 | — |
-| `src/db/namespaces.rs` | 342 | `setup_db_with_user` | 1 | — |
-| `src/db/namespaces.rs` | 360 | `test_namespace` | 1 | — |
-| `src/db/namespaces.rs` | 370 | `test_create_and_get_namespace_by_name` | 1 | — |
-| `src/db/namespaces.rs` | 390 | `test_get_all_namespaces_with_owners` | 1 | — |
-| `src/db/namespaces.rs` | 411 | `test_user_has_namespace_access_owner` | 1 | — |
-| `src/db/namespaces.rs` | 430 | `test_user_has_namespace_access_denied` | 1 | — |
-| `src/db/namespaces.rs` | 450 | `namespace_roles_control_owner_scopes_and_creation_permissions` | 1 | — |
-| `src/db/namespaces.rs` | 541 | `test_search_namespaces_with_owners` | 1 | — |
-| `src/db/namespaces.rs` | 566 | `test_rename_namespace` | 1 | — |
-| `src/db/namespaces.rs` | 595 | `test_delete_namespace` | 1 | — |
+| `src/db/namespaces.rs` | 341 | `setup_db_with_user` | 1 | — |
+| `src/db/namespaces.rs` | 359 | `test_namespace` | 1 | — |
+| `src/db/namespaces.rs` | 369 | `test_create_and_get_namespace_by_name` | 1 | — |
+| `src/db/namespaces.rs` | 389 | `test_get_all_namespaces_with_owners` | 1 | — |
+| `src/db/namespaces.rs` | 410 | `test_user_has_namespace_access_owner` | 1 | — |
+| `src/db/namespaces.rs` | 429 | `test_user_has_namespace_access_denied` | 1 | — |
+| `src/db/namespaces.rs` | 449 | `namespace_roles_control_owner_scopes_and_creation_permissions` | 1 | — |
+| `src/db/namespaces.rs` | 540 | `test_search_namespaces_with_owners` | 1 | — |
+| `src/db/namespaces.rs` | 565 | `test_rename_namespace` | 1 | — |
+| `src/db/namespaces.rs` | 594 | `test_delete_namespace` | 1 | — |
 | `src/db/test_pins.rs` | 68 | `setup_db` | 1 | — |
 | `src/db/test_pins.rs` | 76 | `test_set_and_get_test_pin` | 1 | — |
 | `src/db/tokens.rs` | 61 | `setup_db_with_user` | 1 | — |
@@ -721,17 +745,17 @@ Audit date (UTC): 2026-10-13
 | `src/git/bare/config.rs` | 545 | `test_twig_config_toml_format_parsing` | 1 | — |
 | `src/git/bare/config.rs` | 556 | `test_twig_config_parse_private` | 1 | — |
 | `src/git/bare/handle.rs` | 31 | `from_repository` | 1 | — |
-| `src/git/bare/handle.rs` | 430 | `path_exists` | 1 | — |
-| `src/git/bare/handle.rs` | 633 | `new` | 1 | — |
-| `src/git/bare/handle.rs` | 640 | `handle` | 1 | — |
-| `src/git/bare/handle.rs` | 669 | `empty_handle` | 1 | — |
-| `src/git/bare/handle.rs` | 678 | `drop` | 1 | — |
-| `src/git/bare/handle.rs` | 684 | `commit_file_writes_nested_content_and_preserves_other_entries_and_mode` | 1 | — |
-| `src/git/bare/handle.rs` | 727 | `commit_file_refuses_to_overwrite_a_newer_branch_tip` | 1 | — |
-| `src/git/bare/handle.rs` | 764 | `commit_new_file_adds_a_nested_path_and_refuses_overwrites_and_stale_heads` | 1 | — |
-| `src/git/bare/handle.rs` | 845 | `commit_changes_applies_multiple_file_operations_in_one_commit` | 1 | — |
-| `src/git/bare/handle.rs` | 917 | `commit_changes_rejects_stale_head_and_invalid_or_no_op_batches` | 1 | — |
-| `src/git/bare/handle.rs` | 1005 | `commit_changes_can_create_the_first_commit_in_an_empty_repository` | 1 | — |
+| `src/git/bare/handle.rs` | 470 | `path_exists` | 1 | — |
+| `src/git/bare/handle.rs` | 677 | `new` | 1 | — |
+| `src/git/bare/handle.rs` | 684 | `handle` | 1 | — |
+| `src/git/bare/handle.rs` | 713 | `empty_handle` | 1 | — |
+| `src/git/bare/handle.rs` | 722 | `drop` | 1 | — |
+| `src/git/bare/handle.rs` | 728 | `commit_file_writes_nested_content_and_preserves_other_entries_and_mode` | 1 | — |
+| `src/git/bare/handle.rs` | 771 | `commit_file_refuses_to_overwrite_a_newer_branch_tip` | 1 | — |
+| `src/git/bare/handle.rs` | 808 | `commit_new_file_adds_a_nested_path_and_refuses_overwrites_and_stale_heads` | 1 | — |
+| `src/git/bare/handle.rs` | 889 | `commit_changes_applies_multiple_file_operations_in_one_commit` | 1 | — |
+| `src/git/bare/handle.rs` | 961 | `commit_changes_rejects_stale_head_and_invalid_or_no_op_batches` | 1 | — |
+| `src/git/bare/handle.rs` | 1049 | `commit_changes_can_create_the_first_commit_in_an_empty_repository` | 1 | — |
 | `src/git/bare/history.rs` | 14 | `new` | 1 | — |
 | `src/git/bare/history.rs` | 23 | `hash` | 1 | — |
 | `src/git/bare/history.rs` | 27 | `author` | 1 | — |
@@ -770,12 +794,13 @@ Audit date (UTC): 2026-10-13
 | `src/git/mod.rs` | 444 | `test_build_response_content_type` | 1 | — |
 | `src/git/mod.rs` | 452 | `test_build_response_multiple_headers` | 1 | — |
 | `src/git/repo.rs` | 25 | `default_branch` | 1 | — |
-| `src/git/repo.rs` | 336 | `sh` | 1 | — |
-| `src/git/repo.rs` | 379 | `test_default_branch_is_main` | 1 | — |
-| `src/git/repo.rs` | 384 | `test_create_repo_creates_directory_structure` | 1 | — |
-| `src/git/repo.rs` | 401 | `test_bare_init_creates_valid_repository` | 1 | — |
-| `src/git/repo.rs` | 437 | `contributor_hook_allows_fast_forwards_and_rejects_main_rewrites_and_deletions` | 1 | — |
-| `src/git/repo.rs` | 518 | `receive_hook_installation_preserves_chains_and_is_idempotent` | 1 | — |
+| `src/git/repo.rs` | 342 | `sh` | 1 | — |
+| `src/git/repo.rs` | 385 | `test_default_branch_is_main` | 1 | — |
+| `src/git/repo.rs` | 390 | `test_create_repo_creates_directory_structure` | 1 | — |
+| `src/git/repo.rs` | 407 | `test_bare_init_creates_valid_repository` | 1 | — |
+| `src/git/repo.rs` | 443 | `contributor_hook_allows_fast_forwards_and_rejects_main_rewrites_and_deletions` | 1 | — |
+| `src/git/repo.rs` | 524 | `receive_hook_installation_preserves_chains_and_is_idempotent` | 1 | — |
+| `src/git/repo.rs` | 623 | `receive_hook_installation_upgrades_previous_managed_hook_in_place` | 1 | — |
 | `src/git/reserved.rs` | 25 | `is_reserved_repo_name` | 1 | — |
 | `src/git/reserved.rs` | 59 | `test_reserved_check_is_case_insensitive` | 1 | — |
 | `src/git/reserved.rs` | 87 | `test_empty_name_is_refused` | 1 | — |
@@ -791,10 +816,10 @@ Audit date (UTC): 2026-10-13
 | `src/http/assets.rs` | 384 | `test_unversioned_assets_must_revalidate` | 1 | — |
 | `src/http/assets.rs` | 474 | `test_assets_handler_unknown_file_returns_404` | 1 | — |
 | `src/http/assets.rs` | 497 | `test_assets_handler_rejects_another_version` | 1 | — |
-| `src/http/auth/handlers.rs` | 365 | `test_generate_token_format` | 1 | — |
-| `src/http/auth/handlers.rs` | 374 | `test_invite_struct_with_none_user_id` | 1 | — |
-| `src/http/auth/handlers.rs` | 388 | `test_invite_struct_with_some_user_id` | 1 | — |
-| `src/http/auth/handlers.rs` | 402 | `test_create_invite_with_null_user_id` | 1 | — |
+| `src/http/auth/handlers.rs` | 363 | `test_generate_token_format` | 1 | — |
+| `src/http/auth/handlers.rs` | 372 | `test_invite_struct_with_none_user_id` | 1 | — |
+| `src/http/auth/handlers.rs` | 386 | `test_invite_struct_with_some_user_id` | 1 | — |
+| `src/http/auth/handlers.rs` | 400 | `test_create_invite_with_null_user_id` | 1 | — |
 | `src/http/auth/namespace_invitations.rs` | 63 | `render_account_created` | 1 | — |
 | `src/http/auth/namespace_invitations.rs` | 222 | `invitation` | 1 | — |
 | `src/http/auth/namespace_invitations.rs` | 253 | `account_created_notice_offers_login_and_names_the_namespace` | 1 | — |
@@ -872,10 +897,10 @@ Audit date (UTC): 2026-10-13
 | `src/http/repo_edit/mod.rs` | 165 | `workspace_file_url` | 1 | — |
 | `src/http/repo_edit/mod.rs` | 435 | `workspace_commit_preparation_error` | 1 | — |
 | `src/http/repo_edit/mod.rs` | 525 | `render_commit_result` | 1 | — |
-| `src/http/repo_edit/mod.rs` | 875 | `parent_path` | 1 | — |
-| `src/http/repo_edit/mod.rs` | 946 | `workspace_shell_loads_the_file_tree_through_htmx` | 1 | — |
-| `src/http/repo_edit/mod.rs` | 972 | `workspace_paths_are_encoded_for_query_and_route_components` | 1 | — |
-| `src/http/repo_edit/mod.rs` | 981 | `editor_operation_forms_override_implicit_get_inheritance` | 1 | — |
+| `src/http/repo_edit/mod.rs` | 896 | `parent_path` | 1 | — |
+| `src/http/repo_edit/mod.rs` | 967 | `workspace_shell_loads_the_file_tree_through_htmx` | 1 | — |
+| `src/http/repo_edit/mod.rs` | 993 | `workspace_paths_are_encoded_for_query_and_route_components` | 1 | — |
+| `src/http/repo_edit/mod.rs` | 1002 | `editor_operation_forms_override_implicit_get_inheritance` | 1 | — |
 | `src/http/repo_edit/pages.rs` | 49 | `workspace_document_url` | 1 | — |
 | `src/http/repo_edit/pages.rs` | 56 | `workspace_breadcrumbs` | 1 | — |
 | `src/http/repo_edit/pages.rs` | 186 | `workspace_restore_form` | 1 | — |
@@ -891,88 +916,88 @@ Audit date (UTC): 2026-10-13
 | `src/http/repository/pages.rs` | 39 | `text_size_list` | 1 | — |
 | `src/http/repository/pages.rs` | 49 | `text_size_restore` | 1 | — |
 | `src/http/repository/pages.rs` | 215 | `render_repo_auth_error` | 1 | — |
-| `src/http/repository/pages.rs` | 268 | `frame` | 1 | — |
-| `src/http/repository/pages.rs` | 378 | `markdown_files` | 1 | — |
-| `src/http/repository/pages.rs` | 386 | `markdown_body` | 1 | — |
-| `src/http/repository/pages.rs` | 390 | `markdown_body_from` | 1 | — |
-| `src/http/repository/pages.rs` | 397 | `content_body` | 1 | — |
-| `src/http/repository/pages.rs` | 410 | `config_body` | 1 | — |
-| `src/http/repository/pages.rs` | 417 | `license_body` | 1 | — |
-| `src/http/repository/pages.rs` | 422 | `present_body` | 1 | — |
-| `src/http/repository/pages.rs` | 432 | `paper_body` | 1 | — |
-| `src/http/repository/pages.rs` | 529 | `tab_nav` | 1 | — |
-| `src/http/repository/pages.rs` | 642 | `markdown_tab_handler` | 1 | — |
-| `src/http/repository/pages.rs` | 661 | `content_tab_handler` | 1 | — |
-| `src/http/repository/pages.rs` | 680 | `commits_tab_handler` | 1 | — |
-| `src/http/repository/pages.rs` | 699 | `config_tab_handler` | 1 | — |
-| `src/http/repository/pages.rs` | 718 | `present_tab_handler` | 1 | — |
-| `src/http/repository/pages.rs` | 737 | `paper_tab_handler` | 1 | — |
-| `src/http/repository/pages.rs` | 756 | `license_tab_handler` | 1 | — |
-| `src/http/repository/pages.rs` | 775 | `scripts_tab_handler` | 1 | — |
-| `src/http/repository/pages.rs` | 794 | `scripts_group_handler` | 1 | — |
-| `src/http/repository/pages.rs` | 1241 | `markdown_options` | 1 | — |
-| `src/http/repository/pages.rs` | 1329 | `render_empty` | 1 | — |
-| `src/http/repository/pages.rs` | 1338 | `render_git_error` | 1 | — |
-| `src/http/repository/pages.rs` | 1370 | `render_repo_crumbs` | 1 | — |
-| `src/http/repository/pages.rs` | 1525 | `render_config_error` | 1 | — |
-| `src/http/repository/pages.rs` | 1844 | `script_command` | 1 | — |
-| `src/http/repository/pages.rs` | 1881 | `render_script_group_row` | 1 | — |
-| `src/http/repository/pages.rs` | 1994 | `load_paper_pages` | 1 | — |
-| `src/http/repository/pages.rs` | 2003 | `slide_counter` | 1 | — |
-| `src/http/repository/pages.rs` | 2287 | `render_pdf_slide_page` | 1 | — |
-| `src/http/repository/pages.rs` | 2325 | `render_paper_page` | 1 | — |
-| `src/http/repository/pages.rs` | 2368 | `paper_page_anchor` | 1 | — |
-| `src/http/repository/pages.rs` | 2640 | `render_commit` | 1 | — |
-| `src/http/repository/pages.rs` | 2668 | `base_frame` | 1 | — |
-| `src/http/repository/pages.rs` | 2686 | `frame_with` | 1 | — |
-| `src/http/repository/pages.rs` | 2696 | `slides` | 1 | — |
-| `src/http/repository/pages.rs` | 2704 | `entry` | 1 | — |
-| `src/http/repository/pages.rs` | 2712 | `count_of` | 1 | — |
-| `src/http/repository/pages.rs` | 2716 | `tab_labels` | 1 | — |
-| `src/http/repository/pages.rs` | 2728 | `test_base_url_schemes_follow_the_request` | 1 | — |
-| `src/http/repository/pages.rs` | 2757 | `test_raw_content_type_is_text_for_scripts_and_neutral_otherwise` | 1 | — |
-| `src/http/repository/pages.rs` | 2770 | `test_parent_path` | 1 | — |
-| `src/http/repository/pages.rs` | 2778 | `test_breadcrumb_segments` | 1 | — |
-| `src/http/repository/pages.rs` | 2793 | `test_markdown_to_html` | 1 | — |
-| `src/http/repository/pages.rs` | 2807 | `test_markdown_link_fixing` | 1 | — |
-| `src/http/repository/pages.rs` | 2817 | `test_markdown_links_resolve_against_containing_directory` | 1 | — |
-| `src/http/repository/pages.rs` | 2829 | `test_markdown_non_markdown_links_target_content_route` | 1 | — |
-| `src/http/repository/pages.rs` | 2837 | `test_markdown_link_preserves_fragment_and_query` | 1 | — |
-| `src/http/repository/pages.rs` | 2848 | `test_markdown_link_leaves_absolute_and_scheme_links_alone` | 1 | — |
-| `src/http/repository/pages.rs` | 2857 | `test_slide_markdown_anchors_relative_links_to_the_slide_directory` | 1 | — |
-| `src/http/repository/pages.rs` | 2869 | `test_slide_markdown_substitutes_template_variables` | 1 | — |
-| `src/http/repository/pages.rs` | 2883 | `test_resolve_relative_path` | 1 | — |
-| `src/http/repository/pages.rs` | 2893 | `test_has_url_scheme` | 1 | — |
-| `src/http/repository/pages.rs` | 2903 | `test_get_default_markdown_file` | 1 | — |
-| `src/http/repository/pages.rs` | 2922 | `test_markdown_tables_rendering` | 1 | — |
-| `src/http/repository/pages.rs` | 2935 | `test_default_tab_prefers_configuration_then_markdown` | 1 | — |
-| `src/http/repository/pages.rs` | 2944 | `test_tabs_are_an_out_of_band_labelled_nav` | 1 | — |
-| `src/http/repository/pages.rs` | 3005 | `test_tabs_render_only_available_views_in_order` | 1 | — |
-| `src/http/repository/pages.rs` | 3058 | `test_repo_page_leads_with_a_breadcrumb_head_then_the_tabs` | 1 | — |
-| `src/http/repository/pages.rs` | 3079 | `test_repo_page_announces_its_tab_panel` | 1 | — |
-| `src/http/repository/pages.rs` | 3088 | `test_tab_response_differs_for_htmx_and_direct_navigation` | 1 | — |
-| `src/http/repository/pages.rs` | 3123 | `test_commit_row_is_a_dense_machine_record` | 1 | — |
-| `src/http/repository/pages.rs` | 3162 | `test_commits_view_falls_back_to_an_empty_state` | 1 | — |
-| `src/http/repository/pages.rs` | 3170 | `test_content_rows_mark_directories_with_a_trailing_slash` | 1 | — |
-| `src/http/repository/pages.rs` | 3198 | `test_content_dir_offers_a_parent_row_below_the_root` | 1 | — |
-| `src/http/repository/pages.rs` | 3212 | `test_presentation_offers_the_pdf_export` | 1 | — |
-| `src/http/repository/pages.rs` | 3330 | `test_content_breadcrumbs_mark_the_final_segment_as_current` | 1 | — |
-| `src/http/repository/pages.rs` | 3360 | `test_markdown_rail_appears_only_for_multiple_files` | 1 | — |
-| `src/http/repository/pages.rs` | 3391 | `test_markdown_content_reports_a_missing_file` | 1 | — |
-| `src/http/repository/pages.rs` | 3522 | `test_slide_counter_pads_to_the_width_of_the_deck` | 1 | — |
-| `src/http/repository/pages.rs` | 3529 | `test_present_view_without_slides_states_the_condition` | 1 | — |
-| `src/http/repository/pages.rs` | 3616 | `test_paper_headings_slug_anchor_and_dedupe` | 1 | — |
-| `src/http/repository/pages.rs` | 3641 | `test_render_paper_markdown_puts_heading_ids_on_the_headings` | 1 | — |
-| `src/http/repository/pages.rs` | 3658 | `test_render_paper_content_only_anchors_headings` | 1 | — |
-| `src/http/repository/pages.rs` | 3677 | `test_paper_page_anchors_are_path_relative_and_unique` | 1 | — |
-| `src/http/repository/pages.rs` | 3700 | `test_paper_view_without_pages_states_the_condition` | 1 | — |
-| `src/http/repository/pages.rs` | 3711 | `test_page_in_dir_accepts_only_paths_below_the_paper_directory` | 1 | — |
-| `src/http/repository/pages.rs` | 3721 | `test_config_error_is_a_diagnostic_with_a_help_hint` | 1 | — |
-| `src/http/repository/pages.rs` | 3775 | `test_config_and_license_views_render_code_and_empty_states` | 1 | — |
-| `src/http/repository/pages.rs` | 3801 | `test_content_view_reports_missing_paths_and_binary_files` | 1 | — |
-| `src/http/repository/pages.rs` | 3866 | `test_git_error_is_an_announced_danger_notice` | 1 | — |
-| `src/http/repository/pages.rs` | 3885 | `representative_markup` | 1 | — |
-| `src/http/repository/pages.rs` | 3980 | `test_render_repo_auth_error` | 1 | — |
+| `src/http/repository/pages.rs` | 270 | `has_optional_tab` | 1 | — |
+| `src/http/repository/pages.rs` | 397 | `markdown_files` | 1 | — |
+| `src/http/repository/pages.rs` | 405 | `markdown_body` | 1 | — |
+| `src/http/repository/pages.rs` | 409 | `markdown_body_from` | 1 | — |
+| `src/http/repository/pages.rs` | 416 | `content_body` | 1 | — |
+| `src/http/repository/pages.rs` | 429 | `config_body` | 1 | — |
+| `src/http/repository/pages.rs` | 436 | `license_body` | 1 | — |
+| `src/http/repository/pages.rs` | 441 | `present_body` | 1 | — |
+| `src/http/repository/pages.rs` | 451 | `paper_body` | 1 | — |
+| `src/http/repository/pages.rs` | 548 | `tab_nav` | 1 | — |
+| `src/http/repository/pages.rs` | 661 | `markdown_tab_handler` | 1 | — |
+| `src/http/repository/pages.rs` | 680 | `content_tab_handler` | 1 | — |
+| `src/http/repository/pages.rs` | 699 | `commits_tab_handler` | 1 | — |
+| `src/http/repository/pages.rs` | 718 | `config_tab_handler` | 1 | — |
+| `src/http/repository/pages.rs` | 737 | `present_tab_handler` | 1 | — |
+| `src/http/repository/pages.rs` | 756 | `paper_tab_handler` | 1 | — |
+| `src/http/repository/pages.rs` | 775 | `license_tab_handler` | 1 | — |
+| `src/http/repository/pages.rs` | 794 | `scripts_tab_handler` | 1 | — |
+| `src/http/repository/pages.rs` | 813 | `scripts_group_handler` | 1 | — |
+| `src/http/repository/pages.rs` | 1260 | `markdown_options` | 1 | — |
+| `src/http/repository/pages.rs` | 1348 | `render_empty` | 1 | — |
+| `src/http/repository/pages.rs` | 1357 | `render_git_error` | 1 | — |
+| `src/http/repository/pages.rs` | 1389 | `render_repo_crumbs` | 1 | — |
+| `src/http/repository/pages.rs` | 1551 | `render_config_error` | 1 | — |
+| `src/http/repository/pages.rs` | 1870 | `script_command` | 1 | — |
+| `src/http/repository/pages.rs` | 1907 | `render_script_group_row` | 1 | — |
+| `src/http/repository/pages.rs` | 2020 | `load_paper_pages` | 1 | — |
+| `src/http/repository/pages.rs` | 2029 | `slide_counter` | 1 | — |
+| `src/http/repository/pages.rs` | 2313 | `render_pdf_slide_page` | 1 | — |
+| `src/http/repository/pages.rs` | 2351 | `render_paper_page` | 1 | — |
+| `src/http/repository/pages.rs` | 2394 | `paper_page_anchor` | 1 | — |
+| `src/http/repository/pages.rs` | 2666 | `render_commit` | 1 | — |
+| `src/http/repository/pages.rs` | 2694 | `base_frame` | 1 | — |
+| `src/http/repository/pages.rs` | 2708 | `frame_with` | 1 | — |
+| `src/http/repository/pages.rs` | 2715 | `slides` | 1 | — |
+| `src/http/repository/pages.rs` | 2723 | `entry` | 1 | — |
+| `src/http/repository/pages.rs` | 2731 | `count_of` | 1 | — |
+| `src/http/repository/pages.rs` | 2735 | `tab_labels` | 1 | — |
+| `src/http/repository/pages.rs` | 2747 | `test_base_url_schemes_follow_the_request` | 1 | — |
+| `src/http/repository/pages.rs` | 2776 | `test_raw_content_type_is_text_for_scripts_and_neutral_otherwise` | 1 | — |
+| `src/http/repository/pages.rs` | 2789 | `test_parent_path` | 1 | — |
+| `src/http/repository/pages.rs` | 2797 | `test_breadcrumb_segments` | 1 | — |
+| `src/http/repository/pages.rs` | 2812 | `test_markdown_to_html` | 1 | — |
+| `src/http/repository/pages.rs` | 2826 | `test_markdown_link_fixing` | 1 | — |
+| `src/http/repository/pages.rs` | 2836 | `test_markdown_links_resolve_against_containing_directory` | 1 | — |
+| `src/http/repository/pages.rs` | 2848 | `test_markdown_non_markdown_links_target_content_route` | 1 | — |
+| `src/http/repository/pages.rs` | 2856 | `test_markdown_link_preserves_fragment_and_query` | 1 | — |
+| `src/http/repository/pages.rs` | 2867 | `test_markdown_link_leaves_absolute_and_scheme_links_alone` | 1 | — |
+| `src/http/repository/pages.rs` | 2876 | `test_slide_markdown_anchors_relative_links_to_the_slide_directory` | 1 | — |
+| `src/http/repository/pages.rs` | 2888 | `test_slide_markdown_substitutes_template_variables` | 1 | — |
+| `src/http/repository/pages.rs` | 2902 | `test_resolve_relative_path` | 1 | — |
+| `src/http/repository/pages.rs` | 2912 | `test_has_url_scheme` | 1 | — |
+| `src/http/repository/pages.rs` | 2922 | `test_get_default_markdown_file` | 1 | — |
+| `src/http/repository/pages.rs` | 2941 | `test_markdown_tables_rendering` | 1 | — |
+| `src/http/repository/pages.rs` | 2954 | `test_default_tab_prefers_configuration_then_markdown` | 1 | — |
+| `src/http/repository/pages.rs` | 2963 | `test_tabs_are_an_out_of_band_labelled_nav` | 1 | — |
+| `src/http/repository/pages.rs` | 3051 | `test_tabs_render_only_available_views_in_order` | 1 | — |
+| `src/http/repository/pages.rs` | 3104 | `test_repo_page_leads_with_a_breadcrumb_head_then_the_tabs` | 1 | — |
+| `src/http/repository/pages.rs` | 3125 | `test_repo_page_announces_its_tab_panel` | 1 | — |
+| `src/http/repository/pages.rs` | 3134 | `test_tab_response_differs_for_htmx_and_direct_navigation` | 1 | — |
+| `src/http/repository/pages.rs` | 3169 | `test_commit_row_is_a_dense_machine_record` | 1 | — |
+| `src/http/repository/pages.rs` | 3208 | `test_commits_view_falls_back_to_an_empty_state` | 1 | — |
+| `src/http/repository/pages.rs` | 3216 | `test_content_rows_mark_directories_with_a_trailing_slash` | 1 | — |
+| `src/http/repository/pages.rs` | 3244 | `test_content_dir_offers_a_parent_row_below_the_root` | 1 | — |
+| `src/http/repository/pages.rs` | 3258 | `test_presentation_offers_the_pdf_export` | 1 | — |
+| `src/http/repository/pages.rs` | 3376 | `test_content_breadcrumbs_mark_the_final_segment_as_current` | 1 | — |
+| `src/http/repository/pages.rs` | 3406 | `test_markdown_rail_appears_only_for_multiple_files` | 1 | — |
+| `src/http/repository/pages.rs` | 3437 | `test_markdown_content_reports_a_missing_file` | 1 | — |
+| `src/http/repository/pages.rs` | 3568 | `test_slide_counter_pads_to_the_width_of_the_deck` | 1 | — |
+| `src/http/repository/pages.rs` | 3575 | `test_present_view_without_slides_states_the_condition` | 1 | — |
+| `src/http/repository/pages.rs` | 3662 | `test_paper_headings_slug_anchor_and_dedupe` | 1 | — |
+| `src/http/repository/pages.rs` | 3687 | `test_render_paper_markdown_puts_heading_ids_on_the_headings` | 1 | — |
+| `src/http/repository/pages.rs` | 3704 | `test_render_paper_content_only_anchors_headings` | 1 | — |
+| `src/http/repository/pages.rs` | 3723 | `test_paper_page_anchors_are_path_relative_and_unique` | 1 | — |
+| `src/http/repository/pages.rs` | 3746 | `test_paper_view_without_pages_states_the_condition` | 1 | — |
+| `src/http/repository/pages.rs` | 3757 | `test_page_in_dir_accepts_only_paths_below_the_paper_directory` | 1 | — |
+| `src/http/repository/pages.rs` | 3767 | `test_config_error_is_a_diagnostic_with_a_help_hint` | 1 | — |
+| `src/http/repository/pages.rs` | 3821 | `test_config_and_license_views_render_code_and_empty_states` | 1 | — |
+| `src/http/repository/pages.rs` | 3847 | `test_content_view_reports_missing_paths_and_binary_files` | 1 | — |
+| `src/http/repository/pages.rs` | 3912 | `test_git_error_is_an_announced_danger_notice` | 1 | — |
+| `src/http/repository/pages.rs` | 3931 | `representative_markup` | 1 | — |
+| `src/http/repository/pages.rs` | 4026 | `test_render_repo_auth_error` | 1 | — |
 | `src/http/routes.rs` | 12 | `configure_routes` | 1 | — |
 | `src/http/routes.rs` | 106 | `is_git` | 1 | — |
 | `src/http/settings/pages.rs` | 86 | `render_settings` | 1 | — |
@@ -1138,20 +1163,11 @@ Audit date (UTC): 2026-10-13
 | `src/md/mod.rs` | 231 | `test_non_mermaid_fences_remain_code` | 1 | — |
 | `src/md/mod.rs` | 246 | `test_rust_fences_are_highlighted_and_other_fences_are_unchanged` | 1 | — |
 
-> Complexity is a lexical estimate: start at 1 per function, add 1 for each `if`, loop, `&&`, `||`, and `?`, and add one for each `match` arm after the first. Macros are not expanded; decision-like tokens inside invocations may be counted lexically. Syntax edge cases can make these values differ from AST-based tools.
+> Complexity is a lexical estimate: start at 1 per function, add 1 for each `if`, loop, `&&`, `||`, and `?`, and add one for each `match` arm after the first. Use it to find functions worth simplifying; do not mechanically minimize totals or split clear code into unnecessary helpers. Macros are not expanded; decision-like tokens inside invocations may be counted lexically. Syntax edge cases can make these values differ from AST-based tools.
 
-## Allowed or expected lint attributes
+## Hard-blocking lint suppressions
 
-| File | Line | Attribute | Lint names |
-| --- | ---: | --- | --- |
-| `src/config.rs` | 24 | `allow` | `clippy::too_many_arguments` |
-| `src/db/namespaces.rs` | 255 | `allow` | `dead_code` |
-| `src/git/bare/handle.rs` | 82 | `allow` | `dead_code` |
-| `src/git/bare/handle.rs` | 148 | `allow` | `dead_code` |
-| `src/git/bare/handle.rs` | 580 | `allow` | `dead_code` |
-| `src/git/bare/mod.rs` | 14 | `allow` | `unused_imports` |
-| `src/http/repository/pages.rs` | 252 | `allow` | `clippy::struct_excessive_bools` |
-| `src/http/repository/pages.rs` | 2685 | `allow` | `clippy::fn_params_excessive_bools` |
+_No supported lint-suppression mechanisms found._
 
 ## Underscore-prefixed binding candidates
 
@@ -1166,11 +1182,6 @@ Audit date (UTC): 2026-10-13
 | `src/git/bare/mod.rs` | 280 | `test_list_dir_walks_head_tree` | `_cleanup` | 1 | Likely unused |
 | `src/git/bare/mod.rs` | 311 | `test_list_paper_pages_reads_sorted_markdown_under_dir` | `_cleanup` | 1 | Likely unused |
 | `src/git/bare/mod.rs` | 348 | `test_open_rejects_parent_directory_components` | `_cleanup` | 1 | Likely unused |
-| `src/http/auth/handlers.rs` | 74 | `create_invite_ui_handler` | `_req` | 1 | Likely unused |
-| `src/http/auth/handlers.rs` | 114 | `signup_ui_handler` | `_req` | 1 | Likely unused |
-| `src/http/auth/pages.rs` | 56 | `wrap_auth_content` | `_title` | 1 | Likely unused |
-| `src/http/settings/pages.rs` | 478 | `move_repo` | `_namespace` | 1 | Likely unused |
-| `src/http/settings/pages.rs` | 583 | `rename_repo` | `_namespace` | 1 | Likely unused |
 | `src/http/tree/api.rs` | 172 | `test_tree_endpoint_filters_private_repositories` | `_p` | 1 | Likely unused |
 | `src/integration_tests.rs` | 2325 | `init_private_repo` | `_p` | 1 | Likely unused |
 | `src/integration_tests.rs` | 2350 | `init_repo_with_paper` | `_p` | 1 | Likely unused |

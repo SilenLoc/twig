@@ -53,7 +53,7 @@ fn render_submit(label: &str) -> maud::Markup {
 }
 
 /// Frames an auth form in the quiet page head, its optic baseline, and the content stack.
-fn wrap_auth_content(_title: &str, content: &maud::Markup) -> maud::Markup {
+fn wrap_auth_content(content: &maud::Markup) -> maud::Markup {
     maud::html! {
         div id="auth-content" {
 
@@ -110,7 +110,7 @@ fn render_invite_page() -> maud::Markup {
         }
     };
 
-    wrap_auth_content("Get Signup Invite", &content)
+    wrap_auth_content(&content)
 }
 
 #[get("/auth/invite")]
@@ -204,7 +204,7 @@ fn render_signup_page() -> maud::Markup {
         }
     };
 
-    wrap_auth_content("Create Account", &content)
+    wrap_auth_content(&content)
 }
 
 #[get("/auth/signup")]
@@ -270,7 +270,7 @@ fn render_login_page() -> maud::Markup {
 
     maud::html! {
         div class="twig-auth-login" {
-            (wrap_auth_content("Log In", &content))
+            (wrap_auth_content(&content))
         }
     }
 }
@@ -337,7 +337,7 @@ fn render_namespace_page() -> maud::Markup {
         }
     };
 
-    wrap_auth_content("Create Namespace", &content)
+    wrap_auth_content(&content)
 }
 
 #[get("/auth/namespace")]
