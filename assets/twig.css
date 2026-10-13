@@ -1455,6 +1455,22 @@ body.twig-workspace-shell {
     min-inline-size: 0;
 }
 
+.twig-workspace-changes .twig-repo-commit-form .twig-input {
+    min-block-size: 2.25rem;
+    padding-inline: var(--twig-space-3);
+    font-size: var(--twig-t-body-sm);
+}
+
+.twig-workspace-changes .twig-repo-commit-form button,
+.twig-workspace-changes .twig-repo-file-action-form .twig-btn,
+.twig-repo-file-actions details > summary.twig-btn,
+.twig-repo-file-actions .twig-repo-file-action-form button {
+    min-block-size: 2.25rem;
+    padding-inline: var(--twig-space-3);
+    font-size: var(--twig-t-eyebrow);
+    letter-spacing: 0.1em;
+}
+
 .twig-workspace-nav .twig-repo-commit-result,
 .twig-workspace-nav .twig-repo-operation-result {
     min-inline-size: 0;
@@ -1500,6 +1516,17 @@ body.twig-workspace-shell {
     align-items: center;
     justify-content: flex-end;
     gap: var(--twig-space-2);
+}
+
+.twig-repo-file-actions .twig-repo-file-action-form {
+    min-inline-size: 12rem;
+    padding: var(--twig-space-2);
+}
+
+.twig-repo-file-actions .twig-repo-file-action-form .twig-input {
+    min-block-size: 2.25rem;
+    padding-inline: var(--twig-space-3);
+    font-size: var(--twig-t-body-sm);
 }
 
 .twig-repo-file-action-form .twig-input,
@@ -1702,11 +1729,34 @@ body.twig-workspace-shell {
     list-style: none;
 }
 
+.twig-repo-change-list > li {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--twig-space-2);
+}
+
 .twig-repo-change-list a {
     color: var(--twig-ink-secondary);
     font-family: var(--twig-mono);
     font-size: var(--twig-t-data);
     overflow-wrap: anywhere;
+}
+
+.twig-repo-change-list > li > a {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+}
+
+.twig-workspace-changes .twig-repo-file-action-form {
+    display: inline-flex;
+    flex: 0 0 auto;
+    inline-size: auto;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
 }
 
 .twig-repo-commit-form {
@@ -1805,10 +1855,7 @@ body.twig-workspace-shell {
     }
 
     .twig-workspace-changes .twig-repo-file-action-form {
-        inline-size: 100%;
-        min-inline-size: 0;
-        max-inline-size: 100%;
-        padding: 0;
+        flex: 0 0 auto;
     }
 
     .twig-workspace-changes .twig-repo-commit-form button {
