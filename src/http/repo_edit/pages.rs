@@ -20,7 +20,7 @@ pub(super) fn workspace_shell(
     maud::html! {
         div
             id="repo-edit-workspace"
-            class="twig-stack twig-repo-edit"
+            class="twig-repo-edit twig-workspace"
             data-namespace=(namespace)
             data-repo=(repo)
             data-base-head=(draft.base_head)
@@ -28,18 +28,18 @@ pub(super) fn workspace_shell(
             data-has-email=(if has_email { "true" } else { "false" })
             data-draft-key=(format!("twig:repo-edit:{namespace}/{repo}"))
         {
-            (workspace_breadcrumbs(namespace, repo))
             input type="hidden" id="repo-edit-draft-state" name="draft" value=(draft_json);
-            header class="twig-stack twig-stack--tight" {
-                h1 class="twig-section" { "Repository workspace" }
-                p class="twig-hint" { "Work across files and commit a complete change." }
+            div class="twig-workspace-layout" {
+                aside class="twig-workspace-nav" aria-label="Repository navigation" {
+                    (workspace_navigation_header(namespace, repo))
+                    (workspace_files_panel(&tree_url, &operation_url))
+                    (workspace_changes_panel(&commit_url, draft, has_email, &draft_json))
+                    div id="repo-edit-operation-result" role="status" aria-live="polite" {}
+                }
+                div class="twig-workspace-canvas" {
+                    (workspace_document_panel(document_url.as_deref()))
+                }
             }
-            div class="twig-repo-edit-shell" {
-                (workspace_files_panel(&tree_url, &operation_url))
-                (workspace_document_panel(document_url.as_deref()))
-            }
-            (workspace_changes_panel(&commit_url, draft, has_email, &draft_json))
-            div id="repo-edit-operation-result" role="status" aria-live="polite" {}
             (workspace_restore_form(&operation_url, &draft_json))
             (editor_assets())
         }
@@ -53,27 +53,31 @@ fn workspace_document_url(namespace: &str, repo: &str, path: &str) -> String {
     )
 }
 
-fn workspace_breadcrumbs(namespace: &str, repo: &str) -> Markup {
+fn workspace_navigation_header(namespace: &str, repo: &str) -> Markup {
     maud::html! {
-        nav class="twig-crumbs twig-crumbs--page" aria-label="Breadcrumb" {
-            a href="/" { "Namespaces" }
-            span class="twig-crumb-sep" aria-hidden="true" { "/" }
-            a href=(format!("/{namespace}")) { (namespace) }
-            span class="twig-crumb-sep" aria-hidden="true" { "/" }
-            a href=(format!("/{namespace}/{repo}")) { (repo) }
-            span class="twig-crumb-sep" aria-hidden="true" { "/" }
-            span aria-current="page" { "Edit" }
+        header class="twig-workspace-nav-head" {
+            a class="twig-workspace-back" href=(format!("/{namespace}/{repo}")) {
+                "← Repository overview"
+            }
+            h1 class="twig-workspace-repo" { (namespace) " / " (repo) }
+            p class="twig-workspace-caption" { "Repository workspace" }
         }
     }
 }
 
 fn workspace_files_panel(tree_url: &str, operation_url: &str) -> Markup {
     maud::html! {
-        aside class="twig-panel twig-repo-edit-files" aria-label="Repository files" {
+        section class="twig-workspace-files twig-repo-edit-files" aria-label="Repository files" {
             div class="twig-panel-head" {
                 h2 class="twig-section" { "Files" }
                 details class="twig-repo-new-file" {
-                    summary class="twig-btn twig-btn--quiet" { "New file" }
+                    summary
+                        class="twig-btn twig-btn--quiet"
+                        aria-label="New file"
+                    {
+                        span class="twig-repo-new-file-label" { "New file" }
+                        span class="twig-repo-new-file-symbol" aria-hidden="true" { "+" }
+                    }
                     form
                         class="twig-stack twig-repo-new-file-form"
                         hx-post=(operation_url)
@@ -110,7 +114,7 @@ fn workspace_files_panel(tree_url: &str, operation_url: &str) -> Markup {
 
 fn workspace_document_panel(document_url: Option<&str>) -> Markup {
     maud::html! {
-        section class="twig-panel twig-repo-edit-document" aria-label="Editor" {
+        section class="twig-repo-edit-document" aria-label="Editor" {
             @if let Some(document_url) = document_url {
                 div
                     id="repo-edit-document"
@@ -137,7 +141,7 @@ fn workspace_changes_panel(
     draft_json: &str,
 ) -> Markup {
     maud::html! {
-        details class="twig-panel twig-repo-edit-changes" id="repo-edit-changes-panel" {
+        details class="twig-workspace-changes twig-panel twig-repo-edit-changes" id="repo-edit-changes-panel" {
             summary class="twig-repo-changes-summary" {
                 h2 class="twig-section" { "Changes" }
                 span class="twig-row-meta" id="repo-edit-change-count" { "0" }

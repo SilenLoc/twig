@@ -258,9 +258,8 @@ pub async fn workspace_page(
         return html_response(page);
     }
 
-    html_response(crate::http::view::render_layout(
+    html_response(crate::http::view::render_workspace_layout(
         &page,
-        Some(&context.user.username),
         Some("Repository workspace"),
     ))
 }
@@ -977,6 +976,30 @@ mod tests {
         assert!(html.contains("hx-get=\"/acme/notes/edit/tree/\""), "{html}");
         assert!(html.contains("hx-trigger=\"load\""), "{html}");
         assert!(html.contains("hx-target=\"#repo-edit-tree\""), "{html}");
+        assert!(
+            html.contains("aria-label=\"New file\""),
+            "the compact create-file control retains its accessible name: {html}"
+        );
+        assert!(html.contains("twig-repo-new-file-symbol"), "{html}");
+        assert!(
+            html.contains("aria-label=\"Repository navigation\""),
+            "the file tree is in the persistent navigation rail: {html}"
+        );
+        assert!(
+            html.contains("aria-label=\"Editor\""),
+            "the editor canvas is separately labelled: {html}"
+        );
+        assert!(
+            html.contains("id=\"repo-edit-changes-panel\""),
+            "pending changes remain available in the workspace: {html}"
+        );
+        let navigation = html.find("aria-label=\"Repository navigation\"").unwrap();
+        let changes = html.find("id=\"repo-edit-changes-panel\"").unwrap();
+        let editor = html.find("aria-label=\"Editor\"").unwrap();
+        assert!(
+            navigation < changes && changes < editor,
+            "file navigation and pending changes stay in the rail before the editor canvas: {html}"
+        );
         assert!(
             html.contains("hx-action=\"/acme/notes/edit/commit\""),
             "{html}"

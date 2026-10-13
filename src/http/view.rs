@@ -89,6 +89,48 @@ pub fn render_layout(
     }
 }
 
+pub fn render_workspace_layout(
+    main_content: &maud::Markup,
+    page_title: Option<&str>,
+) -> maud::Markup {
+    maud::html! {
+        (DOCTYPE)
+        html lang="en" {
+            head {
+                meta charset="utf-8";
+                meta name="viewport" content="width=device-width, initial-scale=1";
+                title {
+                    @if let Some(page_title) = page_title {
+                        (page_title) " · Twig"
+                    } @else {
+                        "Twig"
+                    }
+                }
+                link rel="icon" type="image/svg+xml" href=(crate::http::assets::url("twig.svg"));
+                script src=(crate::http::assets::url("theme.js")) {}
+                link rel="preconnect" href="https://fonts.googleapis.com";
+                link rel="preconnect" href="https://fonts.gstatic.com" crossorigin;
+                link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&display=swap";
+                link rel="stylesheet" href=(crate::http::assets::url("t.css"));
+                link rel="stylesheet" href=(crate::http::assets::url("twig.css"));
+                meta name="htmx-config" content=(r#"{"implicitInheritance":true,"noSwap":[204,304]}"#);
+                script src=(crate::http::assets::url("h.js")) {}
+                script src=(crate::http::assets::url("hx-live.js")) {}
+            }
+            body
+                class="twig-shell twig-workspace-shell"
+                "hx-status:4xx"="swap:none"
+                "hx-status:5xx"="swap:none"
+            {
+                a class="twig-skip" href="#main" { "Skip to content" }
+                main id="main" class="twig-workspace-main" {
+                    (main_content)
+                }
+            }
+        }
+    }
+}
+
 pub fn render_theme_toggle() -> maud::Markup {
     maud::html! {
         button class="twig-btn twig-btn--quiet twig-theme-toggle" type="button"
@@ -145,6 +187,45 @@ mod tests {
     fn layout_html(username: Option<&str>) -> String {
         let content = maud::html! { p { "hello" } };
         render_layout(&content, username, None).into_string()
+    }
+
+    #[test]
+    fn test_workspace_layout_omits_site_chrome_and_page_width_wrapper() {
+        let content = maud::html! { p { "workspace content" } };
+        let html = render_workspace_layout(&content, Some("Repository workspace")).into_string();
+
+        assert!(
+            html.contains("<title>Repository workspace · Twig</title>"),
+            "{html}"
+        );
+        assert!(
+            html.contains(r#"class="twig-shell twig-workspace-shell""#),
+            "{html}"
+        );
+        assert!(
+            html.contains(r#"<main id="main" class="twig-workspace-main">"#),
+            "{html}"
+        );
+        assert!(
+            html.contains("href=\"#main\">Skip to content</a>"),
+            "{html}"
+        );
+        assert!(html.contains("workspace content"), "{html}");
+        assert!(html.contains(&crate::http::assets::url("h.js")), "{html}");
+        assert!(
+            html.contains(&crate::http::assets::url("twig.css")),
+            "{html}"
+        );
+        for chrome in [
+            "twig-masthead",
+            "aria-label=\"Primary\"",
+            "class=\"twig-page\"",
+        ] {
+            assert!(
+                !html.contains(chrome),
+                "workspace layout contains {chrome}: {html}"
+            );
+        }
     }
 
     #[test]

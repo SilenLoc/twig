@@ -1396,6 +1396,9 @@ fn render_repo_crumbs(namespace: &str, repo: &str) -> Markup {
                 span class="twig-crumb-sep" aria-hidden="true" { "/" }
                 h1 class="twig-crumb-current" aria-current="page" { (repo) }
             }
+            a class="twig-btn twig-btn--primary" href=(format!("/{namespace}/{repo}/edit")) {
+                "Open workspace"
+            }
         }
     }
 }
@@ -3186,6 +3189,24 @@ mod tests {
             "the trail's final segment is the page heading, rendered verbatim: {html}"
         );
         assert_eq!(count_of(&html, "<h1"), 1, "exactly one h1 per page: {html}");
+    }
+
+    #[test]
+    fn test_repo_page_offers_workspace_from_the_repository_heading() {
+        let html = render_tab_shell(&base_frame(), "commits", &maud::html! {}).into_string();
+
+        assert!(
+            html.contains(r#"href="/acme/my-project/edit""#),
+            "the overview links to the repository-root workspace: {html}"
+        );
+        assert!(
+            html.contains(">Open workspace</a>"),
+            "the workspace entry has a clear accessible label: {html}"
+        );
+        assert!(
+            index_of(&html, ">Open workspace</a>") < index_of(&html, "id=\"tab-nav\""),
+            "the entry is in the repository heading before the tabs: {html}"
+        );
     }
 
     #[test]

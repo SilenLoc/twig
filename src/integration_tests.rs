@@ -1221,7 +1221,7 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn repo_edit_workspace_navigates_tree_and_reads_files_through_htmx() {
+    async fn repo_edit_workspace_opens_from_overview_and_navigates_tree_through_htmx() {
         let root = format!("/tmp/test_twig_repo_edit_tracer_{}", uuid::Uuid::new_v4());
         let app = create_test_service_in(&root).await;
         let session = signup_and_login(&app, "repoworkspaceowner").await;
@@ -1236,6 +1236,20 @@ mod tests {
         );
 
         let request = test::TestRequest::get()
+            .uri("/repoworkspace/repo")
+            .cookie(session.clone())
+            .to_request();
+        let response = test::call_service(&app, request).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = test::read_body(response).await;
+        let overview = String::from_utf8_lossy(&body);
+        assert!(
+            overview.contains(r#"href="/repoworkspace/repo/edit""#),
+            "the repository overview exposes the root workspace: {overview}"
+        );
+        assert!(overview.contains(">Open workspace</a>"), "{overview}");
+
+        let request = test::TestRequest::get()
             .uri("/repoworkspace/repo/edit")
             .cookie(session.clone())
             .to_request();
@@ -1244,6 +1258,22 @@ mod tests {
         let body = test::read_body(response).await;
         let html = String::from_utf8_lossy(&body);
         assert!(html.contains("Repository workspace"), "{html}");
+        assert!(
+            html.contains("twig-workspace-shell"),
+            "the editor uses its standalone viewport layout: {html}"
+        );
+        assert!(
+            !html.contains("twig-masthead") && !html.contains("class=\"twig-page\""),
+            "the site masthead and centered page width do not constrain the editor: {html}"
+        );
+        assert!(
+            html.contains("Repository overview"),
+            "the left navigation keeps a route back to the repository: {html}"
+        );
+        assert!(
+            html.contains("Select a file to edit."),
+            "opening from the overview starts at the repository root with no file selected: {html}"
+        );
         assert!(
             html.contains("hx-get=\"/repoworkspace/repo/edit/tree/\""),
             "{html}"
