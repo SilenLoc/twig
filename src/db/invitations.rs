@@ -8,6 +8,94 @@ const SELECT_INVITATION: &str = "SELECT i.token, i.email, i.namespace_id, n.name
     FROM namespace_invitations i
     JOIN namespaces n ON n.id = i.namespace_id";
 
+async fn accept_invitation_in_transaction(
+    conn: &turso::Connection,
+    token: &str,
+    user: &User,
+) -> Result<(), String> {
+    let mut rows = conn
+        .query(
+            "SELECT email, namespace_id, role, expires_at, accepted_at, accepted_user_id
+             FROM namespace_invitations WHERE token = ?1",
+            turso::params![token],
+        )
+        .await
+        .map_err(|error| error.to_string())?;
+    let Some(row) = rows.next().await.map_err(|error| error.to_string())? else {
+        return Err("Invitation not found".to_string());
+    };
+    let email: String = row.get(0).map_err(|error| error.to_string())?;
+    let namespace_id: String = row.get(1).map_err(|error| error.to_string())?;
+    let role_name: String = row.get(2).map_err(|error| error.to_string())?;
+    let expires_at: Option<String> = row.get(3).map_err(|error| error.to_string())?;
+    let accepted_at: Option<String> = row.get(4).map_err(|error| error.to_string())?;
+    let accepted_user_id: Option<String> = row.get(5).map_err(|error| error.to_string())?;
+
+    if accepted_at.is_some() || accepted_user_id.is_some() {
+        return Err("Invitation has already been accepted".to_string());
+    }
+    if let Some(expires_at) = expires_at {
+        let expires_at = chrono::DateTime::parse_from_rfc3339(&expires_at)
+            .map_err(|_| "Invitation expiry is invalid".to_string())?;
+        if expires_at <= chrono::Utc::now() {
+            return Err("Invitation has expired".to_string());
+        }
+    }
+    if user.email.as_deref() != Some(email.as_str()) {
+        return Err("Account email does not match invitation".to_string());
+    }
+    let role = NamespaceRole::parse(&role_name)
+        .ok_or_else(|| format!("Unknown namespace invitation role: {role_name}"))?;
+
+    let mut rows = conn
+        .query(
+            "SELECT 1 FROM users WHERE username = ?1 LIMIT 1",
+            turso::params![user.username.clone()],
+        )
+        .await
+        .map_err(|error| error.to_string())?;
+    if rows
+        .next()
+        .await
+        .map_err(|error| error.to_string())?
+        .is_some()
+    {
+        return Err("Username already exists".to_string());
+    }
+
+    conn.execute(
+        "INSERT INTO users (id, username, email, password_hash, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        turso::params![
+            user.id.clone(),
+            user.username.clone(),
+            user.email.clone(),
+            user.password_hash.clone(),
+            user.created_at.clone(),
+        ],
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO namespace_members (namespace_id, user_id, role, added_at)
+         VALUES (?1, ?2, ?3, ?4)",
+        turso::params![namespace_id, user.id.clone(), role.as_str(), now.clone()],
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+    conn.execute(
+        "UPDATE namespace_invitations
+         SET accepted_at = ?1, accepted_user_id = ?2
+         WHERE token = ?3 AND accepted_at IS NULL",
+        turso::params![now, user.id.clone(), token],
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
 impl Database {
     pub async fn create_namespace_invitation(
         &self,
@@ -102,90 +190,7 @@ impl Database {
             .await
             .map_err(|error| error.to_string())?;
 
-        let result: Result<(), String> = async {
-            let mut rows = conn
-                .query(
-                    "SELECT email, namespace_id, role, expires_at, accepted_at, accepted_user_id
-                     FROM namespace_invitations WHERE token = ?1",
-                    turso::params![token],
-                )
-                .await
-                .map_err(|error| error.to_string())?;
-            let Some(row) = rows.next().await.map_err(|error| error.to_string())? else {
-                return Err("Invitation not found".to_string());
-            };
-            let email: String = row.get(0).map_err(|error| error.to_string())?;
-            let namespace_id: String = row.get(1).map_err(|error| error.to_string())?;
-            let role_name: String = row.get(2).map_err(|error| error.to_string())?;
-            let expires_at: Option<String> = row.get(3).map_err(|error| error.to_string())?;
-            let accepted_at: Option<String> = row.get(4).map_err(|error| error.to_string())?;
-            let accepted_user_id: Option<String> = row.get(5).map_err(|error| error.to_string())?;
-
-            if accepted_at.is_some() || accepted_user_id.is_some() {
-                return Err("Invitation has already been accepted".to_string());
-            }
-            if let Some(expires_at) = expires_at {
-                let expires_at = chrono::DateTime::parse_from_rfc3339(&expires_at)
-                    .map_err(|_| "Invitation expiry is invalid".to_string())?;
-                if expires_at <= chrono::Utc::now() {
-                    return Err("Invitation has expired".to_string());
-                }
-            }
-            if user.email.as_deref() != Some(email.as_str()) {
-                return Err("Account email does not match invitation".to_string());
-            }
-            let role = NamespaceRole::parse(&role_name)
-                .ok_or_else(|| format!("Unknown namespace invitation role: {role_name}"))?;
-
-            let mut rows = conn
-                .query(
-                    "SELECT 1 FROM users WHERE username = ?1 LIMIT 1",
-                    turso::params![user.username.clone()],
-                )
-                .await
-                .map_err(|error| error.to_string())?;
-            if rows
-                .next()
-                .await
-                .map_err(|error| error.to_string())?
-                .is_some()
-            {
-                return Err("Username already exists".to_string());
-            }
-
-            conn.execute(
-                "INSERT INTO users (id, username, email, password_hash, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5)",
-                turso::params![
-                    user.id.clone(),
-                    user.username.clone(),
-                    user.email.clone(),
-                    user.password_hash.clone(),
-                    user.created_at.clone(),
-                ],
-            )
-            .await
-            .map_err(|error| error.to_string())?;
-
-            let now = chrono::Utc::now().to_rfc3339();
-            conn.execute(
-                "INSERT INTO namespace_members (namespace_id, user_id, role, added_at)
-                 VALUES (?1, ?2, ?3, ?4)",
-                turso::params![namespace_id, user.id.clone(), role.as_str(), now.clone()],
-            )
-            .await
-            .map_err(|error| error.to_string())?;
-            conn.execute(
-                "UPDATE namespace_invitations
-                 SET accepted_at = ?1, accepted_user_id = ?2
-                 WHERE token = ?3 AND accepted_at IS NULL",
-                turso::params![now, user.id.clone(), token],
-            )
-            .await
-            .map_err(|error| error.to_string())?;
-            Ok(())
-        }
-        .await;
+        let result = accept_invitation_in_transaction(&conn, token, user).await;
 
         match result {
             Ok(()) => conn

@@ -203,7 +203,7 @@ fn editor_file_fragment(
     if bytes.contains(&0) {
         return unavailable("Binary files cannot be opened in this workspace.");
     }
-    let Ok(content) = String::from_utf8(bytes) else {
+    let Ok(file_text) = String::from_utf8(bytes) else {
         return unavailable("Only UTF-8 text files can be opened in this workspace.");
     };
 
@@ -211,7 +211,7 @@ fn editor_file_fragment(
         namespace,
         repo,
         path,
-        &content,
+        &file_text,
         crate::md::is_markdown(path),
         true,
     )
@@ -390,79 +390,115 @@ pub async fn commit_workspace(
         Ok(context) => context,
         Err(response) => return response,
     };
-    let mut draft: WorkspaceDraft = match serde_json::from_str(&input.draft) {
+    let draft: WorkspaceDraft = match serde_json::from_str(&input.draft) {
         Ok(draft) => draft,
         Err(error) => {
             log::warn!("Invalid repository editor draft submitted for commit: {error}");
-            return html_response(pages::commit_result(
-                None,
-                "The workspace draft is invalid.",
-                false,
-                false,
-            ));
+            return render_commit_result(None, "The workspace draft is invalid.", false, false);
         }
     };
+    let prepared = match prepare_workspace_commit(&context, draft, &input.message) {
+        Ok(prepared) => prepared,
+        Err(error) => {
+            return render_commit_result(
+                error.draft.as_deref(),
+                &error.message,
+                false,
+                error.reload,
+            );
+        }
+    };
+    let result = context.handle.commit_changes(
+        &prepared.changes,
+        prepared.expected_head,
+        &context.user.username,
+        &prepared.email,
+        &prepared.message,
+    );
+    render_workspace_commit_result(&params, &context, prepared, result)
+}
 
+struct PreparedWorkspaceCommit {
+    draft: WorkspaceDraft,
+    changes: Vec<RepoEditChange>,
+    expected_head: git2::Oid,
+    email: String,
+    message: String,
+}
+
+struct WorkspaceCommitPreparationError {
+    draft: Option<Box<WorkspaceDraft>>,
+    message: String,
+    reload: bool,
+}
+
+fn workspace_commit_preparation_error(
+    draft: WorkspaceDraft,
+    message: impl Into<String>,
+    reload: bool,
+) -> WorkspaceCommitPreparationError {
+    WorkspaceCommitPreparationError {
+        draft: Some(Box::new(draft)),
+        message: message.into(),
+        reload,
+    }
+}
+
+fn prepare_workspace_commit(
+    context: &WorkspaceContext,
+    draft: WorkspaceDraft,
+    message: &str,
+) -> Result<PreparedWorkspaceCommit, WorkspaceCommitPreparationError> {
     let current_head = context
         .head
         .map_or_else(|| ZERO_OID.to_string(), |head| head.to_string());
     if draft.base_head != current_head {
-        let serialized = serde_json::to_string(&draft).unwrap_or_default();
-        return html_response(pages::commit_result(
-            Some(&serialized),
+        return Err(workspace_commit_preparation_error(
+            draft,
             "The repository changed since this workspace was opened. Your draft is preserved; reload and reconcile before committing.",
-            false,
             true,
         ));
     }
-    if let Err(message) = validate_draft(&context, &draft) {
-        let serialized = serde_json::to_string(&draft).unwrap_or_default();
-        return html_response(pages::commit_result(
-            Some(&serialized),
-            &message,
-            false,
-            false,
-        ));
+    if let Err(message) = validate_draft(context, &draft) {
+        return Err(workspace_commit_preparation_error(draft, message, false));
     }
     if draft.changes.is_empty() {
-        let serialized = serde_json::to_string(&draft).unwrap_or_default();
-        return html_response(pages::commit_result(
-            Some(&serialized),
+        return Err(workspace_commit_preparation_error(
+            draft,
             "There are no changes to commit.",
-            false,
             false,
         ));
     }
 
-    let message = input.message.trim();
+    let message = message.trim();
     if message.is_empty() {
-        let serialized = serde_json::to_string(&draft).unwrap_or_default();
-        return html_response(pages::commit_result(
-            Some(&serialized),
+        return Err(workspace_commit_preparation_error(
+            draft,
             "Enter a commit message.",
-            false,
             false,
         ));
     }
     if message.chars().count() > 200 {
-        let serialized = serde_json::to_string(&draft).unwrap_or_default();
-        return html_response(pages::commit_result(
-            Some(&serialized),
+        return Err(workspace_commit_preparation_error(
+            draft,
             "Commit messages must be 200 characters or fewer.",
-            false,
             false,
         ));
     }
     let Some(email) = context.user.email.as_deref() else {
-        let serialized = serde_json::to_string(&draft).unwrap_or_default();
-        return html_response(pages::commit_result(
-            Some(&serialized),
+        return Err(workspace_commit_preparation_error(
+            draft,
             "Set an email address in account settings before committing.",
-            false,
             false,
         ));
     };
-
+    let Ok(expected_head) = git2::Oid::from_str(&draft.base_head) else {
+        return Err(workspace_commit_preparation_error(
+            draft,
+            "The workspace base revision is invalid. Your draft is preserved.",
+            true,
+        ));
+    };
     let changes = draft
         .changes
         .iter()
@@ -475,63 +511,70 @@ pub async fn commit_workspace(
                 path: change.path.clone(),
             },
         })
-        .collect::<Vec<_>>();
-    let expected_head = match git2::Oid::from_str(&draft.base_head) {
-        Ok(expected_head) => expected_head,
-        Err(_) => {
-            let serialized = serde_json::to_string(&draft).unwrap_or_default();
-            return html_response(pages::commit_result(
-                Some(&serialized),
-                "The workspace base revision is invalid. Your draft is preserved.",
-                false,
-                true,
-            ));
-        }
-    };
+        .collect();
 
-    match context.handle.commit_changes(
-        &changes,
+    Ok(PreparedWorkspaceCommit {
+        draft,
+        changes,
         expected_head,
-        &context.user.username,
-        email,
+        email: email.to_string(),
+        message: message.to_string(),
+    })
+}
+
+fn render_commit_result(
+    draft: Option<&WorkspaceDraft>,
+    message: &str,
+    succeeded: bool,
+    reload: bool,
+) -> HttpResponse {
+    let serialized = draft.map(|draft| serde_json::to_string(draft).unwrap_or_default());
+    html_response(pages::commit_result(
+        serialized.as_deref(),
         message,
-    ) {
+        succeeded,
+        reload,
+    ))
+}
+
+fn render_workspace_commit_result(
+    params: &RepoParams,
+    context: &WorkspaceContext,
+    mut prepared: PreparedWorkspaceCommit,
+    result: Result<CommitChangesOutcome, git2::Error>,
+) -> HttpResponse {
+    match result {
         Ok(CommitChangesOutcome::Committed(oid)) => {
             log::info!(
                 "Committed {} repository edit changes in '{}/{}' as {} by {}",
-                changes.len(),
+                prepared.changes.len(),
                 params.namespace,
                 params.repo,
                 oid,
                 context.user.username
             );
-            draft.base_head = oid.to_string();
-            draft.changes.clear();
-            let serialized = serde_json::to_string(&draft).unwrap_or_default();
-            html_response(pages::commit_result(
-                Some(&serialized),
+            prepared.draft.base_head = oid.to_string();
+            prepared.draft.changes.clear();
+            render_commit_result(
+                Some(&prepared.draft),
                 &format!("Changes committed successfully ({oid}). Continue editing here."),
                 true,
                 false,
-            ))
+            )
         }
-        Ok(CommitChangesOutcome::Conflict) => {
-            let serialized = serde_json::to_string(&draft).unwrap_or_default();
-            html_response(pages::commit_result(
-                Some(&serialized),
-                "The repository changed while committing. Your draft is preserved; reload and reconcile before trying again.",
-                false,
-                true,
-            ))
-        }
+        Ok(CommitChangesOutcome::Conflict) => render_commit_result(
+            Some(&prepared.draft),
+            "The repository changed while committing. Your draft is preserved; reload and reconcile before trying again.",
+            false,
+            true,
+        ),
         Err(error) if error.message().contains("There are no changes to commit") => {
-            let serialized = serde_json::to_string(&draft).unwrap_or_default();
-            html_response(pages::commit_result(
-                Some(&serialized),
+            render_commit_result(
+                Some(&prepared.draft),
                 "There are no changes to commit.",
                 false,
                 false,
-            ))
+            )
         }
         Err(error) => {
             log::error!(
@@ -539,13 +582,12 @@ pub async fn commit_workspace(
                 params.namespace,
                 params.repo
             );
-            let serialized = serde_json::to_string(&draft).unwrap_or_default();
-            html_response(pages::commit_result(
-                Some(&serialized),
+            render_commit_result(
+                Some(&prepared.draft),
                 "The change set could not be committed. Your draft is preserved.",
                 false,
                 false,
-            ))
+            )
         }
     }
 }
@@ -558,124 +600,154 @@ fn apply_file_operation(
     match input.kind.as_str() {
         "restore" => Ok("Workspace draft restored.".to_string()),
         "create" => {
-            let path = input.path.as_deref().unwrap_or_default();
-            validate_new_path(context, path)?;
-            if draft.changes.iter().any(|change| change.path == path) {
-                return Err("A draft change already exists at that path.".to_string());
-            }
-            draft.changes.push(PendingFileChange {
-                path: path.to_string(),
-                state: PendingFileState::Content(String::new()),
-            });
-            draft.active_path = Some(path.to_string());
-            draft.tree_path = parent_path(path).to_string();
-            Ok(format!("Created {path} in the workspace draft."))
+            create_workspace_file(context, draft, input.path.as_deref().unwrap_or_default())
         }
-        "rename" => {
-            let from = input.from.as_deref().unwrap_or_default();
-            let to = input.to.as_deref().unwrap_or_default();
-            if from == to {
-                if from.is_empty() || !is_safe_repo_path(from) || context.config.should_ignore(from)
-                {
-                    return Err("The source file path is not available for editing.".to_string());
-                }
-                draft.active_path = Some(from.to_string());
-                return Ok("The file name is unchanged.".to_string());
-            }
-            if from.is_empty() || !is_safe_repo_path(from) || context.config.should_ignore(from) {
-                return Err("The source file path is not available for editing.".to_string());
-            }
-            validate_new_path(context, to)?;
-            if draft.changes.iter().any(|change| change.path == to) {
-                return Err("A draft change already exists at the new path.".to_string());
-            }
-            let source_index = draft.changes.iter().position(|change| change.path == from);
-            let source_exists = context
-                .handle
-                .file_mode(from)
-                .map_err(|_| "The source file could not be checked.".to_string())?
-                .is_some();
-            if source_exists {
-                validate_existing_text_path(context, from)?;
-            } else if source_index.is_none() {
-                return Err("The source file does not exist in the workspace.".to_string());
-            }
-            let content = match source_index.map(|index| &draft.changes[index].state) {
-                Some(PendingFileState::Content(content)) => content.clone(),
-                Some(PendingFileState::Deleted) => {
-                    return Err("A deleted file cannot be renamed.".to_string());
-                }
-                None => read_text_file(context, from)?,
-            };
-            if let Some(index) = source_index {
-                draft.changes.remove(index);
-            }
-            if source_exists {
-                draft.changes.push(PendingFileChange {
-                    path: from.to_string(),
-                    state: PendingFileState::Deleted,
-                });
-            }
-            draft.changes.push(PendingFileChange {
-                path: to.to_string(),
-                state: PendingFileState::Content(content),
-            });
-            draft.active_path = Some(to.to_string());
-            draft.tree_path = parent_path(to).to_string();
-            Ok(format!("Renamed {from} to {to} in the workspace draft."))
-        }
+        "rename" => rename_workspace_file(
+            context,
+            draft,
+            input.from.as_deref().unwrap_or_default(),
+            input.to.as_deref().unwrap_or_default(),
+        ),
         "delete" => {
-            let path = input.path.as_deref().unwrap_or_default();
-            let source_index = draft.changes.iter().position(|change| change.path == path);
-            let source_exists = context
-                .handle
-                .file_mode(path)
-                .map_err(|_| "The file could not be checked.".to_string())?
-                .is_some();
-            if !source_exists && source_index.is_none() {
-                return Err("The file does not exist in this workspace.".to_string());
-            }
-            if source_exists {
-                validate_existing_text_path(context, path)?;
-                read_text_file(context, path)?;
-                if let Some(index) = source_index {
-                    if matches!(&draft.changes[index].state, PendingFileState::Deleted) {
-                        return Err("The file is already marked for deletion.".to_string());
-                    }
-                    draft.changes.remove(index);
-                }
-                draft.changes.push(PendingFileChange {
-                    path: path.to_string(),
-                    state: PendingFileState::Deleted,
-                });
-            } else if let Some(index) = source_index {
-                draft.changes.remove(index);
-            }
-            if draft.active_path.as_deref() == Some(path) {
-                draft.active_path = None;
-            }
-            draft.tree_path = parent_path(path).to_string();
-            Ok(format!(
-                "Marked {path} for removal from the workspace draft."
-            ))
+            delete_workspace_file(context, draft, input.path.as_deref().unwrap_or_default())
         }
         "discard" => {
-            let path = input.path.as_deref().unwrap_or_default();
-            let Some(index) = draft.changes.iter().position(|change| change.path == path) else {
-                return Err("There is no pending change for that file.".to_string());
-            };
-            draft.changes.remove(index);
-            let base_exists = context
-                .handle
-                .file_mode(path)
-                .map_err(|_| "The file could not be checked.".to_string())?
-                .is_some();
-            draft.active_path = base_exists.then(|| path.to_string());
-            draft.tree_path = parent_path(path).to_string();
-            Ok(format!("Discarded the pending change to {path}."))
+            discard_workspace_file(context, draft, input.path.as_deref().unwrap_or_default())
         }
         _ => Err("Unknown workspace operation.".to_string()),
     }
+}
+
+fn create_workspace_file(
+    context: &WorkspaceContext,
+    draft: &mut WorkspaceDraft,
+    path: &str,
+) -> Result<String, String> {
+    validate_new_path(context, path)?;
+    if draft.changes.iter().any(|change| change.path == path) {
+        return Err("A draft change already exists at that path.".to_string());
+    }
+    draft.changes.push(PendingFileChange {
+        path: path.to_string(),
+        state: PendingFileState::Content(String::new()),
+    });
+    draft.active_path = Some(path.to_string());
+    draft.tree_path = parent_path(path).to_string();
+    Ok(format!("Created {path} in the workspace draft."))
+}
+
+fn rename_workspace_file(
+    context: &WorkspaceContext,
+    draft: &mut WorkspaceDraft,
+    from: &str,
+    to: &str,
+) -> Result<String, String> {
+    if from == to {
+        if from.is_empty() || !is_safe_repo_path(from) || context.config.should_ignore(from) {
+            return Err("The source file path is not available for editing.".to_string());
+        }
+        draft.active_path = Some(from.to_string());
+        return Ok("The file name is unchanged.".to_string());
+    }
+    if from.is_empty() || !is_safe_repo_path(from) || context.config.should_ignore(from) {
+        return Err("The source file path is not available for editing.".to_string());
+    }
+    validate_new_path(context, to)?;
+    if draft.changes.iter().any(|change| change.path == to) {
+        return Err("A draft change already exists at the new path.".to_string());
+    }
+    let source_index = draft.changes.iter().position(|change| change.path == from);
+    let source_exists = context
+        .handle
+        .file_mode(from)
+        .map_err(|_| "The source file could not be checked.".to_string())?
+        .is_some();
+    if source_exists {
+        validate_existing_text_path(context, from)?;
+    } else if source_index.is_none() {
+        return Err("The source file does not exist in the workspace.".to_string());
+    }
+    let file_text = match source_index.map(|index| &draft.changes[index].state) {
+        Some(PendingFileState::Content(file_text)) => file_text.clone(),
+        Some(PendingFileState::Deleted) => {
+            return Err("A deleted file cannot be renamed.".to_string());
+        }
+        None => read_text_file(context, from)?,
+    };
+    if let Some(index) = source_index {
+        draft.changes.remove(index);
+    }
+    if source_exists {
+        draft.changes.push(PendingFileChange {
+            path: from.to_string(),
+            state: PendingFileState::Deleted,
+        });
+    }
+    draft.changes.push(PendingFileChange {
+        path: to.to_string(),
+        state: PendingFileState::Content(file_text),
+    });
+    draft.active_path = Some(to.to_string());
+    draft.tree_path = parent_path(to).to_string();
+    Ok(format!("Renamed {from} to {to} in the workspace draft."))
+}
+
+fn delete_workspace_file(
+    context: &WorkspaceContext,
+    draft: &mut WorkspaceDraft,
+    path: &str,
+) -> Result<String, String> {
+    let source_index = draft.changes.iter().position(|change| change.path == path);
+    let source_exists = context
+        .handle
+        .file_mode(path)
+        .map_err(|_| "The file could not be checked.".to_string())?
+        .is_some();
+    if !source_exists && source_index.is_none() {
+        return Err("The file does not exist in this workspace.".to_string());
+    }
+    if source_exists {
+        validate_existing_text_path(context, path)?;
+        read_text_file(context, path)?;
+        if let Some(index) = source_index {
+            if matches!(&draft.changes[index].state, PendingFileState::Deleted) {
+                return Err("The file is already marked for deletion.".to_string());
+            }
+            draft.changes.remove(index);
+        }
+        draft.changes.push(PendingFileChange {
+            path: path.to_string(),
+            state: PendingFileState::Deleted,
+        });
+    } else if let Some(index) = source_index {
+        draft.changes.remove(index);
+    }
+    if draft.active_path.as_deref() == Some(path) {
+        draft.active_path = None;
+    }
+    draft.tree_path = parent_path(path).to_string();
+    Ok(format!(
+        "Marked {path} for removal from the workspace draft."
+    ))
+}
+
+fn discard_workspace_file(
+    context: &WorkspaceContext,
+    draft: &mut WorkspaceDraft,
+    path: &str,
+) -> Result<String, String> {
+    let Some(index) = draft.changes.iter().position(|change| change.path == path) else {
+        return Err("There is no pending change for that file.".to_string());
+    };
+    draft.changes.remove(index);
+    let base_exists = context
+        .handle
+        .file_mode(path)
+        .map_err(|_| "The file could not be checked.".to_string())?
+        .is_some();
+    draft.active_path = base_exists.then(|| path.to_string());
+    draft.tree_path = parent_path(path).to_string();
+    Ok(format!("Discarded the pending change to {path}."))
 }
 
 fn validate_new_path(context: &WorkspaceContext, path: &str) -> Result<(), String> {
@@ -759,11 +831,11 @@ fn validate_draft(context: &WorkspaceContext, draft: &WorkspaceDraft) -> Result<
             return Err("The draft contains an unsafe, ignored, or duplicate path.".to_string());
         }
         match &change.state {
-            PendingFileState::Content(content) => {
-                if content.len() > MAX_EDIT_BYTES {
+            PendingFileState::Content(draft_text) => {
+                if draft_text.len() > MAX_EDIT_BYTES {
                     return Err("Files larger than 1 MiB cannot be changed here.".to_string());
                 }
-                if content.as_bytes().contains(&0) {
+                if draft_text.as_bytes().contains(&0) {
                     return Err("Binary content cannot be stored in this workspace.".to_string());
                 }
                 let mode = context
@@ -771,7 +843,7 @@ fn validate_draft(context: &WorkspaceContext, draft: &WorkspaceDraft) -> Result<
                     .file_mode(&change.path)
                     .map_err(|_| "A draft path could not be checked.".to_string())?;
                 match mode {
-                    Some(mode) if matches!(mode, 0o100_644 | 0o100_755) => {
+                    Some(0o100_644 | 0o100_755) => {
                         read_text_file(context, &change.path)?;
                     }
                     Some(_) => {

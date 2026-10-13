@@ -12,12 +12,7 @@ pub(super) fn workspace_shell(
     has_email: bool,
 ) -> Markup {
     let tree_url = format!("/{namespace}/{repo}/edit/tree/");
-    let document_url = selected_path.map(|path| {
-        format!(
-            "/{namespace}/{repo}/edit/file/{}",
-            super::encode_file_path(path)
-        )
-    });
+    let document_url = selected_path.map(|path| workspace_document_url(namespace, repo, path));
     let operation_url = format!("/{namespace}/{repo}/edit/operation");
     let commit_url = format!("/{namespace}/{repo}/edit/commit");
     let draft_json = serde_json::to_string(draft).unwrap_or_default();
@@ -33,142 +28,176 @@ pub(super) fn workspace_shell(
             data-has-email=(if has_email { "true" } else { "false" })
             data-draft-key=(format!("twig:repo-edit:{namespace}/{repo}"))
         {
-            nav class="twig-crumbs twig-crumbs--page" aria-label="Breadcrumb" {
-                a href="/" { "Namespaces" }
-                span class="twig-crumb-sep" aria-hidden="true" { "/" }
-                a href=(format!("/{namespace}")) { (namespace) }
-                span class="twig-crumb-sep" aria-hidden="true" { "/" }
-                a href=(format!("/{namespace}/{repo}")) { (repo) }
-                span class="twig-crumb-sep" aria-hidden="true" { "/" }
-                span aria-current="page" { "Edit" }
-            }
-
+            (workspace_breadcrumbs(namespace, repo))
             input type="hidden" id="repo-edit-draft-state" name="draft" value=(draft_json);
-
             header class="twig-stack twig-stack--tight" {
                 h1 class="twig-section" { "Repository workspace" }
                 p class="twig-hint" { "Work across files and commit a complete change." }
             }
-
             div class="twig-repo-edit-shell" {
-                aside class="twig-panel twig-repo-edit-files" aria-label="Repository files" {
-                    div class="twig-panel-head" {
-                        h2 class="twig-section" { "Files" }
-                        details class="twig-repo-new-file" {
-                            summary class="twig-btn twig-btn--quiet" { "New file" }
-                            form
-                                class="twig-stack twig-repo-new-file-form"
-                                hx-post=(operation_url)
-                                hx-action=(operation_url)
-                                hx-method="POST"
-                                hx-trigger="submit"
-                                hx-target="#repo-edit-operation-result"
-                                hx-swap="innerHTML"
-                                data-repo-edit-operation
-                            {
-                                input type="hidden" name="kind" value="create";
-                                label class="twig-label" for="repo-edit-new-path" { "Repository path" }
-                                input class="twig-input" id="repo-edit-new-path" name="path" required placeholder="docs/notes.md";
-                                input type="hidden" name="draft" value="";
-                                button class="twig-btn twig-btn--primary" type="submit" { "Create file" }
-                            }
-                        }
-                    }
-                    div
-                        id="repo-edit-tree"
-                        hx-get=(tree_url)
-                        hx-trigger="load"
-                        hx-target="#repo-edit-tree"
-                        hx-swap="innerHTML"
-                        aria-live="polite"
-                    {
-                        div data-repo-edit-tree-path="" {
-                            p class="twig-hint" { "Loading repository files…" }
-                        }
-                    }
-                }
-
-                section class="twig-panel twig-repo-edit-document" aria-label="Editor" {
-                    @if let Some(document_url) = document_url {
-                        div
-                            id="repo-edit-document"
-                            hx-get=(document_url)
-                            hx-trigger="load"
-                            hx-target="#repo-edit-document"
-                            hx-swap="innerHTML"
-                        {
-                            p class="twig-hint" { "Loading file…" }
-                        }
-                    } @else {
-                        div id="repo-edit-document" {
-                            (file_placeholder())
-                        }
-                    }
-                }
+                (workspace_files_panel(&tree_url, &operation_url))
+                (workspace_document_panel(document_url.as_deref()))
             }
+            (workspace_changes_panel(&commit_url, draft, has_email, &draft_json))
+            div id="repo-edit-operation-result" role="status" aria-live="polite" {}
+            (workspace_restore_form(&operation_url, &draft_json))
+            (editor_assets())
+        }
+    }
+}
 
-            details class="twig-panel twig-repo-edit-changes" id="repo-edit-changes-panel" {
-                summary class="twig-repo-changes-summary" {
-                    h2 class="twig-section" { "Changes" }
-                    span class="twig-row-meta" id="repo-edit-change-count" { "0" }
-                }
-                div class="twig-panel-body" {
-                    p class="twig-hint" id="repo-edit-change-empty" { "No pending changes." }
-                    ul class="twig-repo-change-list" id="repo-edit-change-list" {}
+fn workspace_document_url(namespace: &str, repo: &str, path: &str) -> String {
+    format!(
+        "/{namespace}/{repo}/edit/file/{}",
+        super::encode_file_path(path)
+    )
+}
+
+fn workspace_breadcrumbs(namespace: &str, repo: &str) -> Markup {
+    maud::html! {
+        nav class="twig-crumbs twig-crumbs--page" aria-label="Breadcrumb" {
+            a href="/" { "Namespaces" }
+            span class="twig-crumb-sep" aria-hidden="true" { "/" }
+            a href=(format!("/{namespace}")) { (namespace) }
+            span class="twig-crumb-sep" aria-hidden="true" { "/" }
+            a href=(format!("/{namespace}/{repo}")) { (repo) }
+            span class="twig-crumb-sep" aria-hidden="true" { "/" }
+            span aria-current="page" { "Edit" }
+        }
+    }
+}
+
+fn workspace_files_panel(tree_url: &str, operation_url: &str) -> Markup {
+    maud::html! {
+        aside class="twig-panel twig-repo-edit-files" aria-label="Repository files" {
+            div class="twig-panel-head" {
+                h2 class="twig-section" { "Files" }
+                details class="twig-repo-new-file" {
+                    summary class="twig-btn twig-btn--quiet" { "New file" }
                     form
-                        id="repo-edit-commit-form"
-                        class="twig-stack twig-repo-commit-form"
-                        hx-post=(commit_url)
-                        hx-action=(commit_url)
+                        class="twig-stack twig-repo-new-file-form"
+                        hx-post=(operation_url)
+                        hx-action=(operation_url)
                         hx-method="POST"
                         hx-trigger="submit"
-                        hx-target="#repo-edit-commit-result"
+                        hx-target="#repo-edit-operation-result"
                         hx-swap="innerHTML"
-                        data-repo-edit-commit
+                        data-repo-edit-operation
                     {
-                        label class="twig-label" for="repo-edit-commit-message" { "Commit message" }
-                        input
-                            class="twig-input"
-                            id="repo-edit-commit-message"
-                            name="message"
-                            maxlength="200"
-                            required
-                            value="Update repository";
-                        @if !has_email {
-                            p class="twig-editor-status" role="alert" {
-                                "Set an email address in " a href="/settings" { "account settings" }
-                                " before committing."
-                            }
-                        }
-                        input type="hidden" name="draft" value=(draft_json);
-                        button
-                            class="twig-btn twig-btn--primary"
-                            type="submit"
-                            disabled[draft.changes.is_empty() || !has_email]
-                        { "Commit changes" }
-                        div id="repo-edit-commit-result" role="status" aria-live="polite" {}
+                        input type="hidden" name="kind" value="create";
+                        label class="twig-label" for="repo-edit-new-path" { "Repository path" }
+                        input class="twig-input" id="repo-edit-new-path" name="path" required placeholder="docs/notes.md";
+                        input type="hidden" name="draft" value="";
+                        button class="twig-btn twig-btn--primary" type="submit" { "Create file" }
                     }
                 }
             }
-
-            div id="repo-edit-operation-result" role="status" aria-live="polite" {}
-
-            form
-                id="repo-edit-restore-form"
-                hidden
-                hx-post=(operation_url)
-                hx-action=(operation_url)
-                hx-method="POST"
-                hx-trigger="repo-edit-restore"
-                hx-target="#repo-edit-operation-result"
+            div
+                id="repo-edit-tree"
+                hx-get=(tree_url)
+                hx-trigger="load"
+                hx-target="#repo-edit-tree"
                 hx-swap="innerHTML"
-                data-repo-edit-operation
+                aria-live="polite"
             {
-                input type="hidden" name="kind" value="restore";
-                input type="hidden" name="draft" value=(draft_json);
+                div data-repo-edit-tree-path="" {
+                    p class="twig-hint" { "Loading repository files…" }
+                }
             }
+        }
+    }
+}
 
-            (editor_assets())
+fn workspace_document_panel(document_url: Option<&str>) -> Markup {
+    maud::html! {
+        section class="twig-panel twig-repo-edit-document" aria-label="Editor" {
+            @if let Some(document_url) = document_url {
+                div
+                    id="repo-edit-document"
+                    hx-get=(document_url)
+                    hx-trigger="load"
+                    hx-target="#repo-edit-document"
+                    hx-swap="innerHTML"
+                {
+                    p class="twig-hint" { "Loading file…" }
+                }
+            } @else {
+                div id="repo-edit-document" {
+                    (file_placeholder())
+                }
+            }
+        }
+    }
+}
+
+fn workspace_changes_panel(
+    commit_url: &str,
+    draft: &WorkspaceDraft,
+    has_email: bool,
+    draft_json: &str,
+) -> Markup {
+    maud::html! {
+        details class="twig-panel twig-repo-edit-changes" id="repo-edit-changes-panel" {
+            summary class="twig-repo-changes-summary" {
+                h2 class="twig-section" { "Changes" }
+                span class="twig-row-meta" id="repo-edit-change-count" { "0" }
+            }
+            div class="twig-panel-body" {
+                p class="twig-hint" id="repo-edit-change-empty" { "No pending changes." }
+                ul class="twig-repo-change-list" id="repo-edit-change-list" {}
+                form
+                    id="repo-edit-commit-form"
+                    class="twig-stack twig-repo-commit-form"
+                    hx-post=(commit_url)
+                    hx-action=(commit_url)
+                    hx-method="POST"
+                    hx-trigger="submit"
+                    hx-target="#repo-edit-commit-result"
+                    hx-swap="innerHTML"
+                    data-repo-edit-commit
+                {
+                    label class="twig-label" for="repo-edit-commit-message" { "Commit message" }
+                    input
+                        class="twig-input"
+                        id="repo-edit-commit-message"
+                        name="message"
+                        maxlength="200"
+                        required
+                        value="Update repository";
+                    @if !has_email {
+                        p class="twig-editor-status" role="alert" {
+                            "Set an email address in " a href="/settings" { "account settings" }
+                            " before committing."
+                        }
+                    }
+                    input type="hidden" name="draft" value=(draft_json);
+                    button
+                        class="twig-btn twig-btn--primary"
+                        type="submit"
+                        disabled[draft.changes.is_empty() || !has_email]
+                    { "Commit changes" }
+                    div id="repo-edit-commit-result" role="status" aria-live="polite" {}
+                }
+            }
+        }
+    }
+}
+
+fn workspace_restore_form(operation_url: &str, draft_json: &str) -> Markup {
+    maud::html! {
+        form
+            id="repo-edit-restore-form"
+            hidden
+            hx-post=(operation_url)
+            hx-action=(operation_url)
+            hx-method="POST"
+            hx-trigger="repo-edit-restore"
+            hx-target="#repo-edit-operation-result"
+            hx-swap="innerHTML"
+            data-repo-edit-operation
+        {
+            input type="hidden" name="kind" value="restore";
+            input type="hidden" name="draft" value=(draft_json);
         }
     }
 }

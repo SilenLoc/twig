@@ -99,9 +99,9 @@ pub async fn download_binary(
     server: web::Data<config::Server>,
     auth_state: web::Data<TwigContext>,
 ) -> HttpResponse {
-    let handle = match RepoHandle::open(server.project_root(), &params.namespace, &params.repo) {
-        Ok(handle) => handle,
-        Err(_) => return HttpResponse::NotFound().finish(),
+    let Ok(handle) = RepoHandle::open(server.project_root(), &params.namespace, &params.repo)
+    else {
+        return HttpResponse::NotFound().finish();
     };
 
     if handle.load_config_with_raw().config.private {

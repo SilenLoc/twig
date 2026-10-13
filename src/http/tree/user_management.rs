@@ -337,9 +337,10 @@ fn is_expired(invitation: &NamespaceInvitation, now: chrono::DateTime<chrono::Ut
 }
 
 fn format_expiry(expires_at: &str) -> String {
-    chrono::DateTime::parse_from_rfc3339(expires_at)
-        .map(|date| date.format("%Y-%m-%d %H:%M UTC").to_string())
-        .unwrap_or_else(|_| "unknown".to_string())
+    chrono::DateTime::parse_from_rfc3339(expires_at).map_or_else(
+        |_| "unknown".to_string(),
+        |date| date.format("%Y-%m-%d %H:%M UTC").to_string(),
+    )
 }
 
 fn invitations_for_scope(scope: &UserManagementScope) -> Option<Vec<String>> {
@@ -532,12 +533,9 @@ pub async fn create_namespace_invitation(
         return HttpResponse::BadRequest()
             .body(render_error("Choose a supported role").into_string());
     };
-    let expires_at = match parse_expiry(&form.expires, chrono::Utc::now()) {
-        Ok(expires_at) => expires_at,
-        Err(()) => {
-            return HttpResponse::BadRequest()
-                .body(render_error("Choose a supported invitation expiry").into_string());
-        }
+    let Ok(expires_at) = parse_expiry(&form.expires, chrono::Utc::now()) else {
+        return HttpResponse::BadRequest()
+            .body(render_error("Choose a supported invitation expiry").into_string());
     };
     let namespace = scope
         .namespaces
@@ -836,9 +834,13 @@ mod tests {
                 "Retry delivery or share this link directly",
             ),
         ] {
-            let markup =
-                render_invitation_created(&invitation, &url, &[invitation.clone()], &delivery)
-                    .into_string();
+            let markup = render_invitation_created(
+                &invitation,
+                &url,
+                std::slice::from_ref(&invitation),
+                &delivery,
+            )
+            .into_string();
             assert!(markup.contains(expected), "missing {expected}: {markup}");
             assert!(markup.contains(&url));
             assert!(markup.contains("hx-swap-oob=\"outerHTML\""));

@@ -116,6 +116,7 @@ impl Database {
         Ok(result)
     }
 
+    #[cfg(test)]
     pub async fn user_has_namespace_access(
         &self,
         user_id: &str,
@@ -165,6 +166,7 @@ impl Database {
             .ok_or_else(|| format!("Unknown namespace role: {role}"))
     }
 
+    #[cfg(test)]
     pub async fn user_owns_namespace(
         &self,
         user_id: &str,
@@ -173,6 +175,7 @@ impl Database {
         Ok(self.get_namespace_role(user_id, namespace_name).await? == Some(NamespaceRole::Owner))
     }
 
+    #[cfg(test)]
     pub async fn get_owned_namespaces_for_user(
         &self,
         user_id: &str,

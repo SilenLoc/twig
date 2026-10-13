@@ -242,48 +242,9 @@ async fn is_authenticated(
     auth_state: &web::Data<TwigContext>,
     namespace_name: &str,
 ) -> Result<Option<AuthResult>, HttpResponse> {
-    // Extract basic auth credentials
-    let Some((username, password)) = extract_basic_auth(req) else {
-        log::warn!("Git auth failed: No basic auth credentials for namespace '{namespace_name}'");
-        return Err(actix_web::HttpResponse::Unauthorized()
-            .insert_header(("WWW-Authenticate", "Basic realm=\"git\""))
-            .body("Missing credentials"));
-    };
-
-    log::debug!("Git auth attempt: user='{username}' namespace='{namespace_name}'");
-
+    let user = authenticate_git_user(req, auth_state, namespace_name).await?;
+    let username = user.username.clone();
     let db = auth_state.db();
-
-    // Get user from database
-    let user = match db.get_user_by_username(&username).await {
-        Ok(Some(user)) => {
-            log::debug!("Git auth: Found user '{}' with id '{}'", username, user.id);
-            user
-        }
-        Ok(None) => {
-            log::warn!("Git auth failed: User '{username}' not found in database");
-            return Err(actix_web::HttpResponse::Unauthorized().body("Invalid credentials"));
-        }
-        Err(e) => {
-            log::error!("Database error looking up user '{username}': {e}");
-            return Err(actix_web::HttpResponse::InternalServerError().body("Database error"));
-        }
-    };
-
-    // Verify password
-    match verify_password(&password, &user.password_hash) {
-        Ok(true) => {
-            log::debug!("Git auth: Password verified for user '{username}'");
-        }
-        Ok(false) => {
-            log::warn!("Git auth failed: Invalid password for user '{username}'");
-            return Err(actix_web::HttpResponse::Unauthorized().body("Invalid credentials"));
-        }
-        Err(e) => {
-            log::error!("Password verification error for user '{username}': {e}");
-            return Err(actix_web::HttpResponse::InternalServerError().body("Authentication error"));
-        }
-    }
 
     // Resolve effective permissions. Unknown namespaces can only be
     // bootstrapped by users who still have namespace-creation permission.
@@ -310,58 +271,99 @@ async fn is_authenticated(
                 permissions,
             }))
         }
-        Ok(None) => {
-            // Check if namespace exists at all
-            match db.get_namespace_by_name(namespace_name).await {
-                Ok(Some(_)) => {
-                    // Namespace exists but user doesn't have access
-                    log::warn!(
-                        "Git auth failed: user='{}' (id='{}') does NOT have access to namespace='{}'",
-                        username,
-                        user.id,
-                        namespace_name
+        Ok(None) => match db.get_namespace_by_name(namespace_name).await {
+            Ok(Some(_)) => {
+                log::warn!(
+                    "Git auth failed: user='{}' (id='{}') does NOT have access to namespace='{}'",
+                    username,
+                    user.id,
+                    namespace_name
+                );
+                Ok(None)
+            }
+            Ok(None) => match db.user_can_create_namespace(&user.id).await {
+                Ok(true) => {
+                    log::info!(
+                        "Git auth success: user='{username}' can create namespace='{namespace_name}' (doesn't exist)"
                     );
+                    Ok(Some(AuthResult {
+                        user,
+                        namespace_exists: false,
+                        permissions: PermissionSet::from_role(crate::auth::NamespaceRole::Owner),
+                    }))
+                }
+                Ok(false) => {
+                    log::warn!("Git auth denied namespace creation for contributor '{username}'");
                     Ok(None)
                 }
-                Ok(None) => match db.user_can_create_namespace(&user.id).await {
-                    Ok(true) => {
-                        log::info!(
-                            "Git auth success: user='{username}' can create namespace='{namespace_name}' (doesn't exist)"
-                        );
-                        Ok(Some(AuthResult {
-                            user,
-                            namespace_exists: false,
-                            permissions: PermissionSet::from_role(
-                                crate::auth::NamespaceRole::Owner,
-                            ),
-                        }))
-                    }
-                    Ok(false) => {
-                        log::warn!(
-                            "Git auth denied namespace creation for contributor '{username}'"
-                        );
-                        Ok(None)
-                    }
-                    Err(error) => {
-                        log::error!(
-                            "Database error checking namespace creation for '{username}': {error}"
-                        );
-                        Err(HttpResponse::InternalServerError().body("Database error"))
-                    }
-                },
-                Err(e) => {
+                Err(error) => {
                     log::error!(
-                        "Database error checking namespace existence for user '{username}': {e}"
+                        "Database error checking namespace creation for '{username}': {error}"
                     );
-                    Err(actix_web::HttpResponse::InternalServerError().body("Database error"))
+                    Err(HttpResponse::InternalServerError().body("Database error"))
                 }
+            },
+            Err(error) => {
+                log::error!(
+                    "Database error checking namespace existence for user '{username}': {error}"
+                );
+                Err(HttpResponse::InternalServerError().body("Database error"))
             }
-        }
-        Err(e) => {
-            log::error!("Database error checking namespace access for user '{username}': {e}");
-            Err(actix_web::HttpResponse::InternalServerError().body("Database error"))
+        },
+        Err(error) => {
+            log::error!("Database error checking namespace access for user '{username}': {error}");
+            Err(HttpResponse::InternalServerError().body("Database error"))
         }
     }
+}
+
+async fn authenticate_git_user(
+    req: &HttpRequest,
+    auth_state: &web::Data<TwigContext>,
+    namespace_name: &str,
+) -> Result<User, HttpResponse> {
+    let Some((username, password)) = extract_basic_auth(req) else {
+        log::warn!("Git auth failed: No basic auth credentials for namespace '{namespace_name}'");
+        return Err(HttpResponse::Unauthorized()
+            .insert_header(("WWW-Authenticate", "Basic realm=\"git\""))
+            .body("Missing credentials"));
+    };
+
+    log::debug!("Git auth attempt: user='{username}' namespace='{namespace_name}'");
+
+    let db = auth_state.db();
+
+    // Get user from database
+    let user = match db.get_user_by_username(&username).await {
+        Ok(Some(user)) => {
+            log::debug!("Git auth: Found user '{}' with id '{}'", username, user.id);
+            user
+        }
+        Ok(None) => {
+            log::warn!("Git auth failed: User '{username}' not found in database");
+            return Err(HttpResponse::Unauthorized().body("Invalid credentials"));
+        }
+        Err(e) => {
+            log::error!("Database error looking up user '{username}': {e}");
+            return Err(actix_web::HttpResponse::InternalServerError().body("Database error"));
+        }
+    };
+
+    // Verify password
+    match verify_password(&password, &user.password_hash) {
+        Ok(true) => {
+            log::debug!("Git auth: Password verified for user '{username}'");
+        }
+        Ok(false) => {
+            log::warn!("Git auth failed: Invalid password for user '{username}'");
+            return Err(HttpResponse::Unauthorized().body("Invalid credentials"));
+        }
+        Err(e) => {
+            log::error!("Password verification error for user '{username}': {e}");
+            return Err(HttpResponse::InternalServerError().body("Authentication error"));
+        }
+    }
+    Ok(user)
 }
 
 /// Ensures a namespace exists in the database, creating it if necessary.

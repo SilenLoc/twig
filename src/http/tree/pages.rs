@@ -372,45 +372,76 @@ pub async fn namespaces_page(
             .finish();
     };
     let is_site_admin = server.is_configured_admin(&user.username);
-    let namespaces = match permissions::namespaces_for_user(
+    let page_data = match load_namespace_page_data(db, &server, &user_id, is_site_admin).await {
+        Ok(page_data) => page_data,
+        Err(error) => {
+            log::error!("Failed to load namespace tree data: {error}");
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+    let content = maud::html! {
+        (render_tree_hub(
+            server.is_test_user_enabled(),
+            is_site_admin,
+            page_data.user_management_enabled,
+            Some("namespaces"),
+        ))
+        (render_namespaces_page(
+            &page_data.repos_by_namespace,
+            &page_data.repository_namespace_names,
+            &page_data.manageable_namespaces,
+            &page_data.deletable_namespaces,
+        ))
+    };
+    let content = if req.headers().get("HX-Request").is_some() {
+        content
+    } else {
+        crate::http::view::render_layout(&content, Some(&user.username), Some("Namespaces"))
+    };
+    HttpResponse::Ok()
+        .content_type("text/html")
+        .body(content.into_string())
+}
+
+struct NamespacePageData {
+    user_management_enabled: bool,
+    repository_namespace_names: Vec<String>,
+    manageable_namespaces: Vec<String>,
+    deletable_namespaces: Vec<String>,
+    repos_by_namespace: Vec<(String, Vec<git::bare::RepoInfo>)>,
+}
+
+async fn load_namespace_page_data(
+    db: &crate::db::Database,
+    server: &config::Server,
+    user_id: &str,
+    is_site_admin: bool,
+) -> Result<NamespacePageData, String> {
+    let manageable_namespaces = permissions::namespaces_for_user(
         db,
-        &user_id,
+        user_id,
         is_site_admin,
         NamespacePermission::ManageNamespace,
     )
     .await
-    {
-        Ok(namespaces) => namespaces,
-        Err(error) => {
-            log::error!("Failed to load manageable namespaces for namespace tree: {error}");
-            return HttpResponse::InternalServerError().finish();
-        }
-    };
-    let manageable_namespaces: Vec<String> = namespaces
-        .iter()
-        .map(|namespace| namespace.name.clone())
-        .collect();
-    let repository_namespaces = match permissions::namespaces_for_user(
+    .map_err(|error| format!("Failed to load manageable namespaces: {error}"))?
+    .into_iter()
+    .map(|namespace| namespace.name)
+    .collect::<Vec<_>>();
+    let repository_namespace_names = permissions::namespaces_for_user(
         db,
-        &user_id,
+        user_id,
         is_site_admin,
         NamespacePermission::ManageRepositories,
     )
     .await
-    {
-        Ok(namespaces) => namespaces,
-        Err(error) => {
-            log::error!("Failed to load repository-manageable namespaces: {error}");
-            return HttpResponse::InternalServerError().finish();
-        }
-    };
-    let repository_namespace_names: Vec<String> = repository_namespaces
-        .iter()
-        .map(|namespace| namespace.name.clone())
-        .collect();
+    .map_err(|error| format!("Failed to load repository-manageable namespaces: {error}"))?
+    .into_iter()
+    .map(|namespace| namespace.name)
+    .collect::<Vec<_>>();
     let user_management_enabled = match permissions::namespaces_for_user(
         db,
-        &user_id,
+        user_id,
         is_site_admin,
         NamespacePermission::ManageMembers,
     )
@@ -422,14 +453,14 @@ pub async fn namespaces_page(
             false
         }
     };
-    let deletable_namespaces: Vec<String> = manageable_namespaces
+    let deletable_namespaces = manageable_namespaces
         .iter()
         .filter(|namespace| {
             !git::bare::namespace::has_any_repository(server.project_root(), namespace)
         })
         .cloned()
         .collect();
-    let repos_by_namespace: Vec<(String, Vec<git::bare::RepoInfo>)> = repository_namespace_names
+    let repos_by_namespace = repository_namespace_names
         .iter()
         .filter_map(|namespace| {
             let repos: Vec<_> = git::bare::get_repos_with_info(server.project_root(), namespace)
@@ -439,28 +470,14 @@ pub async fn namespaces_page(
             (!repos.is_empty()).then(|| (namespace.clone(), repos))
         })
         .collect();
-    let content = maud::html! {
-        (render_tree_hub(
-            server.is_test_user_enabled(),
-            is_site_admin,
-            user_management_enabled,
-            Some("namespaces"),
-        ))
-        (render_namespaces_page(
-            &repos_by_namespace,
-            &repository_namespace_names,
-            &manageable_namespaces,
-            &deletable_namespaces,
-        ))
-    };
-    let content = if req.headers().get("HX-Request").is_some() {
-        content
-    } else {
-        crate::http::view::render_layout(&content, Some(&user.username), Some("Namespaces"))
-    };
-    HttpResponse::Ok()
-        .content_type("text/html")
-        .body(content.into_string())
+
+    Ok(NamespacePageData {
+        user_management_enabled,
+        repository_namespace_names,
+        manageable_namespaces,
+        deletable_namespaces,
+        repos_by_namespace,
+    })
 }
 
 #[get("/tree/repositories")]

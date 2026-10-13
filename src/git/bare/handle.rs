@@ -210,9 +210,7 @@ impl RepoHandle {
         author_email: &str,
         message: &str,
     ) -> Result<CommitChangesOutcome, git2::Error> {
-        use std::collections::HashSet;
-
-        use git2::{FileMode, ObjectType, Signature, build::TreeUpdateBuilder};
+        use git2::Signature;
 
         if changes.is_empty() {
             return Err(git2::Error::from_str("There are no changes to commit"));
@@ -238,87 +236,7 @@ impl RepoHandle {
             self.repo.find_tree(empty_tree_oid)?
         };
 
-        let mut seen = HashSet::with_capacity(changes.len());
-        let mut update = TreeUpdateBuilder::new();
-        for change in changes {
-            let path = match change {
-                RepoEditChange::Upsert { path, .. } | RepoEditChange::Delete { path } => path,
-            };
-            if path.is_empty() || !super::path::is_safe_repo_path(path) || !seen.insert(path) {
-                return Err(git2::Error::from_str(
-                    "Draft contains an invalid or duplicate repository path",
-                ));
-            }
-
-            match change {
-                RepoEditChange::Upsert { path, content } => {
-                    if content.contains(&0) || std::str::from_utf8(content).is_err() {
-                        return Err(git2::Error::from_str(
-                            "Workspace edits must contain UTF-8 text without NUL bytes",
-                        ));
-                    }
-                    let mode = match parent_tree.get_path(Path::new(path)) {
-                        Ok(entry) => {
-                            if entry.kind() != Some(ObjectType::Blob) {
-                                return Err(git2::Error::from_str(
-                                    "Only regular text files can be edited",
-                                ));
-                            }
-                            let mode = match entry.filemode() {
-                                0o100_644 => FileMode::Blob,
-                                0o100_755 => FileMode::BlobExecutable,
-                                _ => {
-                                    return Err(git2::Error::from_str(
-                                        "Only regular text files can be edited",
-                                    ));
-                                }
-                            };
-                            let object = entry.to_object(&self.repo)?;
-                            let blob = object.as_blob().ok_or_else(|| {
-                                git2::Error::from_str("Only regular text files can be edited")
-                            })?;
-                            let original = blob.content();
-                            if original.contains(&0) || std::str::from_utf8(original).is_err() {
-                                return Err(git2::Error::from_str(
-                                    "Only UTF-8 text files can be edited",
-                                ));
-                            }
-                            mode
-                        }
-                        Err(error) if error.code() == git2::ErrorCode::NotFound => FileMode::Blob,
-                        Err(error) => return Err(error),
-                    };
-                    let blob_oid = self.repo.blob(content)?;
-                    update.upsert(path, blob_oid, mode);
-                }
-                RepoEditChange::Delete { path } => {
-                    let entry = parent_tree.get_path(Path::new(path))?;
-                    if entry.kind() != Some(ObjectType::Blob)
-                        || !matches!(entry.filemode(), 0o100_644 | 0o100_755)
-                    {
-                        return Err(git2::Error::from_str(
-                            "Only regular text files can be deleted",
-                        ));
-                    }
-                    let object = entry.to_object(&self.repo)?;
-                    let blob = object.as_blob().ok_or_else(|| {
-                        git2::Error::from_str("Only regular text files can be deleted")
-                    })?;
-                    let content = blob.content();
-                    if content.contains(&0) || std::str::from_utf8(content).is_err() {
-                        return Err(git2::Error::from_str(
-                            "Only UTF-8 text files can be deleted",
-                        ));
-                    }
-                    update.remove(path);
-                }
-            }
-        }
-
-        let tree_oid = update.create_updated(&self.repo, &parent_tree)?;
-        if tree_oid == parent_tree.id() {
-            return Err(git2::Error::from_str("There are no changes to commit"));
-        }
+        let tree_oid = self.create_edit_tree(changes, &parent_tree)?;
         let tree = self.repo.find_tree(tree_oid)?;
         let signature = Signature::now(author_name, author_email)?;
         let commit_oid = match parent.as_ref() {
@@ -349,6 +267,110 @@ impl RepoHandle {
             }
             Err(error) => Err(error),
         }
+    }
+
+    fn create_edit_tree(
+        &self,
+        changes: &[RepoEditChange],
+        parent_tree: &git2::Tree<'_>,
+    ) -> Result<git2::Oid, git2::Error> {
+        use std::collections::HashSet;
+
+        use git2::build::TreeUpdateBuilder;
+
+        let mut seen = HashSet::with_capacity(changes.len());
+        let mut update = TreeUpdateBuilder::new();
+        for change in changes {
+            let path = match change {
+                RepoEditChange::Upsert { path, .. } | RepoEditChange::Delete { path } => path,
+            };
+            if path.is_empty() || !super::path::is_safe_repo_path(path) || !seen.insert(path) {
+                return Err(git2::Error::from_str(
+                    "Draft contains an invalid or duplicate repository path",
+                ));
+            }
+            self.apply_repo_edit(&mut update, parent_tree, change)?;
+        }
+
+        let tree_oid = update.create_updated(&self.repo, parent_tree)?;
+        if tree_oid == parent_tree.id() {
+            return Err(git2::Error::from_str("There are no changes to commit"));
+        }
+        Ok(tree_oid)
+    }
+
+    fn apply_repo_edit(
+        &self,
+        update: &mut git2::build::TreeUpdateBuilder,
+        parent_tree: &git2::Tree<'_>,
+        change: &RepoEditChange,
+    ) -> Result<(), git2::Error> {
+        use git2::{FileMode, ObjectType};
+
+        match change {
+            RepoEditChange::Upsert { path, content } => {
+                if content.contains(&0) || std::str::from_utf8(content).is_err() {
+                    return Err(git2::Error::from_str(
+                        "Workspace edits must contain UTF-8 text without NUL bytes",
+                    ));
+                }
+                let mode = match parent_tree.get_path(Path::new(path)) {
+                    Ok(entry) => {
+                        if entry.kind() != Some(ObjectType::Blob) {
+                            return Err(git2::Error::from_str(
+                                "Only regular text files can be edited",
+                            ));
+                        }
+                        let mode = match entry.filemode() {
+                            0o100_644 => FileMode::Blob,
+                            0o100_755 => FileMode::BlobExecutable,
+                            _ => {
+                                return Err(git2::Error::from_str(
+                                    "Only regular text files can be edited",
+                                ));
+                            }
+                        };
+                        let object = entry.to_object(&self.repo)?;
+                        let blob = object.as_blob().ok_or_else(|| {
+                            git2::Error::from_str("Only regular text files can be edited")
+                        })?;
+                        let original = blob.content();
+                        if original.contains(&0) || std::str::from_utf8(original).is_err() {
+                            return Err(git2::Error::from_str(
+                                "Only UTF-8 text files can be edited",
+                            ));
+                        }
+                        mode
+                    }
+                    Err(error) if error.code() == git2::ErrorCode::NotFound => FileMode::Blob,
+                    Err(error) => return Err(error),
+                };
+                let blob_oid = self.repo.blob(content)?;
+                update.upsert(path, blob_oid, mode);
+            }
+            RepoEditChange::Delete { path } => {
+                let entry = parent_tree.get_path(Path::new(path))?;
+                if entry.kind() != Some(ObjectType::Blob)
+                    || !matches!(entry.filemode(), 0o100_644 | 0o100_755)
+                {
+                    return Err(git2::Error::from_str(
+                        "Only regular text files can be deleted",
+                    ));
+                }
+                let object = entry.to_object(&self.repo)?;
+                let blob = object.as_blob().ok_or_else(|| {
+                    git2::Error::from_str("Only regular text files can be deleted")
+                })?;
+                let content = blob.content();
+                if content.contains(&0) || std::str::from_utf8(content).is_err() {
+                    return Err(git2::Error::from_str(
+                        "Only UTF-8 text files can be deleted",
+                    ));
+                }
+                update.remove(path);
+            }
+        }
+        Ok(())
     }
 
     pub fn get_commits(&self, limit: usize) -> Result<Vec<Commit>, git2::Error> {

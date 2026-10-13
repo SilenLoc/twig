@@ -14,7 +14,7 @@ pub struct BinaryAssetInfo {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BinaryRelease {
-    /// Canonical SemVer string, without an optional input `v` prefix.
+    /// Canonical `SemVer` string, without an optional input `v` prefix.
     pub version: String,
     pub assets: Vec<BinaryAssetInfo>,
 }
@@ -40,7 +40,7 @@ fn version_order_desc(a: &str, b: &str) -> std::cmp::Ordering {
 
 impl Database {
     /// Stores or replaces an asset and atomically prunes releases outside the
-    /// three highest SemVer versions. A too-old upload leaves the database
+    /// three highest `SemVer` versions. A too-old upload leaves the database
     /// untouched and returns `TooOld`.
     pub async fn put_binary(
         &self,
@@ -51,90 +51,16 @@ impl Database {
         bytes: &[u8],
     ) -> Result<PutBinaryOutcome, String> {
         let version = version.to_string();
+        let size_bytes = i64::try_from(bytes.len())
+            .map_err(|_| "Binary asset is too large to store".to_string())?;
         let conn = self.conn().await?;
         conn.execute("BEGIN IMMEDIATE", ())
             .await
             .map_err(|e| e.to_string())?;
 
-        let result: Result<PutBinaryOutcome, String> = async {
-            let mut existing = conn
-                .query(
-                    "SELECT 1 FROM repository_binaries
-                     WHERE namespace = ?1 AND repo = ?2 AND version = ?3 AND filename = ?4",
-                    turso::params![namespace, repo, version.clone(), filename],
-                )
-                .await
-                .map_err(|e| e.to_string())?;
-            let outcome = if existing.next().await.map_err(|e| e.to_string())?.is_some() {
-                PutBinaryOutcome::Replaced
-            } else {
-                PutBinaryOutcome::Stored
-            };
-
-            let mut rows = conn
-                .query(
-                    "SELECT DISTINCT version FROM repository_binaries
-                     WHERE namespace = ?1 AND repo = ?2",
-                    turso::params![namespace, repo],
-                )
-                .await
-                .map_err(|e| e.to_string())?;
-            let mut versions = Vec::new();
-            while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
-                versions.push(row.get::<String>(0).map_err(|e| e.to_string())?);
-            }
-            if !versions.contains(&version) {
-                versions.push(version.clone());
-            }
-            for stored_version in &versions {
-                Version::parse(stored_version).map_err(|error| {
-                    format!("Invalid SemVer version stored in binary registry: {error}")
-                })?;
-            }
-            versions.sort_by(|a, b| version_order_desc(a, b));
-
-            let retained: Vec<String> = versions
-                .iter()
-                .take(RETAINED_VERSION_COUNT)
-                .cloned()
-                .collect();
-            if !retained.contains(&version) {
-                return Ok(PutBinaryOutcome::TooOld);
-            }
-
-            conn.execute(
-                "INSERT INTO repository_binaries
-                     (namespace, repo, version, filename, content, size_bytes, uploaded_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-                 ON CONFLICT(namespace, repo, version, filename) DO UPDATE SET
-                     content = excluded.content,
-                     size_bytes = excluded.size_bytes,
-                     uploaded_at = excluded.uploaded_at",
-                turso::params![
-                    namespace,
-                    repo,
-                    version,
-                    filename,
-                    turso::Value::Blob(bytes.to_vec()),
-                    bytes.len() as i64,
-                    chrono::Utc::now().to_rfc3339()
-                ],
-            )
-            .await
-            .map_err(|e| e.to_string())?;
-
-            for old_version in versions.iter().skip(RETAINED_VERSION_COUNT) {
-                conn.execute(
-                    "DELETE FROM repository_binaries
-                     WHERE namespace = ?1 AND repo = ?2 AND version = ?3",
-                    turso::params![namespace, repo, old_version.as_str()],
-                )
-                .await
-                .map_err(|e| e.to_string())?;
-            }
-
-            Ok(outcome)
-        }
+        let result = store_binary_in_transaction(
+            &conn, namespace, repo, &version, filename, bytes, size_bytes,
+        )
         .await;
 
         match result {
@@ -225,9 +151,8 @@ impl Database {
         let Some(row) = rows.next().await.map_err(|e| e.to_string())? else {
             return Ok(None);
         };
-        let content = match row.get_value(1).map_err(|e| e.to_string())? {
-            turso::Value::Blob(bytes) => bytes,
-            _ => return Err("Binary content is not stored as a BLOB".to_string()),
+        let turso::Value::Blob(content) = row.get_value(1).map_err(|e| e.to_string())? else {
+            return Err("Binary content is not stored as a BLOB".to_string());
         };
 
         Ok(Some(BinaryBlob {
@@ -236,7 +161,7 @@ impl Database {
         }))
     }
 
-    /// Resolves a filename in the highest retained SemVer release that has it.
+    /// Resolves a filename in the highest retained `SemVer` release that has it.
     pub async fn get_latest_binary(
         &self,
         namespace: &str,
@@ -271,6 +196,101 @@ impl Database {
             None => Ok(None),
         }
     }
+}
+
+async fn store_binary_in_transaction(
+    conn: &turso::Connection,
+    namespace: &str,
+    repo: &str,
+    version: &str,
+    filename: &str,
+    bytes: &[u8],
+    size_bytes: i64,
+) -> Result<PutBinaryOutcome, String> {
+    let mut existing = conn
+        .query(
+            "SELECT 1 FROM repository_binaries
+             WHERE namespace = ?1 AND repo = ?2 AND version = ?3 AND filename = ?4",
+            turso::params![namespace, repo, version, filename],
+        )
+        .await
+        .map_err(|error| error.to_string())?;
+    let outcome = if existing
+        .next()
+        .await
+        .map_err(|error| error.to_string())?
+        .is_some()
+    {
+        PutBinaryOutcome::Replaced
+    } else {
+        PutBinaryOutcome::Stored
+    };
+
+    let mut rows = conn
+        .query(
+            "SELECT DISTINCT version FROM repository_binaries
+             WHERE namespace = ?1 AND repo = ?2",
+            turso::params![namespace, repo],
+        )
+        .await
+        .map_err(|error| error.to_string())?;
+    let mut versions = Vec::new();
+    while let Some(row) = rows.next().await.map_err(|error| error.to_string())? {
+        versions.push(row.get::<String>(0).map_err(|error| error.to_string())?);
+    }
+    if !versions
+        .iter()
+        .any(|stored_version| stored_version == version)
+    {
+        versions.push(version.to_string());
+    }
+    for stored_version in &versions {
+        Version::parse(stored_version).map_err(|error| {
+            format!("Invalid SemVer version stored in binary registry: {error}")
+        })?;
+    }
+    versions.sort_by(|a, b| version_order_desc(a, b));
+
+    if !versions
+        .iter()
+        .take(RETAINED_VERSION_COUNT)
+        .any(|item| item == version)
+    {
+        return Ok(PutBinaryOutcome::TooOld);
+    }
+
+    conn.execute(
+        "INSERT INTO repository_binaries
+             (namespace, repo, version, filename, content, size_bytes, uploaded_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+         ON CONFLICT(namespace, repo, version, filename) DO UPDATE SET
+             content = excluded.content,
+             size_bytes = excluded.size_bytes,
+             uploaded_at = excluded.uploaded_at",
+        turso::params![
+            namespace,
+            repo,
+            version,
+            filename,
+            turso::Value::Blob(bytes.to_vec()),
+            size_bytes,
+            chrono::Utc::now().to_rfc3339()
+        ],
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+
+    for old_version in versions.iter().skip(RETAINED_VERSION_COUNT) {
+        conn.execute(
+            "DELETE FROM repository_binaries
+             WHERE namespace = ?1 AND repo = ?2 AND version = ?3",
+            turso::params![namespace, repo, old_version.as_str()],
+        )
+        .await
+        .map_err(|error| error.to_string())?;
+    }
+
+    Ok(outcome)
 }
 
 #[cfg(test)]
