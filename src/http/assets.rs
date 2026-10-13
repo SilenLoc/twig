@@ -300,6 +300,19 @@ mod tests {
     }
 
     #[test]
+    fn test_rich_editor_code_uses_theme_aware_contrast() {
+        let css = css_without_comments(body_of("twig.css"));
+        for selector in [
+            ".twig-editor-rich.ql-container.ql-snow .ql-editor code",
+            ".twig-editor-rich.ql-container.ql-snow .ql-editor .ql-code-block-container",
+        ] {
+            assert!(css.contains(selector), "missing themed rule for {selector}");
+        }
+        assert!(css.contains("background-color: var(--twig-surface-3)"));
+        assert!(css.contains("color: var(--twig-ink-primary)"));
+    }
+
+    #[test]
     fn test_twig_css_honours_the_depth_and_motion_bans() {
         let css = css_without_comments(body_of("twig.css"));
         for banned in ["box-shadow", "backdrop-filter", "text-shadow", "100vh"] {

@@ -1244,6 +1244,16 @@ body.twig-workspace-shell {
     line-height: 1.65;
 }
 
+.twig-editor-rich.ql-container.ql-snow .ql-editor code {
+    background-color: var(--twig-surface-3);
+    color: var(--twig-ink-primary);
+}
+
+.twig-editor-rich.ql-container.ql-snow .ql-editor .ql-code-block-container {
+    background-color: var(--twig-surface-3);
+    color: var(--twig-ink-primary);
+}
+
 .twig-editor-rich .ql-editor.ql-blank::before {
     color: var(--twig-ink-tertiary);
     font-style: normal;
