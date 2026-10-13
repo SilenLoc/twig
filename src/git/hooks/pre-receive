@@ -1,5 +1,5 @@
 #!/bin/sh
-# TWIG_MANAGED_PRE_RECEIVE_V1
+# TWIG_MANAGED_PRE_RECEIVE_V2
 
 set -eu
 

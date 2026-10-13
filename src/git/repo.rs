@@ -226,7 +226,8 @@ pub fn bare_init(
 }
 
 const PRE_RECEIVE_HOOK: &str = include_str!("hooks/pre-receive");
-const PRE_RECEIVE_HOOK_MARKER: &str = "TWIG_MANAGED_PRE_RECEIVE_V1";
+const PRE_RECEIVE_HOOK_MARKER: &str = "TWIG_MANAGED_PRE_RECEIVE_V2";
+const PREVIOUS_PRE_RECEIVE_HOOK_MARKER: &str = "TWIG_MANAGED_PRE_RECEIVE_V1";
 
 /// Installs Twig's receive policy while preserving any pre-existing user hook.
 /// Repeated calls are idempotent; additional custom hooks are kept as uniquely
@@ -236,6 +237,7 @@ pub fn install_pre_receive_hook(repo_path: &Path) -> Result<(), String> {
     fs::create_dir_all(&hooks_dir)
         .map_err(|error| format!("Failed to create repository hooks directory: {error}"))?;
     let hook_path = hooks_dir.join("pre-receive");
+    let mut upgrading_managed_hook = false;
 
     if fs::symlink_metadata(&hook_path).is_ok() {
         let metadata = fs::symlink_metadata(&hook_path)
@@ -247,6 +249,10 @@ pub fn install_pre_receive_hook(repo_path: &Path) -> Result<(), String> {
                 set_hook_executable(&hook_path)?;
                 return Ok(());
             }
+            // V1 was reused across receive-policy changes. Replace any V1
+            // managed hook in place: preserving it as a user hook could keep
+            // obsolete restrictions active after an upgrade.
+            upgrading_managed_hook = contents.contains(PREVIOUS_PRE_RECEIVE_HOOK_MARKER);
         } else if !metadata.file_type().is_symlink() {
             return Err("Existing pre-receive hook is not a regular file".to_string());
         }
@@ -268,7 +274,7 @@ pub fn install_pre_receive_hook(repo_path: &Path) -> Result<(), String> {
         return Err(error);
     }
 
-    let preserved_hook = if fs::symlink_metadata(&hook_path).is_ok() {
+    let preserved_hook = if !upgrading_managed_hook && fs::symlink_metadata(&hook_path).is_ok() {
         match next_preserved_hook_path(&hooks_dir) {
             Ok(path) => {
                 if let Err(error) = fs::rename(&hook_path, &path) {
@@ -609,6 +615,33 @@ mod tests {
             &[("TWIG_CUSTOM_HOOK_EXIT", "23")],
         );
         assert_eq!(rejection.status.code(), Some(23));
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn receive_hook_installation_upgrades_previous_managed_hook_in_place() {
+        let temp_dir = format!("/tmp/test_twig_hook_upgrade_{}", uuid::Uuid::new_v4());
+        let repo_path = Path::new(&temp_dir);
+        let hooks_dir = repo_path.join("hooks");
+        std::fs::create_dir_all(&hooks_dir).unwrap();
+
+        let hook_path = hooks_dir.join("pre-receive");
+        let previous_hook =
+            "#!/bin/sh\n# TWIG_MANAGED_PRE_RECEIVE_V1\nrole=${TWIG_NAMESPACE_ROLE:-contributor}\n";
+        std::fs::write(&hook_path, previous_hook).unwrap();
+
+        install_pre_receive_hook(repo_path).expect("upgrade previous managed receive hook");
+
+        let installed_hook = std::fs::read_to_string(&hook_path).unwrap();
+        assert!(installed_hook.contains(PRE_RECEIVE_HOOK_MARKER));
+        assert!(!installed_hook.contains(PREVIOUS_PRE_RECEIVE_HOOK_MARKER));
+        assert!(!hooks_dir.join("pre-receive.twig-user").exists());
+
+        // Reinstallation recognizes V2 and does not create a sidecar or replace
+        // the current managed hook again.
+        install_pre_receive_hook(repo_path).expect("reinstall current managed receive hook");
+        assert_eq!(std::fs::read_to_string(&hook_path).unwrap(), installed_hook);
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
