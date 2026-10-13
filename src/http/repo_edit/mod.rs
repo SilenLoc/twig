@@ -997,8 +997,8 @@ mod tests {
         let changes = html.find("id=\"repo-edit-changes-panel\"").unwrap();
         let editor = html.find("aria-label=\"Editor\"").unwrap();
         assert!(
-            navigation < changes && changes < editor,
-            "file navigation and pending changes stay in the rail before the editor canvas: {html}"
+            navigation < editor && editor < changes,
+            "file navigation, editor, and pending changes occupy left-to-right workspace columns: {html}"
         );
         assert!(
             html.contains("hx-action=\"/acme/notes/edit/commit\""),

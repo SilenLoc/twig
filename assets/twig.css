@@ -1352,7 +1352,7 @@ body.twig-workspace-shell {
 
 .twig-workspace-layout {
     display: grid;
-    grid-template-columns: minmax(13rem, 16rem) minmax(0, 1fr);
+    grid-template-columns: minmax(13rem, 16rem) minmax(0, 1fr) auto;
     align-items: stretch;
 }
 
@@ -1403,6 +1403,8 @@ body.twig-workspace-shell {
     flex: 1 1 auto;
     min-inline-size: 0;
     min-block-size: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
     padding-block-end: 0;
 }
 
@@ -1424,16 +1426,27 @@ body.twig-workspace-shell {
 }
 
 .twig-workspace-changes {
-    flex: 0 0 auto;
+    block-size: 100%;
+    inline-size: 3.5rem;
+    min-inline-size: 0;
+    min-block-size: 0;
+    overflow: hidden;
     margin: 0;
     border-inline: 0;
-    border-block-end: 0;
-    background: transparent;
+    border-block: 0;
+    border-inline-start: 1px solid var(--twig-rule);
+    background: var(--twig-surface-1);
+    transition: inline-size var(--twig-dur-standard) var(--twig-ease-out);
+}
+
+.twig-workspace-changes[open] {
+    inline-size: 18rem;
+    overflow-x: hidden;
+    overflow-y: auto;
 }
 
 .twig-workspace-changes > summary {
     padding: var(--twig-space-4);
-    border-block-start: 1px solid var(--twig-rule);
 }
 
 .twig-workspace-changes > summary .twig-section {
@@ -1713,6 +1726,33 @@ body.twig-workspace-shell {
     list-style: none;
 }
 
+.twig-repo-edit-changes:not([open]) > summary {
+    flex-direction: column;
+    justify-content: flex-start;
+    min-block-size: 100%;
+    padding: var(--twig-space-4) var(--twig-space-2);
+}
+
+.twig-repo-edit-changes:not([open]) > summary .twig-section {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+}
+
+.twig-repo-edit-changes > summary::after {
+    color: var(--twig-ink-tertiary);
+    content: "‹";
+    font-size: var(--twig-t-h3);
+    line-height: 1;
+}
+
+.twig-repo-edit-changes[open] > summary {
+    border-block-end: 1px solid var(--twig-rule);
+}
+
+.twig-repo-edit-changes[open] > summary::after {
+    content: "›";
+}
+
 .twig-repo-edit-changes > summary::-webkit-details-marker {
     display: none;
 }
@@ -1782,12 +1822,7 @@ body.twig-workspace-shell {
 
 @media (max-width: 47.999rem) {
     .twig-workspace-layout {
-        grid-template-columns: clamp(7rem, 34vw, 13rem) minmax(0, 1fr);
-    }
-
-    .twig-repo-edit-files {
-        overflow-x: hidden;
-        overflow-y: auto;
+        grid-template-columns: clamp(7rem, 34vw, 13rem) minmax(0, 1fr) auto;
     }
 
     .twig-workspace-nav-head {
@@ -1835,9 +1870,12 @@ body.twig-workspace-shell {
         padding: var(--twig-space-3) var(--twig-space-2);
     }
 
+    .twig-workspace-changes {
+        inline-size: 2.75rem;
+    }
+
     .twig-workspace-changes[open] {
-        max-block-size: 50%;
-        overflow: auto;
+        inline-size: min(15rem, 44vw);
     }
 
     .twig-workspace-changes > .twig-panel-body {
@@ -1898,6 +1936,14 @@ body.twig-workspace-shell {
 
     .twig-workspace-changes > summary {
         padding-inline: var(--twig-space-2);
+    }
+
+    .twig-workspace-changes {
+        inline-size: 2.5rem;
+    }
+
+    .twig-workspace-changes[open] {
+        inline-size: min(13rem, 45vw);
     }
 
     .twig-workspace-changes > .twig-panel-body {

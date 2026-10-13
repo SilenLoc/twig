@@ -33,12 +33,12 @@ pub(super) fn workspace_shell(
                 aside class="twig-workspace-nav" aria-label="Repository navigation" {
                     (workspace_navigation_header(namespace, repo))
                     (workspace_files_panel(&tree_url, &operation_url))
-                    (workspace_changes_panel(&commit_url, draft, has_email, &draft_json))
                     div id="repo-edit-operation-result" role="status" aria-live="polite" {}
                 }
                 div class="twig-workspace-canvas" {
                     (workspace_document_panel(document_url.as_deref()))
                 }
+                (workspace_changes_panel(&commit_url, draft, has_email, &draft_json))
             }
             (workspace_restore_form(&operation_url, &draft_json))
             (editor_assets())
