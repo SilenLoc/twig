@@ -309,8 +309,10 @@
     if (
       editor.dataset.markdown === "true" &&
       editor.dataset.mode === "rich" &&
-      quill
+      quill &&
+      editor._repoEditRichEdited
     ) {
+      // Quill normalizes Markdown on import, so preserve the source until edited.
       source.value = markdownFromRichText(quill);
     }
     return source.value;
@@ -352,8 +354,11 @@
         markdownHtml(source.value),
         "silent",
       );
+      editor._repoEditRichEdited = false;
     } else {
-      source.value = markdownFromRichText(editor._repoEditQuill);
+      if (editor._repoEditRichEdited) {
+        source.value = markdownFromRichText(editor._repoEditQuill);
+      }
     }
     source.hidden = isRich;
     rich.hidden = !isRich;
@@ -408,7 +413,10 @@
         "silent",
       );
       quill.on("text-change", function (_delta, _old, sourceType) {
-        if (sourceType === "user") saveCurrentEditor(editor, true);
+        if (sourceType === "user") {
+          editor._repoEditRichEdited = true;
+          saveCurrentEditor(editor, true);
+        }
       });
       editor.querySelectorAll("[data-editor-mode]").forEach(function (button) {
         button.addEventListener("click", function () {
