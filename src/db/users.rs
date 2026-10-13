@@ -68,6 +68,7 @@ impl Database {
                     username: row.get(1).map_err(|error| error.to_string())?,
                     email: row.get(2).map_err(|error| error.to_string())?,
                     memberships,
+                    is_site_admin: false,
                 },
             ));
         }

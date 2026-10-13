@@ -16,20 +16,20 @@ is_zero_oid() {
     esac
 }
 
-# An absent or unexpected role must fail closed as Contributor. HTTP Git requests
-# receive this value from Twig's authenticated server-side environment.
-role=${TWIG_NAMESPACE_ROLE:-contributor}
-if [ "$role" != "owner" ]; then
+# Only Twig's authenticated server-side environment may enable this capability.
+# Missing or unexpected values fail closed.
+can_rewrite=${TWIG_CAN_REWRITE_PROTECTED_BRANCHES:-0}
+if [ "$can_rewrite" != "1" ]; then
     while IFS=' ' read -r old_oid new_oid ref_name; do
         [ "$ref_name" = "refs/heads/main" ] || continue
 
         if is_zero_oid "$new_oid"; then
-            echo "Twig: Contributors cannot delete main." >&2
+            echo "Twig: This permission set cannot delete main." >&2
             exit 1
         fi
 
         if ! is_zero_oid "$old_oid" && ! git merge-base --is-ancestor "$old_oid" "$new_oid"; then
-            echo "Twig: Contributors cannot rewrite history on main." >&2
+            echo "Twig: This permission set cannot rewrite history on main." >&2
             exit 1
         fi
     done < "$updates"

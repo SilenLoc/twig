@@ -619,6 +619,129 @@ mod tests {
     }
 
     #[actix_web::test]
+    async fn configured_admin_has_all_git_permissions_without_namespace_membership() {
+        let (app, admin_session, _, contributor_session, _, project_root) =
+            create_admin_test_service().await;
+        let private_repo = std::path::Path::new(&project_root).join("docs-team/private");
+        init_private_repo(&private_repo);
+
+        let req = test::TestRequest::get()
+            .uri("/docs-team/private")
+            .cookie(actix_web::cookie::Cookie::new(
+                "session",
+                admin_session.clone(),
+            ))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = test::read_body(resp).await;
+        assert!(String::from_utf8_lossy(&body).contains("docs-team/private"));
+
+        let req = test::TestRequest::get()
+            .uri("/docs-team/private")
+            .cookie(actix_web::cookie::Cookie::new(
+                "session",
+                contributor_session.clone(),
+            ))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = test::read_body(resp).await;
+        assert!(
+            String::from_utf8_lossy(&body)
+                .contains("do not have permission to view this namespace")
+        );
+
+        let req = test::TestRequest::get()
+            .uri("/docs-team")
+            .cookie(actix_web::cookie::Cookie::new(
+                "session",
+                contributor_session,
+            ))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = test::read_body(resp).await;
+        assert!(!String::from_utf8_lossy(&body).contains("private"));
+
+        let req = test::TestRequest::get()
+            .uri("/tree/users?tab=users")
+            .cookie(actix_web::cookie::Cookie::new(
+                "session",
+                admin_session.clone(),
+            ))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = test::read_body(resp).await;
+        let body = String::from_utf8_lossy(&body);
+        assert!(body.contains("All namespaces"), "{body}");
+        assert!(body.contains("Rewrite protected branches"), "{body}");
+
+        let req = test::TestRequest::get()
+            .uri("/docs-team/private/info/refs?service=git-upload-pack")
+            .insert_header(("User-Agent", "git/2.43.0"))
+            .insert_header(("Authorization", basic_auth("admin", "password123")))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let req = test::TestRequest::get()
+            .uri("/docs-team/admin-created/info/refs?service=git-receive-pack")
+            .insert_header(("User-Agent", "git/2.43.0"))
+            .insert_header(("Authorization", basic_auth("admin", "password123")))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert!(
+            std::path::Path::new(&project_root)
+                .join("docs-team/admin-created")
+                .exists()
+        );
+
+        let req = test::TestRequest::post()
+            .uri("/tree/invites")
+            .cookie(actix_web::cookie::Cookie::new(
+                "session",
+                admin_session.clone(),
+            ))
+            .set_form([
+                ("email", "admin-invite@example.com"),
+                ("namespace", "docs-team"),
+                ("role", "contributor"),
+                ("expires", "7d"),
+            ])
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let req = test::TestRequest::post()
+            .uri("/settings/rename-repo")
+            .cookie(actix_web::cookie::Cookie::new(
+                "session",
+                admin_session.clone(),
+            ))
+            .set_form([
+                ("namespace", "docs-team"),
+                ("repo_name", "admin-created"),
+                ("new_name", "admin-renamed"),
+            ])
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let req = test::TestRequest::post()
+            .uri("/settings/rename-namespace")
+            .cookie(actix_web::cookie::Cookie::new("session", admin_session))
+            .set_form([("namespace", "docs-team"), ("new_name", "admin-docs")])
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let _ = std::fs::remove_dir_all(&project_root);
+    }
+
+    #[actix_web::test]
     async fn expired_namespace_invitation_link_returns_gone() {
         let (app, _, _, _, db, _) = create_admin_test_service().await;
         let namespace = db
@@ -1098,97 +1221,561 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn repository_editor_requires_access_and_commits_with_compare_and_swap() {
-        let root = format!("/tmp/test_twig_editor_{}", uuid::Uuid::new_v4());
+    async fn repo_edit_workspace_navigates_tree_and_reads_files_through_htmx() {
+        let root = format!("/tmp/test_twig_repo_edit_tracer_{}", uuid::Uuid::new_v4());
         let app = create_test_service_in(&root).await;
-        let session = signup_and_login(&app, "editorowner").await;
-        create_namespace(&app, session.clone(), "editspace").await;
-        let repo_path = std::path::Path::new(&root).join("editspace/repo");
-        let original_head = init_text_repo(&repo_path, "README.md", b"# Before\n");
+        let session = signup_and_login(&app, "repoworkspaceowner").await;
+        create_namespace(&app, session.clone(), "repoworkspace").await;
+        let repo_path = std::path::Path::new(&root).join("repoworkspace/repo");
+        init_repo_files(
+            &repo_path,
+            &[
+                ("README.md", b"# Not rendered by the tracer\n", 0o100_644),
+                ("src/main.rs", b"fn main() {}\n", 0o100_644),
+            ],
+        );
 
-        let unauthenticated = test::TestRequest::get()
-            .uri("/editspace/repo/edit/README.md")
-            .to_request();
-        let response = test::call_service(&app, unauthenticated).await;
-        assert_eq!(response.status(), StatusCode::FOUND);
-
-        let page = test::TestRequest::get()
-            .uri("/editspace/repo/edit/README.md")
+        let request = test::TestRequest::get()
+            .uri("/repoworkspace/repo/edit")
             .cookie(session.clone())
             .to_request();
-        let response = test::call_service(&app, page).await;
+        let response = test::call_service(&app, request).await;
         assert_eq!(response.status(), StatusCode::OK);
         let body = test::read_body(response).await;
         let html = String::from_utf8_lossy(&body);
-        assert!(html.contains("# Before"));
-        assert!(html.contains(&original_head.to_string()));
-        assert!(html.contains("Commit changes"));
+        assert!(html.contains("Repository workspace"), "{html}");
+        assert!(
+            html.contains("hx-get=\"/repoworkspace/repo/edit/tree/\""),
+            "{html}"
+        );
+        assert!(
+            !html.contains("Not rendered by the tracer"),
+            "the stub does not expose repository contents: {html}"
+        );
 
-        let unauthorized_save = test::TestRequest::post()
-            .uri("/editspace/repo/edit/README.md")
-            .set_json(serde_json::json!({
-                "content": "# Unauthorized\n",
-                "message": "Should not write",
-                "expected_head": original_head.to_string()
-            }))
-            .to_request();
-        let response = test::call_service(&app, unauthorized_save).await;
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-
-        let save = test::TestRequest::post()
-            .uri("/editspace/repo/edit/README.md")
-            .cookie(session.clone())
-            .set_json(serde_json::json!({
-                "content": "# After\n",
-                "message": "Update README",
-                "expected_head": original_head.to_string()
-            }))
-            .to_request();
-        let response = test::call_service(&app, save).await;
-        assert_eq!(response.status(), StatusCode::OK);
-        let result: serde_json::Value = test::read_body_json(response).await;
-        let location = result["location"].as_str().unwrap();
-        assert!(location.contains("committed="));
-
-        let saved_page = test::TestRequest::get()
-            .uri(location)
+        let request = test::TestRequest::get()
+            .uri("/repoworkspace/repo/edit/tree/")
+            .insert_header(("HX-Request", "true"))
             .cookie(session.clone())
             .to_request();
-        let response = test::call_service(&app, saved_page).await;
+        let response = test::call_service(&app, request).await;
         assert_eq!(response.status(), StatusCode::OK);
         let body = test::read_body(response).await;
-        assert!(String::from_utf8_lossy(&body).contains("Changes committed successfully."));
-
-        let handle = crate::git::bare::RepoHandle::open(&root, "editspace", "repo").unwrap();
-        assert_eq!(
-            handle.read_blob_bytes("README.md").unwrap().as_deref(),
-            Some(&b"# After\n"[..])
+        let html = String::from_utf8_lossy(&body);
+        assert!(html.contains("README.md"), "{html}");
+        assert!(
+            html.contains("hx-get=\"/repoworkspace/repo/edit/file/README.md\""),
+            "{html}"
         );
-        let commits = handle.get_commits(2).unwrap();
-        assert_eq!(commits.len(), 2);
-        assert_eq!(commits[0].author(), "editorowner");
+        assert!(!html.contains("<html"), "HTMX receives a fragment: {html}");
 
-        let stale_save = test::TestRequest::post()
-            .uri("/editspace/repo/edit/README.md")
-            .cookie(session)
-            .set_json(serde_json::json!({
-                "content": "# Stale\n",
-                "message": "Stale README",
-                "expected_head": original_head.to_string()
-            }))
+        let request = test::TestRequest::get()
+            .uri("/repoworkspace/repo/edit/file/README.md")
+            .insert_header(("HX-Request", "true"))
+            .cookie(session.clone())
             .to_request();
-        let response = test::call_service(&app, stale_save).await;
-        assert_eq!(response.status(), StatusCode::CONFLICT);
+        let response = test::call_service(&app, request).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = test::read_body(response).await;
+        let html = String::from_utf8_lossy(&body);
+        assert!(html.contains("Rich text"), "{html}");
+        assert!(html.contains("Markdown source"), "{html}");
+        assert!(html.contains("Not rendered by the tracer"), "{html}");
+        assert!(html.contains("data-editor-rich"), "{html}");
+        assert!(html.contains("data-editor-source"), "{html}");
+        assert!(
+            !html.contains("readonly"),
+            "workspace text is editable: {html}"
+        );
+        assert!(
+            !html.contains("<script>"),
+            "repository text is not executable markup: {html}"
+        );
+
+        let request = test::TestRequest::get()
+            .uri("/repoworkspace/repo/edit/file/src/main.rs")
+            .insert_header(("HX-Request", "true"))
+            .cookie(session.clone())
+            .to_request();
+        let response = test::call_service(&app, request).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = test::read_body(response).await;
+        let html = String::from_utf8_lossy(&body);
+        assert!(html.contains("Source text"), "{html}");
+        assert!(html.contains("fn main() {}"), "{html}");
+        assert!(
+            !html.contains("readonly"),
+            "workspace source is editable: {html}"
+        );
+        for execution_control in ["Run code", "Run file", "Execute", "Preview"] {
+            assert!(
+                !html.contains(execution_control),
+                "the editor must not offer {execution_control}: {html}"
+            );
+        }
+
+        let request = test::TestRequest::get()
+            .uri("/repoworkspace/repo/edit/README.md")
+            .cookie(session)
+            .to_request();
+        let response = test::call_service(&app, request).await;
+        assert_eq!(response.status(), StatusCode::FOUND);
         assert_eq!(
-            handle.read_blob_bytes("README.md").unwrap().as_deref(),
-            Some(&b"# After\n"[..])
+            response.headers().get("location").unwrap(),
+            "/repoworkspace/repo/edit?path=README.md"
         );
 
         let _ = std::fs::remove_dir_all(&root);
     }
 
     #[actix_web::test]
-    async fn repository_editor_denies_authenticated_users_without_namespace_access() {
+    async fn repo_edit_operations_stage_multiple_file_changes_without_writing_git() {
+        let root = format!("/tmp/test_twig_repo_edit_draft_{}", uuid::Uuid::new_v4());
+        let app = create_test_service_in(&root).await;
+        let session = signup_and_login(&app, "repoeditdraftowner").await;
+        create_namespace(&app, session.clone(), "repoeditdraft").await;
+        let repo_path = std::path::Path::new(&root).join("repoeditdraft/repo");
+        let base_head = init_repo_files(
+            &repo_path,
+            &[
+                ("README.md", b"# Before\n", 0o100_644),
+                ("src/main.rs", b"fn main() {}\n", 0o100_644),
+            ],
+        );
+        let handle = crate::git::bare::RepoHandle::open(&root, "repoeditdraft", "repo").unwrap();
+
+        let empty_draft = serde_json::json!({
+            "base_head": base_head.to_string(),
+            "active_path": "README.md",
+            "tree_path": "",
+            "changes": []
+        })
+        .to_string();
+        let create = test::TestRequest::post()
+            .uri("/repoeditdraft/repo/edit/operation")
+            .cookie(session.clone())
+            .set_form([
+                ("draft", empty_draft.as_str()),
+                ("kind", "create"),
+                ("path", "docs/new.md"),
+            ])
+            .to_request();
+        let response = test::call_service(&app, create).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = test::read_body(response).await;
+        let html = String::from_utf8_lossy(&body);
+        assert!(html.contains("data-operation-success=\"true\""), "{html}");
+        assert!(html.contains("Created docs/new.md"), "{html}");
+        assert_eq!(handle.head_oid().unwrap(), Some(base_head));
+        assert_eq!(handle.read_blob_bytes("docs/new.md").unwrap(), None);
+
+        let renamed = test::TestRequest::post()
+            .uri("/repoeditdraft/repo/edit/operation")
+            .cookie(session.clone())
+            .set_form([
+                ("draft", empty_draft.as_str()),
+                ("kind", "rename"),
+                ("from", "README.md"),
+                ("to", "docs/intro.md"),
+            ])
+            .to_request();
+        let response = test::call_service(&app, renamed).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = test::read_body(response).await;
+        let html = String::from_utf8_lossy(&body);
+        assert!(
+            html.contains("Renamed README.md to docs/intro.md"),
+            "{html}"
+        );
+        assert!(
+            html.contains("# Before"),
+            "the renamed draft preserves its content: {html}"
+        );
+        assert_eq!(handle.head_oid().unwrap(), Some(base_head));
+
+        let rename_state = serde_json::json!({
+            "base_head": base_head.to_string(),
+            "active_path": "docs/intro.md",
+            "tree_path": "docs",
+            "changes": [
+                { "path": "README.md", "state": { "kind": "deleted" } },
+                { "path": "docs/intro.md", "state": { "kind": "content", "text": "# Before\n" } }
+            ]
+        })
+        .to_string();
+        let deleted = test::TestRequest::post()
+            .uri("/repoeditdraft/repo/edit/operation")
+            .cookie(session.clone())
+            .set_form([
+                ("draft", rename_state.as_str()),
+                ("kind", "delete"),
+                ("path", "src/main.rs"),
+            ])
+            .to_request();
+        let response = test::call_service(&app, deleted).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = test::read_body(response).await;
+        let html = String::from_utf8_lossy(&body);
+        assert!(html.contains("Marked src/main.rs for removal"), "{html}");
+        assert!(
+            html.contains("docs/intro.md"),
+            "the entire change set is retained: {html}"
+        );
+        assert_eq!(handle.head_oid().unwrap(), Some(base_head));
+
+        let invalid = test::TestRequest::post()
+            .uri("/repoeditdraft/repo/edit/operation")
+            .cookie(session)
+            .set_form([
+                ("draft", rename_state.as_str()),
+                ("kind", "create"),
+                ("path", "../escape.txt"),
+            ])
+            .to_request();
+        let response = test::call_service(&app, invalid).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = test::read_body(response).await;
+        let html = String::from_utf8_lossy(&body);
+        assert!(html.contains("data-operation-success=\"false\""), "{html}");
+        assert!(html.contains("safe path"), "{html}");
+        assert_eq!(handle.head_oid().unwrap(), Some(base_head));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[actix_web::test]
+    async fn repo_edit_commits_the_complete_draft_as_one_commit_and_keeps_the_workspace() {
+        let root = format!("/tmp/test_twig_repo_edit_commit_{}", uuid::Uuid::new_v4());
+        let app = create_test_service_in(&root).await;
+        let session = signup_and_login(&app, "repoeditcommitowner").await;
+        create_namespace(&app, session.clone(), "repoeditcommit").await;
+        let repo_path = std::path::Path::new(&root).join("repoeditcommit/repo");
+        let base_head = init_repo_files(
+            &repo_path,
+            &[
+                ("README.md", b"# Before\n", 0o100_644),
+                ("src/main.rs", b"fn main() {}\n", 0o100_644),
+                ("docs/old.md", b"# Old name\n", 0o100_644),
+            ],
+        );
+        let handle = crate::git::bare::RepoHandle::open(&root, "repoeditcommit", "repo").unwrap();
+        let draft = serde_json::json!({
+            "base_head": base_head.to_string(),
+            "active_path": "docs/new.md",
+            "tree_path": "docs",
+            "changes": [
+                { "path": "README.md", "state": { "kind": "content", "text": "# Updated\n" } },
+                { "path": "src/main.rs", "state": { "kind": "deleted" } },
+                { "path": "docs/old.md", "state": { "kind": "deleted" } },
+                { "path": "docs/renamed.md", "state": { "kind": "content", "text": "# Renamed\n" } },
+                { "path": "docs/new.md", "state": { "kind": "content", "text": "# New\n" } }
+            ]
+        })
+        .to_string();
+
+        let request = test::TestRequest::post()
+            .uri("/repoeditcommit/repo/edit/commit")
+            .insert_header(("HX-Request", "true"))
+            .cookie(session)
+            .set_form([
+                ("draft", draft.as_str()),
+                ("message", "Update repository guides"),
+            ])
+            .to_request();
+        let response = test::call_service(&app, request).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = test::read_body(response).await;
+        let html = String::from_utf8_lossy(&body);
+        assert!(html.contains("data-commit-success=\"true\""), "{html}");
+        assert!(html.contains("Changes committed successfully"), "{html}");
+        assert!(
+            !html.contains("<html"),
+            "HTMX receives a result fragment: {html}"
+        );
+
+        let new_head = handle.head_oid().unwrap().unwrap();
+        assert_ne!(new_head, base_head);
+        assert_eq!(
+            handle.read_blob_bytes("README.md").unwrap().as_deref(),
+            Some(&b"# Updated\n"[..])
+        );
+        assert_eq!(handle.read_blob_bytes("src/main.rs").unwrap(), None);
+        assert_eq!(handle.read_blob_bytes("docs/old.md").unwrap(), None);
+        assert_eq!(
+            handle
+                .read_blob_bytes("docs/renamed.md")
+                .unwrap()
+                .as_deref(),
+            Some(&b"# Renamed\n"[..])
+        );
+        assert_eq!(
+            handle.read_blob_bytes("docs/new.md").unwrap().as_deref(),
+            Some(&b"# New\n"[..])
+        );
+
+        let repo = git2::Repository::open(&repo_path).unwrap();
+        let commit = repo.find_commit(new_head).unwrap();
+        assert_eq!(commit.parent_id(0).unwrap(), base_head);
+        assert_eq!(commit.author().name().unwrap(), "repoeditcommitowner");
+        assert_eq!(commit.message().unwrap(), "Update repository guides");
+        assert_eq!(handle.get_commits(3).unwrap().len(), 2);
+    }
+
+    #[actix_web::test]
+    async fn repo_edit_commit_conflict_preserves_draft_and_concurrent_head() {
+        let root = format!("/tmp/test_twig_repo_edit_conflict_{}", uuid::Uuid::new_v4());
+        let app = create_test_service_in(&root).await;
+        let session = signup_and_login(&app, "repoeditconflictowner").await;
+        create_namespace(&app, session.clone(), "repoeditconflict").await;
+        let repo_path = std::path::Path::new(&root).join("repoeditconflict/repo");
+        let base_head = init_text_repo(&repo_path, "README.md", b"# Before\n");
+        let handle = crate::git::bare::RepoHandle::open(&root, "repoeditconflict", "repo").unwrap();
+        let concurrent = handle
+            .commit_file(
+                "README.md",
+                b"# Concurrent\n",
+                base_head,
+                "Other editor",
+                "other@example.test",
+                "Concurrent edit",
+            )
+            .unwrap();
+        let crate::git::bare::CommitFileOutcome::Committed(concurrent_head) = concurrent else {
+            panic!("the independent commit should advance the branch");
+        };
+        let draft = serde_json::json!({
+            "base_head": base_head.to_string(),
+            "active_path": "README.md",
+            "tree_path": "",
+            "changes": [
+                { "path": "README.md", "state": { "kind": "content", "text": "# My preserved draft\n" } }
+            ]
+        })
+        .to_string();
+
+        let request = test::TestRequest::post()
+            .uri("/repoeditconflict/repo/edit/commit")
+            .cookie(session)
+            .set_form([("draft", draft.as_str()), ("message", "My draft")])
+            .to_request();
+        let response = test::call_service(&app, request).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = test::read_body(response).await;
+        let html = String::from_utf8_lossy(&body);
+        assert!(html.contains("data-commit-conflict=\"true\""), "{html}");
+        assert!(
+            html.contains("# My preserved draft"),
+            "draft must be returned: {html}"
+        );
+        assert_eq!(handle.head_oid().unwrap(), Some(concurrent_head));
+        assert_eq!(
+            handle.read_blob_bytes("README.md").unwrap().as_deref(),
+            Some(&b"# Concurrent\n"[..])
+        );
+        assert_eq!(handle.get_commits(3).unwrap().len(), 2);
+    }
+
+    #[actix_web::test]
+    async fn repo_edit_commit_rejects_invalid_message_noop_and_oversized_file() {
+        let root = format!(
+            "/tmp/test_twig_repo_edit_commit_validation_{}",
+            uuid::Uuid::new_v4()
+        );
+        let app = create_test_service_in(&root).await;
+        let session = signup_and_login(&app, "repoeditvalidator").await;
+        create_namespace(&app, session.clone(), "repoeditvalidation").await;
+        let repo_path = std::path::Path::new(&root).join("repoeditvalidation/repo");
+        let base_head = init_text_repo(&repo_path, "README.md", b"# Stable\n");
+        let handle =
+            crate::git::bare::RepoHandle::open(&root, "repoeditvalidation", "repo").unwrap();
+        let changed_draft = serde_json::json!({
+            "base_head": base_head.to_string(),
+            "active_path": "README.md",
+            "tree_path": "",
+            "changes": [
+                { "path": "README.md", "state": { "kind": "content", "text": "# Changed\n" } }
+            ]
+        })
+        .to_string();
+
+        for message in [String::new(), "x".repeat(201)] {
+            let request = test::TestRequest::post()
+                .uri("/repoeditvalidation/repo/edit/commit")
+                .cookie(session.clone())
+                .set_form([
+                    ("draft", changed_draft.as_str()),
+                    ("message", message.as_str()),
+                ])
+                .to_request();
+            let response = test::call_service(&app, request).await;
+            assert_eq!(response.status(), StatusCode::OK);
+            let body = test::read_body(response).await;
+            let html = String::from_utf8_lossy(&body);
+            assert!(html.contains("data-commit-success=\"false\""), "{html}");
+        }
+
+        let empty_draft = serde_json::json!({
+            "base_head": base_head.to_string(),
+            "active_path": "README.md",
+            "tree_path": "",
+            "changes": []
+        })
+        .to_string();
+        let empty = test::TestRequest::post()
+            .uri("/repoeditvalidation/repo/edit/commit")
+            .cookie(session.clone())
+            .set_form([("draft", empty_draft.as_str()), ("message", "No changes")])
+            .to_request();
+        let response = test::call_service(&app, empty).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = test::read_body(response).await;
+        assert!(String::from_utf8_lossy(&body).contains("no changes to commit"));
+
+        let unchanged_draft = serde_json::json!({
+            "base_head": base_head.to_string(),
+            "active_path": "README.md",
+            "tree_path": "",
+            "changes": [
+                { "path": "README.md", "state": { "kind": "content", "text": "# Stable\n" } }
+            ]
+        })
+        .to_string();
+        let unchanged = test::TestRequest::post()
+            .uri("/repoeditvalidation/repo/edit/commit")
+            .cookie(session.clone())
+            .set_form([("draft", unchanged_draft.as_str()), ("message", "No-op")])
+            .to_request();
+        let response = test::call_service(&app, unchanged).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = test::read_body(response).await;
+        assert!(String::from_utf8_lossy(&body).contains("no changes to commit"));
+
+        let oversized_content = "x".repeat(1024 * 1024 + 1);
+        let oversized_draft = serde_json::json!({
+            "base_head": base_head.to_string(),
+            "active_path": "README.md",
+            "tree_path": "",
+            "changes": [
+                { "path": "README.md", "state": { "kind": "content", "text": oversized_content } }
+            ]
+        })
+        .to_string();
+        let oversized = test::TestRequest::post()
+            .uri("/repoeditvalidation/repo/edit/commit")
+            .cookie(session)
+            .set_form([
+                ("draft", oversized_draft.as_str()),
+                ("message", "Too large"),
+            ])
+            .to_request();
+        let response = test::call_service(&app, oversized).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = test::read_body(response).await;
+        let html = String::from_utf8_lossy(&body);
+        assert!(html.contains("larger than 1 MiB"), "{html}");
+        assert_eq!(handle.head_oid().unwrap(), Some(base_head));
+        assert_eq!(handle.get_commits(3).unwrap().len(), 1);
+    }
+
+    #[actix_web::test]
+    async fn repo_edit_commit_accepts_drafts_larger_than_the_default_form_limit() {
+        let root = format!(
+            "/tmp/test_twig_repo_edit_form_size_{}",
+            uuid::Uuid::new_v4()
+        );
+        let app = create_test_service_in(&root).await;
+        let session = signup_and_login(&app, "repoeditformowner").await;
+        create_namespace(&app, session.clone(), "repoeditform").await;
+        let repo_path = std::path::Path::new(&root).join("repoeditform/repo");
+        let base_head = init_text_repo(&repo_path, "README.md", b"# Before\n");
+        let content = "x".repeat(32 * 1024);
+        let draft = serde_json::json!({
+            "base_head": base_head.to_string(),
+            "active_path": "docs/large.txt",
+            "tree_path": "docs",
+            "changes": [
+                { "path": "docs/large.txt", "state": { "kind": "content", "text": content } }
+            ]
+        })
+        .to_string();
+
+        let request = test::TestRequest::post()
+            .uri("/repoeditform/repo/edit/commit")
+            .cookie(session)
+            .set_form([
+                ("draft", draft.as_str()),
+                ("message", "Add a large text file"),
+            ])
+            .to_request();
+        let response = test::call_service(&app, request).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = test::read_body(response).await;
+        let html = String::from_utf8_lossy(&body);
+        assert!(html.contains("data-commit-success=\"true\""), "{html}");
+
+        let handle = crate::git::bare::RepoHandle::open(&root, "repoeditform", "repo").unwrap();
+        assert_ne!(handle.head_oid().unwrap(), Some(base_head));
+        assert_eq!(
+            handle
+                .read_blob_bytes("docs/large.txt")
+                .unwrap()
+                .unwrap()
+                .len(),
+            32 * 1024
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[actix_web::test]
+    async fn repo_edit_commit_requires_an_author_email() {
+        let root = format!("/tmp/test_twig_repo_edit_no_email_{}", uuid::Uuid::new_v4());
+        let (app, db) = create_test_service_with_db_in(&root).await;
+        let session = signup_and_login(&app, "repoeditnoemail").await;
+        create_namespace(&app, session.clone(), "repoeditnoemail").await;
+        db.conn()
+            .await
+            .unwrap()
+            .execute(
+                "UPDATE users SET email = NULL WHERE username = ?1",
+                turso::params!["repoeditnoemail"],
+            )
+            .await
+            .unwrap();
+        let repo_path = std::path::Path::new(&root).join("repoeditnoemail/repo");
+        let base_head = init_text_repo(&repo_path, "README.md", b"# Before\n");
+        let draft = serde_json::json!({
+            "base_head": base_head.to_string(),
+            "active_path": "README.md",
+            "tree_path": "",
+            "changes": [
+                { "path": "README.md", "state": { "kind": "content", "text": "# After\n" } }
+            ]
+        })
+        .to_string();
+
+        let request = test::TestRequest::post()
+            .uri("/repoeditnoemail/repo/edit/commit")
+            .cookie(session)
+            .set_form([("draft", draft.as_str()), ("message", "Update README")])
+            .to_request();
+        let response = test::call_service(&app, request).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = test::read_body(response).await;
+        let html = String::from_utf8_lossy(&body);
+        assert!(html.contains("Set an email address in"), "{html}");
+        assert!(html.contains("data-commit-success=\"false\""), "{html}");
+
+        let handle = crate::git::bare::RepoHandle::open(&root, "repoeditnoemail", "repo").unwrap();
+        assert_eq!(handle.head_oid().unwrap(), Some(base_head));
+        assert_eq!(
+            handle.read_blob_bytes("README.md").unwrap().as_deref(),
+            Some(&b"# Before\n"[..])
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[actix_web::test]
+    async fn repo_edit_legacy_file_entry_denies_authenticated_users_without_namespace_access() {
         let root = format!("/tmp/test_twig_editor_access_{}", uuid::Uuid::new_v4());
         let app = create_test_service_in(&root).await;
         let owner_session = signup_and_login(&app, "editaccessowner").await;
@@ -1208,210 +1795,7 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn repository_editor_edits_non_markdown_files_as_exact_source_text() {
-        let root = format!("/tmp/test_twig_editor_source_{}", uuid::Uuid::new_v4());
-        let app = create_test_service_in(&root).await;
-        let session = signup_and_login(&app, "editorsourceowner").await;
-        create_namespace(&app, session.clone(), "editsourcespace").await;
-        let repo_path = std::path::Path::new(&root).join("editsourcespace/repo");
-        let head = init_text_repo(&repo_path, "src/main.rs", b"fn main() {}\n");
-
-        let page = test::TestRequest::get()
-            .uri("/editsourcespace/repo/edit/src/main.rs")
-            .cookie(session.clone())
-            .to_request();
-        let response = test::call_service(&app, page).await;
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = test::read_body(response).await;
-        let html = String::from_utf8_lossy(&body);
-        assert!(html.contains("Source editor"));
-        assert!(html.contains("fn main() {}"));
-        assert!(!html.contains("quill-"), "source files must not load Quill");
-
-        let save = test::TestRequest::post()
-            .uri("/editsourcespace/repo/edit/src/main.rs")
-            .cookie(session)
-            .set_json(serde_json::json!({
-                "content": "fn main() { println!(\"edited\"); }\n",
-                "message": "Edit Rust source",
-                "expected_head": head.to_string()
-            }))
-            .to_request();
-        let response = test::call_service(&app, save).await;
-        assert_eq!(response.status(), StatusCode::OK);
-        let handle = crate::git::bare::RepoHandle::open(&root, "editsourcespace", "repo").unwrap();
-        assert_eq!(
-            handle.read_blob_bytes("src/main.rs").unwrap().as_deref(),
-            Some(&b"fn main() { println!(\"edited\"); }\n"[..])
-        );
-
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[actix_web::test]
-    async fn repository_editor_saves_conflicted_draft_as_prefixed_file_on_latest_head() {
-        let root = format!(
-            "/tmp/test_twig_editor_conflict_copy_{}",
-            uuid::Uuid::new_v4()
-        );
-        let app = create_test_service_in(&root).await;
-        let session = signup_and_login(&app, "editorcopyowner").await;
-        create_namespace(&app, session.clone(), "editcopyspace").await;
-        let repo_path = std::path::Path::new(&root).join("editcopyspace/repo");
-        let original_head = init_text_repo(&repo_path, "README.md", b"# Original\n");
-        let handle = crate::git::bare::RepoHandle::open(&root, "editcopyspace", "repo").unwrap();
-
-        let concurrent = handle
-            .commit_file(
-                "README.md",
-                b"# Concurrent edit\n",
-                original_head,
-                "Other editor",
-                "other@example.com",
-                "Concurrent update",
-            )
-            .unwrap();
-        let crate::git::bare::CommitFileOutcome::Committed(concurrent_head) = concurrent else {
-            panic!("the concurrent update should commit");
-        };
-
-        let stale_save = test::TestRequest::post()
-            .uri("/editcopyspace/repo/edit/README.md")
-            .cookie(session.clone())
-            .set_json(serde_json::json!({
-                "content": "# My preserved draft\n",
-                "message": "My draft",
-                "expected_head": original_head.to_string()
-            }))
-            .to_request();
-        let response = test::call_service(&app, stale_save).await;
-        assert_eq!(response.status(), StatusCode::CONFLICT);
-        let body = test::read_body(response).await;
-        assert!(String::from_utf8_lossy(&body).contains("save it as a new file"));
-
-        let save_copy = test::TestRequest::post()
-            .uri("/editcopyspace/repo/edit/README.md")
-            .cookie(session.clone())
-            .set_json(serde_json::json!({
-                "content": "# My preserved draft\n",
-                "message": "My draft",
-                "expected_head": original_head.to_string(),
-                "save_conflict_copy": true
-            }))
-            .to_request();
-        let response = test::call_service(&app, save_copy).await;
-        assert_eq!(response.status(), StatusCode::OK);
-        let result: serde_json::Value = test::read_body_json(response).await;
-        let location = result["location"].as_str().unwrap();
-        assert!(location.contains("?committed="));
-        assert!(location.contains("&conflict_copy=true"));
-        let (copy_path, _) = location
-            .strip_prefix("/editcopyspace/repo/content/")
-            .unwrap()
-            .split_once('?')
-            .unwrap();
-        let mut name_parts = copy_path.splitn(4, '-');
-        assert_eq!(name_parts.next(), Some("editorcopyowner"));
-        let date = name_parts.next().unwrap();
-        let time = name_parts.next().unwrap();
-        assert_eq!(date.len(), 8);
-        assert!(date.chars().all(|character| character.is_ascii_digit()));
-        assert_eq!(time.len(), 6);
-        assert!(time.chars().all(|character| character.is_ascii_digit()));
-        assert_eq!(name_parts.next(), Some("README.md"));
-
-        assert_eq!(
-            handle.read_blob_bytes("README.md").unwrap().as_deref(),
-            Some(&b"# Concurrent edit\n"[..]),
-            "the other user's update must remain untouched"
-        );
-        assert_eq!(
-            handle.read_blob_bytes(copy_path).unwrap().as_deref(),
-            Some(&b"# My preserved draft\n"[..])
-        );
-        let repo = git2::Repository::open(&repo_path).unwrap();
-        let copy_commit = repo
-            .find_commit(handle.head_oid().unwrap().unwrap())
-            .unwrap();
-        assert_eq!(copy_commit.parent_id(0).unwrap(), concurrent_head);
-        assert_eq!(copy_commit.author().name().unwrap(), "editorcopyowner");
-        drop(copy_commit);
-        drop(repo);
-
-        let saved_page = test::TestRequest::get()
-            .uri(location)
-            .cookie(session.clone())
-            .to_request();
-        let response = test::call_service(&app, saved_page).await;
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = test::read_body(response).await;
-        assert!(String::from_utf8_lossy(&body).contains("Draft saved as a conflict copy."));
-
-        // A later change may delete the file being edited entirely. The
-        // already-open editor must still be able to persist its draft copy.
-        let repo = git2::Repository::open(&repo_path).unwrap();
-        let tip = repo.head().unwrap().peel_to_commit().unwrap();
-        let tip_id = tip.id();
-        let tree_id = {
-            let tree = tip.tree().unwrap();
-            let mut update = git2::build::TreeUpdateBuilder::new();
-            update.remove("README.md");
-            update.create_updated(&repo, &tree).unwrap()
-        };
-        let new_tree = repo.find_tree(tree_id).unwrap();
-        let signature = git2::Signature::now("Other editor", "other@example.com").unwrap();
-        let deleted_head = repo
-            .commit(
-                None,
-                &signature,
-                &signature,
-                "Delete README",
-                &new_tree,
-                &[&tip],
-            )
-            .unwrap();
-        repo.reference_matching(
-            "refs/heads/main",
-            deleted_head,
-            true,
-            tip_id,
-            "Delete README",
-        )
-        .unwrap();
-        drop(new_tree);
-        drop(tip);
-        drop(repo);
-
-        let after_delete = test::TestRequest::post()
-            .uri("/editcopyspace/repo/edit/README.md")
-            .cookie(session.clone())
-            .set_json(serde_json::json!({
-                "content": "# Draft after deletion\n",
-                "message": "Keep my deleted-file draft",
-                "expected_head": concurrent_head.to_string(),
-                "save_conflict_copy": true
-            }))
-            .to_request();
-        let response = test::call_service(&app, after_delete).await;
-        assert_eq!(response.status(), StatusCode::OK);
-        let result: serde_json::Value = test::read_body_json(response).await;
-        let location = result["location"].as_str().unwrap();
-        let (second_copy_path, _) = location
-            .strip_prefix("/editcopyspace/repo/content/")
-            .unwrap()
-            .split_once('?')
-            .unwrap();
-        assert_eq!(handle.read_blob_bytes("README.md").unwrap(), None);
-        assert_eq!(
-            handle.read_blob_bytes(second_copy_path).unwrap().as_deref(),
-            Some(&b"# Draft after deletion\n"[..])
-        );
-
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[actix_web::test]
-    async fn repository_editor_refuses_ignored_binary_invalid_and_non_regular_files() {
+    async fn repo_edit_refuses_ignored_binary_invalid_and_non_regular_files() {
         let root = format!("/tmp/test_twig_editor_files_{}", uuid::Uuid::new_v4());
         let app = create_test_service_in(&root).await;
         let session = signup_and_login(&app, "editorfileowner").await;
@@ -1435,78 +1819,29 @@ mod tests {
             ],
         );
 
-        for (path, expected) in [
-            ("hidden.txt", StatusCode::NOT_FOUND),
-            ("missing.txt", StatusCode::NOT_FOUND),
-            ("binary.bin", StatusCode::UNSUPPORTED_MEDIA_TYPE),
-            ("invalid.txt", StatusCode::UNSUPPORTED_MEDIA_TYPE),
-            ("large.txt", StatusCode::PAYLOAD_TOO_LARGE),
-            ("link.txt", StatusCode::UNSUPPORTED_MEDIA_TYPE),
+        for (path, expected_message) in [
+            ("hidden.txt", "cannot be opened"),
+            ("missing.txt", "cannot be opened"),
+            ("binary.bin", "Binary files cannot"),
+            ("invalid.txt", "Only UTF-8 text files"),
+            ("large.txt", "larger than 1 MiB"),
+            ("link.txt", "Only regular text files"),
         ] {
             let request = test::TestRequest::get()
-                .uri(&format!("/editfilespace/repo/edit/{path}"))
+                .uri(&format!("/editfilespace/repo/edit/file/{path}"))
+                .insert_header(("HX-Request", "true"))
                 .cookie(session.clone())
                 .to_request();
             let response = test::call_service(&app, request).await;
-            assert_eq!(response.status(), expected, "{path}");
+            assert_eq!(response.status(), StatusCode::OK, "{path}");
+            let body = test::read_body(response).await;
+            let html = String::from_utf8_lossy(&body);
+            assert!(html.contains(expected_message), "{path}: {html}");
+            if path == "hidden.txt" {
+                assert!(!html.contains("secret"), "ignored content leaked: {html}");
+            }
         }
 
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[actix_web::test]
-    async fn repository_editor_rejects_empty_or_unchanged_commits_without_history_changes() {
-        let root = format!("/tmp/test_twig_editor_validation_{}", uuid::Uuid::new_v4());
-        let app = create_test_service_in(&root).await;
-        let session = signup_and_login(&app, "editorvalidator").await;
-        create_namespace(&app, session.clone(), "editvalidspace").await;
-        let repo_path = std::path::Path::new(&root).join("editvalidspace/repo");
-        let head = init_text_repo(&repo_path, "README.md", b"# Stable\n");
-
-        for (message, expected_status) in [
-            ("", StatusCode::BAD_REQUEST),
-            (&"x".repeat(201), StatusCode::BAD_REQUEST),
-        ] {
-            let request = test::TestRequest::post()
-                .uri("/editvalidspace/repo/edit/README.md")
-                .cookie(session.clone())
-                .set_json(serde_json::json!({
-                    "content": "# Changed\n",
-                    "message": message,
-                    "expected_head": head.to_string()
-                }))
-                .to_request();
-            let response = test::call_service(&app, request).await;
-            assert_eq!(response.status(), expected_status);
-        }
-
-        let unchanged = test::TestRequest::post()
-            .uri("/editvalidspace/repo/edit/README.md")
-            .cookie(session.clone())
-            .set_json(serde_json::json!({
-                "content": "# Stable\n",
-                "message": "No change",
-                "expected_head": head.to_string()
-            }))
-            .to_request();
-        let response = test::call_service(&app, unchanged).await;
-        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
-
-        let oversized = test::TestRequest::post()
-            .uri("/editvalidspace/repo/edit/README.md")
-            .cookie(session)
-            .set_json(serde_json::json!({
-                "content": "x".repeat(1024 * 1024 + 1),
-                "message": "Too large",
-                "expected_head": head.to_string()
-            }))
-            .to_request();
-        let response = test::call_service(&app, oversized).await;
-        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
-
-        let handle = crate::git::bare::RepoHandle::open(&root, "editvalidspace", "repo").unwrap();
-        assert_eq!(handle.head_oid().unwrap(), Some(head));
-        assert_eq!(handle.get_commits(5).unwrap().len(), 1);
         let _ = std::fs::remove_dir_all(&root);
     }
 

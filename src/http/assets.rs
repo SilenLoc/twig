@@ -61,10 +61,10 @@ const ASSETS: &[Asset] = &[
         body: include_str!("../../assets/hx-live.js"),
     },
     Asset {
-        stem: "repository-editor",
+        stem: "repo-edit",
         extension: "js",
         content_type: "application/javascript; charset=utf-8",
-        body: include_str!("../../assets/repository-editor.js"),
+        body: include_str!("../../assets/repo-edit.js"),
     },
     Asset {
         stem: "quill",
@@ -205,7 +205,7 @@ mod tests {
             "theme.js",
             "h.js",
             "hx-live.js",
-            "repository-editor.js",
+            "repo-edit.js",
             "quill.js",
             "quill.snow.css",
             "marked.js",
@@ -234,8 +234,8 @@ mod tests {
             format!("/assets/quill.snow-{ASSET_VERSION}.css")
         );
         assert_eq!(
-            url("repository-editor.js"),
-            format!("/assets/repository-editor-{ASSET_VERSION}.js")
+            url("repo-edit.js"),
+            format!("/assets/repo-edit-{ASSET_VERSION}.js")
         );
         assert_eq!(url("twig.svg"), format!("/assets/twig-{ASSET_VERSION}.svg"));
         assert_eq!(url("nope.txt"), "/assets/nope.txt");
@@ -432,7 +432,7 @@ mod tests {
             ("theme.js", "application/javascript"),
             ("h.js", "application/javascript"),
             ("hx-live.js", "application/javascript"),
-            ("repository-editor.js", "application/javascript"),
+            ("repo-edit.js", "application/javascript"),
             ("quill.js", "application/javascript"),
             ("quill.snow.css", "text/css"),
             ("marked.js", "application/javascript"),

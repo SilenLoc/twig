@@ -3,7 +3,11 @@ use semver::Version;
 use serde::Deserialize;
 
 use crate::{
-    auth::{TwigContext, extract_basic_auth, verify_password},
+    auth::{
+        TwigContext, extract_basic_auth,
+        permissions::{self, NamespacePermission},
+        verify_password,
+    },
     config,
     db::binaries::{BinaryBlob, PutBinaryOutcome},
     git::bare::RepoHandle,
@@ -47,7 +51,9 @@ pub async fn upload_binary(
         return HttpResponse::NotFound().finish();
     }
 
-    if let Err(response) = require_namespace_writer(&req, &auth_state, &params.namespace).await {
+    if let Err(response) =
+        require_namespace_writer(&req, &server, &auth_state, &params.namespace).await
+    {
         return response;
     }
 
@@ -98,10 +104,37 @@ pub async fn download_binary(
         Err(_) => return HttpResponse::NotFound().finish(),
     };
 
-    if handle.load_config_with_raw().config.private
-        && get_username_from_request(&req, &auth_state).await.is_none()
-    {
-        return HttpResponse::Unauthorized().finish();
+    if handle.load_config_with_raw().config.private {
+        if get_username_from_request(&req, &auth_state).await.is_none() {
+            return HttpResponse::Unauthorized().finish();
+        }
+        let Some(user_id) = auth_state.user_id_from_request(&req).await else {
+            return HttpResponse::Unauthorized().finish();
+        };
+        let user = match auth_state.db().get_user_by_id(&user_id).await {
+            Ok(Some(user)) => user,
+            Ok(None) => return HttpResponse::Unauthorized().finish(),
+            Err(error) => {
+                log::error!("Failed to load user for private binary download: {error}");
+                return HttpResponse::InternalServerError().finish();
+            }
+        };
+        match permissions::has(
+            auth_state.db(),
+            &user_id,
+            &params.namespace,
+            server.is_configured_admin(&user.username),
+            NamespacePermission::ViewNamespace,
+        )
+        .await
+        {
+            Ok(true) => {}
+            Ok(false) => return HttpResponse::Forbidden().finish(),
+            Err(error) => {
+                log::error!("Failed to check private binary download permission: {error}");
+                return HttpResponse::InternalServerError().finish();
+            }
+        }
     }
 
     if !is_safe_filename(&params.filename) {
@@ -139,6 +172,7 @@ pub async fn download_binary(
 
 async fn require_namespace_writer(
     req: &HttpRequest,
+    server: &config::Server,
     auth_state: &TwigContext,
     namespace: &str,
 ) -> Result<(), HttpResponse> {
@@ -162,13 +196,17 @@ async fn require_namespace_writer(
         Ok(false) | Err(_) => return Err(HttpResponse::Unauthorized().body("Invalid credentials")),
     }
 
-    match auth_state
-        .db()
-        .user_has_namespace_access(&user.id, namespace)
-        .await
+    match permissions::has(
+        auth_state.db(),
+        &user.id,
+        namespace,
+        server.is_configured_admin(&user.username),
+        NamespacePermission::PushChanges,
+    )
+    .await
     {
         Ok(true) => Ok(()),
-        Ok(false) => Err(HttpResponse::Forbidden().body("Access denied to namespace")),
+        Ok(false) => Err(HttpResponse::Forbidden().body("Push permission required for namespace")),
         Err(error) => {
             log::error!("Failed to check namespace access for binary upload: {error}");
             Err(HttpResponse::InternalServerError().body("Authorization failed"))

@@ -78,6 +78,8 @@ impl RepoHandle {
     /// Create a commit replacing one regular file and move the current branch
     /// only if it still points at `expected_head`. `reference_matching` is a
     /// compare-and-swap, so a concurrent push/edit cannot be silently lost.
+    /// Kept as a compatibility helper for callers predating repository drafts.
+    #[allow(dead_code)]
     pub fn commit_file(
         &self,
         file_path: &str,
@@ -142,6 +144,8 @@ impl RepoHandle {
 
     /// Create a new regular file and advance the current branch only if it
     /// still points at `expected_head`. Existing paths are never replaced.
+    /// Kept as a compatibility helper for callers predating repository drafts.
+    #[allow(dead_code)]
     pub fn commit_new_file(
         &self,
         file_path: &str,
@@ -191,6 +195,157 @@ impl RepoHandle {
             Ok(_) => Ok(CommitFileOutcome::Committed(commit_oid)),
             Err(error) if error.code() == git2::ErrorCode::Modified => {
                 Ok(CommitFileOutcome::Conflict)
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    /// Apply a complete repository-edit draft as one commit, compare-and-swap
+    /// advancing the branch only if it still points at `expected_head`.
+    pub fn commit_changes(
+        &self,
+        changes: &[RepoEditChange],
+        expected_head: git2::Oid,
+        author_name: &str,
+        author_email: &str,
+        message: &str,
+    ) -> Result<CommitChangesOutcome, git2::Error> {
+        use std::collections::HashSet;
+
+        use git2::{FileMode, ObjectType, Signature, build::TreeUpdateBuilder};
+
+        if changes.is_empty() {
+            return Err(git2::Error::from_str("There are no changes to commit"));
+        }
+
+        let head_ref = self.repo.find_reference("HEAD")?;
+        let reference_name = head_ref
+            .symbolic_target()?
+            .filter(|name| name.starts_with("refs/heads/"))
+            .ok_or_else(|| git2::Error::from_str("Repository HEAD is not a branch"))?;
+        let current_head = self.head_oid()?;
+        if current_head.unwrap_or(git2::Oid::ZERO_SHA1) != expected_head {
+            return Ok(CommitChangesOutcome::Conflict);
+        }
+
+        let parent = current_head
+            .map(|head| self.repo.find_commit(head))
+            .transpose()?;
+        let parent_tree = if let Some(parent) = &parent {
+            parent.tree()?
+        } else {
+            let empty_tree_oid = self.repo.treebuilder(None)?.write()?;
+            self.repo.find_tree(empty_tree_oid)?
+        };
+
+        let mut seen = HashSet::with_capacity(changes.len());
+        let mut update = TreeUpdateBuilder::new();
+        for change in changes {
+            let path = match change {
+                RepoEditChange::Upsert { path, .. } | RepoEditChange::Delete { path } => path,
+            };
+            if path.is_empty() || !super::path::is_safe_repo_path(path) || !seen.insert(path) {
+                return Err(git2::Error::from_str(
+                    "Draft contains an invalid or duplicate repository path",
+                ));
+            }
+
+            match change {
+                RepoEditChange::Upsert { path, content } => {
+                    if content.contains(&0) || std::str::from_utf8(content).is_err() {
+                        return Err(git2::Error::from_str(
+                            "Workspace edits must contain UTF-8 text without NUL bytes",
+                        ));
+                    }
+                    let mode = match parent_tree.get_path(Path::new(path)) {
+                        Ok(entry) => {
+                            if entry.kind() != Some(ObjectType::Blob) {
+                                return Err(git2::Error::from_str(
+                                    "Only regular text files can be edited",
+                                ));
+                            }
+                            let mode = match entry.filemode() {
+                                0o100_644 => FileMode::Blob,
+                                0o100_755 => FileMode::BlobExecutable,
+                                _ => {
+                                    return Err(git2::Error::from_str(
+                                        "Only regular text files can be edited",
+                                    ));
+                                }
+                            };
+                            let object = entry.to_object(&self.repo)?;
+                            let blob = object.as_blob().ok_or_else(|| {
+                                git2::Error::from_str("Only regular text files can be edited")
+                            })?;
+                            let original = blob.content();
+                            if original.contains(&0) || std::str::from_utf8(original).is_err() {
+                                return Err(git2::Error::from_str(
+                                    "Only UTF-8 text files can be edited",
+                                ));
+                            }
+                            mode
+                        }
+                        Err(error) if error.code() == git2::ErrorCode::NotFound => FileMode::Blob,
+                        Err(error) => return Err(error),
+                    };
+                    let blob_oid = self.repo.blob(content)?;
+                    update.upsert(path, blob_oid, mode);
+                }
+                RepoEditChange::Delete { path } => {
+                    let entry = parent_tree.get_path(Path::new(path))?;
+                    if entry.kind() != Some(ObjectType::Blob)
+                        || !matches!(entry.filemode(), 0o100_644 | 0o100_755)
+                    {
+                        return Err(git2::Error::from_str(
+                            "Only regular text files can be deleted",
+                        ));
+                    }
+                    let object = entry.to_object(&self.repo)?;
+                    let blob = object.as_blob().ok_or_else(|| {
+                        git2::Error::from_str("Only regular text files can be deleted")
+                    })?;
+                    let content = blob.content();
+                    if content.contains(&0) || std::str::from_utf8(content).is_err() {
+                        return Err(git2::Error::from_str(
+                            "Only UTF-8 text files can be deleted",
+                        ));
+                    }
+                    update.remove(path);
+                }
+            }
+        }
+
+        let tree_oid = update.create_updated(&self.repo, &parent_tree)?;
+        if tree_oid == parent_tree.id() {
+            return Err(git2::Error::from_str("There are no changes to commit"));
+        }
+        let tree = self.repo.find_tree(tree_oid)?;
+        let signature = Signature::now(author_name, author_email)?;
+        let commit_oid = match parent.as_ref() {
+            Some(parent) => {
+                self.repo
+                    .commit(None, &signature, &signature, message, &tree, &[parent])?
+            }
+            None => self
+                .repo
+                .commit(None, &signature, &signature, message, &tree, &[])?,
+        };
+
+        match self.repo.reference_matching(
+            reference_name,
+            commit_oid,
+            true,
+            expected_head,
+            "Edit repository in Twig",
+        ) {
+            Ok(_) => Ok(CommitChangesOutcome::Committed(commit_oid)),
+            Err(error)
+                if matches!(
+                    error.code(),
+                    git2::ErrorCode::Modified | git2::ErrorCode::NotFound
+                ) =>
+            {
+                Ok(CommitChangesOutcome::Conflict)
             }
             Err(error) => Err(error),
         }
@@ -386,7 +541,21 @@ impl RepoHandle {
     }
 }
 
-/// Result of the compare-and-swap branch update for a web edit.
+/// One final-tree operation from a repository edit draft.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RepoEditChange {
+    Upsert { path: String, content: Vec<u8> },
+    Delete { path: String },
+}
+
+/// Result of the compare-and-swap branch update for a repository edit draft.
+pub enum CommitChangesOutcome {
+    Committed(git2::Oid),
+    Conflict,
+}
+
+/// Result of the compare-and-swap branch update for a single-file edit.
+#[allow(dead_code)]
 pub enum CommitFileOutcome {
     Committed(git2::Oid),
     Conflict,
@@ -472,6 +641,13 @@ mod edit_tests {
                 .unwrap();
                 repo.set_head("refs/heads/main").unwrap();
             }
+            RepoHandle::open(self.0.to_str().unwrap(), "ns", "repo").unwrap()
+        }
+
+        fn empty_handle(&self) -> RepoHandle {
+            let path = self.0.join("ns/repo");
+            let repo = git2::Repository::init_bare(path).unwrap();
+            repo.set_head("refs/heads/main").unwrap();
             RepoHandle::open(self.0.to_str().unwrap(), "ns", "repo").unwrap()
         }
     }
@@ -641,5 +817,197 @@ mod edit_tests {
                 .as_deref(),
             Some(&b"draft copy\n"[..])
         );
+    }
+
+    #[test]
+    fn commit_changes_applies_multiple_file_operations_in_one_commit() {
+        let temp = TempRepo::new();
+        let handle = temp.handle();
+        let base = handle.head_oid().unwrap().unwrap();
+        let changes = [
+            RepoEditChange::Delete {
+                path: "README.md".to_string(),
+            },
+            RepoEditChange::Upsert {
+                path: "docs/intro.md".to_string(),
+                content: b"# Renamed README\n".to_vec(),
+            },
+            RepoEditChange::Upsert {
+                path: "nested/file.txt".to_string(),
+                content: b"nested after\n".to_vec(),
+            },
+            RepoEditChange::Upsert {
+                path: "notes/new.md".to_string(),
+                content: b"new note\n".to_vec(),
+            },
+        ];
+
+        let outcome = handle
+            .commit_changes(
+                &changes,
+                base,
+                "Editor",
+                "editor@example.com",
+                "Update repository notes",
+            )
+            .unwrap();
+        let CommitChangesOutcome::Committed(oid) = outcome else {
+            panic!("the unchanged branch should accept the complete edit");
+        };
+
+        assert_eq!(handle.head_oid().unwrap(), Some(oid));
+        assert_eq!(handle.read_blob_bytes("README.md").unwrap(), None);
+        assert_eq!(
+            handle.read_blob_bytes("docs/intro.md").unwrap().as_deref(),
+            Some(&b"# Renamed README\n"[..])
+        );
+        assert_eq!(
+            handle
+                .read_blob_bytes("nested/file.txt")
+                .unwrap()
+                .as_deref(),
+            Some(&b"nested after\n"[..])
+        );
+        assert_eq!(
+            handle.read_blob_bytes("notes/new.md").unwrap().as_deref(),
+            Some(&b"new note\n"[..])
+        );
+
+        let repo = git2::Repository::open(temp.0.join("ns/repo")).unwrap();
+        let commit = repo.find_commit(oid).unwrap();
+        assert_eq!(commit.parent_id(0).unwrap(), base);
+        assert_eq!(commit.message().unwrap(), "Update repository notes");
+        assert_eq!(commit.author().name().unwrap(), "Editor");
+        assert_eq!(
+            commit
+                .tree()
+                .unwrap()
+                .get_path(Path::new("nested/file.txt"))
+                .unwrap()
+                .filemode(),
+            0o100_755,
+            "editing text retains its executable bit"
+        );
+        assert_eq!(handle.get_commits(3).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn commit_changes_rejects_stale_head_and_invalid_or_no_op_batches() {
+        let temp = TempRepo::new();
+        let handle = temp.handle();
+        let base = handle.head_oid().unwrap().unwrap();
+
+        assert!(
+            handle
+                .commit_changes(
+                    &[RepoEditChange::Upsert {
+                        path: "README.md".to_string(),
+                        content: b"before\n".to_vec(),
+                    }],
+                    base,
+                    "Editor",
+                    "editor@example.com",
+                    "No-op edit",
+                )
+                .is_err()
+        );
+        assert!(
+            handle
+                .commit_changes(
+                    &[
+                        RepoEditChange::Upsert {
+                            path: "notes.md".to_string(),
+                            content: b"one\n".to_vec(),
+                        },
+                        RepoEditChange::Delete {
+                            path: "notes.md".to_string(),
+                        },
+                    ],
+                    base,
+                    "Editor",
+                    "editor@example.com",
+                    "Duplicate path",
+                )
+                .is_err()
+        );
+        assert!(
+            handle
+                .commit_changes(
+                    &[RepoEditChange::Upsert {
+                        path: "../escape.txt".to_string(),
+                        content: b"unsafe\n".to_vec(),
+                    }],
+                    base,
+                    "Editor",
+                    "editor@example.com",
+                    "Unsafe path",
+                )
+                .is_err()
+        );
+        assert_eq!(handle.head_oid().unwrap(), Some(base));
+
+        let concurrent = handle
+            .commit_file(
+                "README.md",
+                b"concurrent update\n",
+                base,
+                "Other editor",
+                "other@example.com",
+                "Concurrent update",
+            )
+            .unwrap();
+        let CommitFileOutcome::Committed(concurrent_oid) = concurrent else {
+            panic!("the concurrent update should commit");
+        };
+        let stale = handle
+            .commit_changes(
+                &[RepoEditChange::Upsert {
+                    path: "README.md".to_string(),
+                    content: b"stale update\n".to_vec(),
+                }],
+                base,
+                "Editor",
+                "editor@example.com",
+                "Stale update",
+            )
+            .unwrap();
+        assert!(matches!(stale, CommitChangesOutcome::Conflict));
+        assert_eq!(handle.head_oid().unwrap(), Some(concurrent_oid));
+        assert_eq!(
+            handle.read_blob_bytes("README.md").unwrap().as_deref(),
+            Some(&b"concurrent update\n"[..])
+        );
+    }
+
+    #[test]
+    fn commit_changes_can_create_the_first_commit_in_an_empty_repository() {
+        let temp = TempRepo::new();
+        let handle = temp.empty_handle();
+        assert_eq!(handle.head_oid().unwrap(), None);
+
+        let outcome = handle
+            .commit_changes(
+                &[RepoEditChange::Upsert {
+                    path: "README.md".to_string(),
+                    content: b"First file\n".to_vec(),
+                }],
+                git2::Oid::ZERO_SHA1,
+                "Editor",
+                "editor@example.com",
+                "Initial web edit",
+            )
+            .unwrap();
+        let CommitChangesOutcome::Committed(oid) = outcome else {
+            panic!("the unborn branch should accept its first draft");
+        };
+
+        assert_eq!(handle.head_oid().unwrap(), Some(oid));
+        assert_eq!(
+            handle.read_blob_bytes("README.md").unwrap().as_deref(),
+            Some(&b"First file\n"[..])
+        );
+        let repo = git2::Repository::open(temp.0.join("ns/repo")).unwrap();
+        let commit = repo.find_commit(oid).unwrap();
+        assert_eq!(commit.parent_count(), 0);
     }
 }

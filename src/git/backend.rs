@@ -3,8 +3,6 @@ use std::fmt::Display;
 use log::{debug, warn};
 use xshell::Shell;
 
-use crate::auth::NamespaceRole;
-
 pub struct Config {
     pub project_root: String,
 }
@@ -94,7 +92,7 @@ pub fn run_with_config(
     req: &GitRequest,
     body: Vec<u8>,
     authenticated_user: Option<&str>,
-    namespace_role: Option<NamespaceRole>,
+    may_rewrite_protected_branches: bool,
 ) -> Result<(String, Vec<u8>), String> {
     let sh = sh()?;
 
@@ -111,7 +109,13 @@ pub fn run_with_config(
     if !body.is_empty() {
         sh.set_var("CONTENT_LENGTH", body.len().to_string());
     }
-    let sh = prepare_cgi_env(&actual_root, sh, req, authenticated_user, namespace_role);
+    let sh = prepare_cgi_env(
+        &actual_root,
+        sh,
+        req,
+        authenticated_user,
+        may_rewrite_protected_branches,
+    );
 
     let output = if body.is_empty() {
         xshell::cmd!(sh, "git http-backend").output()
@@ -174,7 +178,7 @@ pub fn prepare_cgi_env(
     sh: Shell,
     req: &GitRequest,
     authenticated_user: Option<&str>,
-    namespace_role: Option<NamespaceRole>,
+    may_rewrite_protected_branches: bool,
 ) -> Shell {
     sh.set_var("REQUEST_METHOD", req.method.clone());
     sh.set_var("PATH_INFO", req.path_info.clone());
@@ -187,11 +191,13 @@ pub fn prepare_cgi_env(
     // process inherits this server's environment, so an inherited REMOTE_USER
     // must never be able to pass for an authenticated user.
     sh.set_var("REMOTE_USER", authenticated_user.unwrap_or_default());
-    // Only Twig chooses this role after verifying Git's Basic credentials. A
-    // missing role fails closed in the receive hook as Contributor.
     sh.set_var(
-        "TWIG_NAMESPACE_ROLE",
-        namespace_role.map_or("contributor", NamespaceRole::as_str),
+        "TWIG_CAN_REWRITE_PROTECTED_BRANCHES",
+        if may_rewrite_protected_branches {
+            "1"
+        } else {
+            "0"
+        },
     );
 
     debug!(
@@ -366,27 +372,21 @@ mod tests {
     fn test_prepare_cgi_env_sets_vars() {
         let sh = Shell::new().unwrap();
         let req = GitRequest::new("GET", "/repo/info/refs", "service=git-upload-pack", "");
-        let sh = prepare_cgi_env("/srv/git/ns/repo", sh, &req, None, None);
+        let sh = prepare_cgi_env("/srv/git/ns/repo", sh, &req, None, false);
         assert_eq!(sh.var("REQUEST_METHOD").unwrap(), "GET");
         assert_eq!(sh.var("PATH_INFO").unwrap(), "/repo/info/refs");
         assert_eq!(sh.var("QUERY_STRING").unwrap(), "service=git-upload-pack");
         assert_eq!(sh.var("GIT_PROJECT_ROOT").unwrap(), "/srv/git/ns/repo");
         assert_eq!(sh.var("GIT_HTTP_EXPORT_ALL").unwrap(), "1");
-        assert_eq!(sh.var("TWIG_NAMESPACE_ROLE").unwrap(), "contributor");
+        assert_eq!(sh.var("TWIG_CAN_REWRITE_PROTECTED_BRANCHES").unwrap(), "0");
     }
 
     #[test]
-    fn test_prepare_cgi_env_sets_the_verified_namespace_role() {
+    fn test_prepare_cgi_env_sets_protected_branch_permission() {
         let sh = Shell::new().unwrap();
         let req = GitRequest::new("POST", "/repo/git-receive-pack", "", "");
-        let sh = prepare_cgi_env(
-            "/srv/git/ns",
-            sh,
-            &req,
-            Some("owner-user"),
-            Some(NamespaceRole::Owner),
-        );
+        let sh = prepare_cgi_env("/srv/git/ns", sh, &req, Some("owner-user"), true);
         assert_eq!(sh.var("REMOTE_USER").unwrap(), "owner-user");
-        assert_eq!(sh.var("TWIG_NAMESPACE_ROLE").unwrap(), "owner");
+        assert_eq!(sh.var("TWIG_CAN_REWRITE_PROTECTED_BRANCHES").unwrap(), "1");
     }
 }

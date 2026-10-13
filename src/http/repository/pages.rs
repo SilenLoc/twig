@@ -8,7 +8,10 @@ use pulldown_cmark::{CowStr, Event, HeadingLevel, Options, Parser, Tag, TagEnd, 
 use serde::Deserialize;
 
 use crate::{
-    auth::TwigContext,
+    auth::{
+        TwigContext,
+        permissions::{self, NamespacePermission},
+    },
     config,
     git::bare::{
         Commit, MAX_COMMITS, PresentConfig, RepoHandle, ScriptEntry, ScriptGroupNode, TreeEntry,
@@ -306,8 +309,32 @@ async fn open_repo(
     };
 
     let twig_result = handle.load_config_with_raw();
-    if twig_result.config.private && username.is_none() {
-        return Err(render_repo_auth_error(req, &page_title));
+    if twig_result.config.private {
+        match can_view_namespace(req, server, auth_state, namespace).await {
+            Ok(true) => {}
+            Ok(false) if username.is_none() => {
+                return Err(render_repo_auth_error(req, &page_title));
+            }
+            Ok(false) => {
+                return Err(render_for_request(
+                    req,
+                    crate::http::view::render_error(
+                        "You do not have permission to view this namespace.",
+                    ),
+                    username.as_deref(),
+                    &page_title,
+                ));
+            }
+            Err(error) => {
+                log::error!("Failed to authorize private repository read: {error}");
+                return Err(render_for_request(
+                    req,
+                    crate::http::view::render_error("Failed to verify namespace permissions."),
+                    username.as_deref(),
+                    &page_title,
+                ));
+            }
+        }
     }
 
     let paper_pages = load_paper_pages(&handle, &twig_result.config);
@@ -324,6 +351,28 @@ async fn open_repo(
         base_url: script_base_url(req),
         script_groups,
     })
+}
+
+async fn can_view_namespace(
+    req: &HttpRequest,
+    server: &config::Server,
+    auth_state: &web::Data<TwigContext>,
+    namespace: &str,
+) -> Result<bool, String> {
+    let Some(user_id) = auth_state.user_id_from_request(req).await else {
+        return Ok(false);
+    };
+    let Some(user) = auth_state.db().get_user_by_id(&user_id).await? else {
+        return Ok(false);
+    };
+    permissions::has(
+        auth_state.db(),
+        &user_id,
+        namespace,
+        server.is_configured_admin(&user.username),
+        NamespacePermission::ViewNamespace,
+    )
+    .await
 }
 
 fn markdown_files(ctx: &RepoContext) -> Vec<String> {
@@ -778,8 +827,18 @@ pub async fn raw_handler(
     };
 
     let twig_result = handle.load_config_with_raw();
-    if twig_result.config.private && username.is_none() {
-        return HttpResponse::Unauthorized().finish();
+    if twig_result.config.private {
+        if username.is_none() {
+            return HttpResponse::Unauthorized().finish();
+        }
+        match can_view_namespace(&req, &server, &auth_state, &params.namespace).await {
+            Ok(true) => {}
+            Ok(false) => return HttpResponse::Forbidden().finish(),
+            Err(error) => {
+                log::error!("Failed to authorize private raw repository read: {error}");
+                return HttpResponse::InternalServerError().finish();
+            }
+        }
     }
 
     let path = params.path.trim_matches('/');
@@ -1018,8 +1077,32 @@ pub async fn slide_handler(
     };
 
     let twig_result = handle.load_config_with_raw();
-    if twig_result.config.private && username.is_none() {
-        return Ok(render_repo_auth_error(&req, &page_title));
+    if twig_result.config.private {
+        match can_view_namespace(&req, &server, &auth_state, namespace).await {
+            Ok(true) => {}
+            Ok(false) if username.is_none() => {
+                return Ok(render_repo_auth_error(&req, &page_title));
+            }
+            Ok(false) => {
+                return Ok(render_for_request(
+                    &req,
+                    crate::http::view::render_error(
+                        "You do not have permission to view this namespace.",
+                    ),
+                    username.as_deref(),
+                    &page_title,
+                ));
+            }
+            Err(error) => {
+                log::error!("Failed to authorize private slide read: {error}");
+                return Ok(render_for_request(
+                    &req,
+                    crate::http::view::render_error("Failed to verify namespace permissions."),
+                    username.as_deref(),
+                    &page_title,
+                ));
+            }
+        }
     }
 
     let present_slides = load_present_slides(&handle, &twig_result.config.present, namespace, repo);
@@ -1631,11 +1714,8 @@ fn render_content_file(namespace: &str, repo: &str, path: &str, bytes: &[u8]) ->
                     div class="twig-editor-file-actions" {
                         a
                             class="twig-btn twig-btn--quiet"
-                            href=(format!(
-                                "/{namespace}/{repo}/edit/{}",
-                                super::editor::encode_file_path(path)
-                            ))
-                        { "Edit file" }
+                            href=(crate::http::repo_edit::workspace_file_url(namespace, repo, path))
+                        { "Edit in workspace" }
                     }
                 }
                 @if crate::md::is_markdown(path) {
@@ -2096,8 +2176,32 @@ pub async fn present_print_handler(
     };
 
     let twig_result = handle.load_config_with_raw();
-    if twig_result.config.private && username.is_none() {
-        return Ok(render_repo_auth_error(&req, &page_title));
+    if twig_result.config.private {
+        match can_view_namespace(&req, &server, &auth_state, namespace).await {
+            Ok(true) => {}
+            Ok(false) if username.is_none() => {
+                return Ok(render_repo_auth_error(&req, &page_title));
+            }
+            Ok(false) => {
+                return Ok(render_for_request(
+                    &req,
+                    crate::http::view::render_error(
+                        "You do not have permission to view this namespace.",
+                    ),
+                    username.as_deref(),
+                    &page_title,
+                ));
+            }
+            Err(error) => {
+                log::error!("Failed to authorize private presentation read: {error}");
+                return Ok(render_for_request(
+                    &req,
+                    crate::http::view::render_error("Failed to verify namespace permissions."),
+                    username.as_deref(),
+                    &page_title,
+                ));
+            }
+        }
     }
 
     let slides = load_present_slides(&handle, &twig_result.config.present, namespace, repo);
@@ -3716,8 +3820,11 @@ mod tests {
             html.contains(r#"<pre class="twig-code" tabindex="0" aria-label="main.rs contents">"#),
             "{html}"
         );
-        assert!(html.contains("/acme/my-project/edit/main.rs"), "{html}");
-        assert!(html.contains(">Edit file</a>"), "{html}");
+        assert!(
+            html.contains("/acme/my-project/edit?path=main.rs"),
+            "{html}"
+        );
+        assert!(html.contains(">Edit in workspace</a>"), "{html}");
         assert!(
             html.contains(r#"<span aria-current="page">main.rs</span>"#),
             "the filename remains in the inner breadcrumb: {html}"
@@ -3741,7 +3848,10 @@ mod tests {
             html.contains("/acme/my-project/md/docs/c.md"),
             "link rewriting still resolves against the containing directory: {html}"
         );
-        assert!(html.contains("/acme/my-project/edit/docs/a.md"), "{html}");
+        assert!(
+            html.contains("/acme/my-project/edit?path=docs/a.md"),
+            "{html}"
+        );
 
         let invalid_utf8 =
             render_content_file("acme", "my-project", "raw.txt", &[0xff]).into_string();

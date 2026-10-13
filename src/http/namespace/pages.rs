@@ -6,26 +6,71 @@ use serde::Deserialize;
 use crate::http::auth::session::get_username_from_request;
 use crate::http::view::{render_error, render_error_with_action, render_success};
 use crate::{
-    auth::TwigContext,
+    auth::{
+        TwigContext,
+        permissions::{self, NamespacePermission},
+    },
     config,
     git::{self, repo::bare_init},
 };
 
 async fn user_can_create_repositories(
     req: &HttpRequest,
+    server: &config::Server,
     auth_state: &web::Data<TwigContext>,
     namespace: &str,
+) -> bool {
+    user_has_namespace_permission_for_request(
+        req,
+        auth_state,
+        server,
+        namespace,
+        NamespacePermission::CreateRepositories,
+    )
+    .await
+}
+
+async fn user_has_namespace_permission_for_request(
+    req: &HttpRequest,
+    auth_state: &web::Data<TwigContext>,
+    server: &config::Server,
+    namespace: &str,
+    permission: NamespacePermission,
 ) -> bool {
     let Some(user_id) = auth_state.user_id_from_request(req).await else {
         return false;
     };
+    user_has_namespace_permission(auth_state, server, &user_id, namespace, permission).await
+}
 
+async fn user_has_namespace_permission(
+    auth_state: &TwigContext,
+    server: &config::Server,
+    user_id: &str,
+    namespace: &str,
+    permission: NamespacePermission,
+) -> bool {
     let db = auth_state.db();
-
-    match db.user_owns_namespace(&user_id, namespace).await {
-        Ok(is_owner) => is_owner,
+    let user = match db.get_user_by_id(user_id).await {
+        Ok(Some(user)) => user,
+        Ok(None) => return false,
         Err(e) => {
-            log::error!("Failed to check repository creation permission: {e}");
+            log::error!("Failed to load user for namespace permission check: {e}");
+            return false;
+        }
+    };
+    match permissions::has(
+        db,
+        user_id,
+        namespace,
+        server.is_configured_admin(&user.username),
+        permission,
+    )
+    .await
+    {
+        Ok(allowed) => allowed,
+        Err(error) => {
+            log::error!("Failed to check namespace permission: {error}");
             false
         }
     }
@@ -187,7 +232,16 @@ pub async fn handler(
     let namespace = &params.namespace;
     let search_query = query.q.as_deref().unwrap_or("");
     let username = get_username_from_request(&req, &auth_state).await;
-    let can_create_repositories = user_can_create_repositories(&req, &auth_state, namespace).await;
+    let can_view_private_repositories = user_has_namespace_permission_for_request(
+        &req,
+        &auth_state,
+        &server,
+        namespace,
+        NamespacePermission::ViewNamespace,
+    )
+    .await;
+    let can_create_repositories =
+        user_can_create_repositories(&req, &server, &auth_state, namespace).await;
 
     let repos = if search_query.is_empty() {
         git::bare::get_repos_with_info(server.project_root(), namespace)
@@ -195,7 +249,7 @@ pub async fn handler(
         git::bare::search_repos_with_info(server.project_root(), namespace, search_query)
     };
 
-    let repos: Vec<_> = if username.is_some() {
+    let repos: Vec<_> = if can_view_private_repositories {
         repos
     } else {
         repos.into_iter().filter(|r| !r.is_private).collect()
@@ -274,10 +328,11 @@ fn render_create_repo_form(namespace: &str) -> maud::Markup {
 #[get("/{namespace}/create-repo-form")]
 pub async fn create_repo_form_handler(
     req: HttpRequest,
+    server: web::Data<config::Server>,
     auth_state: web::Data<TwigContext>,
     params: web::Path<Params>,
 ) -> impl Responder {
-    if !user_can_create_repositories(&req, &auth_state, &params.namespace).await {
+    if !user_can_create_repositories(&req, &server, &auth_state, &params.namespace).await {
         return HttpResponse::Forbidden()
             .body(render_error("Only namespace owners can create repositories").into_string());
     }
@@ -307,17 +362,17 @@ pub async fn create_repo_handler(
 
     let db = auth_state.db();
 
-    match db.user_owns_namespace(&user_id, namespace).await {
-        Ok(true) => {}
-        Ok(false) => {
-            return HttpResponse::Forbidden()
-                .body(render_error("Only namespace owners can create repositories").into_string());
-        }
-        Err(e) => {
-            log::error!("Database error: {e}");
-            return HttpResponse::InternalServerError()
-                .body(render_error("Database error").into_string());
-        }
+    if !user_has_namespace_permission(
+        &auth_state,
+        &server,
+        &user_id,
+        namespace,
+        NamespacePermission::CreateRepositories,
+    )
+    .await
+    {
+        return HttpResponse::Forbidden()
+            .body(render_error("Only namespace owners can create repositories").into_string());
     }
 
     if let Err(message) = crate::git::reserved::validate_repo_name(&form.repo_name) {

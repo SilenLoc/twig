@@ -6,6 +6,7 @@ use log::info;
 use serde::Deserialize;
 
 use crate::auth::TwigContext;
+use crate::auth::permissions::{self, NamespacePermission};
 use crate::config;
 use crate::db::Database;
 use crate::git;
@@ -42,17 +43,39 @@ struct RenameNamespaceForm {
     new_name: String,
 }
 
-async fn require_namespace_owner(
+async fn require_namespace_permission(
     db: &Database,
+    server: &config::Server,
     user_id: &str,
     namespace: &str,
+    permission: NamespacePermission,
 ) -> Result<(), HttpResponse> {
-    match db.user_owns_namespace(user_id, namespace).await {
+    let user = match db.get_user_by_id(user_id).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return Err(HttpResponse::Unauthorized()
+                .body(render_error("Session expired. Please log in again.").into_string()));
+        }
+        Err(error) => {
+            log::error!("Failed to load user for namespace permission check: {error}");
+            return Err(HttpResponse::InternalServerError()
+                .body(render_error("Database error").into_string()));
+        }
+    };
+    match permissions::has(
+        db,
+        user_id,
+        namespace,
+        server.is_configured_admin(&user.username),
+        permission,
+    )
+    .await
+    {
         Ok(true) => Ok(()),
         Ok(false) => Err(HttpResponse::Forbidden()
-            .body(render_error("Namespace owner access required").into_string())),
+            .body(render_error("Required namespace permission is missing").into_string())),
         Err(error) => {
-            log::error!("Failed to check namespace owner permission: {error}");
+            log::error!("Failed to check namespace permission: {error}");
             Err(HttpResponse::InternalServerError()
                 .body(render_error("Database error").into_string()))
         }
@@ -264,15 +287,19 @@ pub async fn settings_page(
         return Ok(render_error("Failed to load user."));
     };
 
-    let user_management_enabled = if server.is_configured_admin(&user.username) {
-        true
-    } else {
-        match db.get_owned_namespaces_for_user(&user_id).await {
-            Ok(namespaces) => !namespaces.is_empty(),
-            Err(error) => {
-                log::error!("Failed to check User Management access: {error}");
-                false
-            }
+    let is_site_admin = server.is_configured_admin(&user.username);
+    let user_management_enabled = match permissions::namespaces_for_user(
+        db,
+        &user_id,
+        is_site_admin,
+        NamespacePermission::ManageMembers,
+    )
+    .await
+    {
+        Ok(namespaces) => is_site_admin || !namespaces.is_empty(),
+        Err(error) => {
+            log::error!("Failed to check User Management access: {error}");
+            false
         }
     };
 
@@ -281,7 +308,7 @@ pub async fn settings_page(
     let content = maud::html! {
         (crate::http::tree::pages::render_tree_hub(
             server.is_test_user_enabled(),
-            server.is_configured_admin(&user.username),
+            is_site_admin,
             user_management_enabled,
             Some("account"),
         ))
@@ -359,7 +386,15 @@ pub async fn delete_repo(
 
     let db = auth_state.db();
 
-    if let Err(response) = require_namespace_owner(db, &user_id, &form.namespace).await {
+    if let Err(response) = require_namespace_permission(
+        db,
+        &server,
+        &user_id,
+        &form.namespace,
+        NamespacePermission::ManageRepositories,
+    )
+    .await
+    {
         return response;
     }
 
@@ -453,7 +488,15 @@ pub async fn move_repo(
                     .body(render_error("Database error").into_string());
             }
         };
-        if let Err(response) = require_namespace_owner(db, &user_id, name).await {
+        if let Err(response) = require_namespace_permission(
+            db,
+            &server,
+            &user_id,
+            name,
+            NamespacePermission::ManageRepositories,
+        )
+        .await
+        {
             return response;
         }
     }
@@ -549,7 +592,15 @@ pub async fn rename_repo(
                 .body(render_error("Database error").into_string());
         }
     };
-    if let Err(response) = require_namespace_owner(db, &user_id, &form.namespace).await {
+    if let Err(response) = require_namespace_permission(
+        db,
+        &server,
+        &user_id,
+        &form.namespace,
+        NamespacePermission::ManageRepositories,
+    )
+    .await
+    {
         return response;
     }
 
@@ -639,7 +690,15 @@ pub async fn rename_namespace(
                 .body(render_error("Database error").into_string());
         }
     };
-    if let Err(response) = require_namespace_owner(db, &user_id, &form.namespace).await {
+    if let Err(response) = require_namespace_permission(
+        db,
+        &server,
+        &user_id,
+        &form.namespace,
+        NamespacePermission::ManageNamespace,
+    )
+    .await
+    {
         return response;
     }
 
@@ -723,7 +782,15 @@ pub async fn delete_namespace(
         }
     };
 
-    if let Err(response) = require_namespace_owner(db, &user_id, &form.namespace).await {
+    if let Err(response) = require_namespace_permission(
+        db,
+        &server,
+        &user_id,
+        &form.namespace,
+        NamespacePermission::ManageNamespace,
+    )
+    .await
+    {
         return response;
     }
 

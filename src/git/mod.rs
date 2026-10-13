@@ -2,7 +2,11 @@ use std::path::Path;
 
 use actix_web::{HttpRequest, HttpResponse, web};
 
-use crate::auth::{NamespaceRole, TwigContext, User, extract_basic_auth, verify_password};
+use crate::auth::{
+    TwigContext, User, extract_basic_auth,
+    permissions::{self, NamespacePermission, PermissionSet},
+    verify_password,
+};
 use crate::config;
 use crate::git::repo::bare_init;
 pub mod backend;
@@ -71,7 +75,8 @@ pub async fn git_handler(
     let username = authenticated_user
         .as_ref()
         .map(|authenticated_user| authenticated_user.username.clone());
-    let namespace_role = authenticated_user.map(|authenticated_user| authenticated_user.role);
+    let may_rewrite_protected_branches = authenticated_user
+        .is_some_and(|authenticated_user| authenticated_user.may_rewrite_protected_branches);
 
     // Run in blocking thread — xshell/process::Command is blocking
     let req = git_req.clone();
@@ -84,7 +89,7 @@ pub async fn git_handler(
             &req,
             body_bytes,
             username.as_deref(),
-            namespace_role,
+            may_rewrite_protected_branches,
         )
     })
     .await;
@@ -148,7 +153,7 @@ async fn authenticate_git_request(
     );
 
     if is_write {
-        match is_authenticated(req, auth_state, namespace).await {
+        match is_authenticated(req, server, auth_state, namespace).await {
             Ok(Some(auth_result)) => {
                 if !auth_result.namespace_exists
                     && let Err(e) =
@@ -163,9 +168,19 @@ async fn authenticate_git_request(
                     .join(namespace)
                     .join(repo)
                     .exists();
-                if !repo_exists && auth_result.role != NamespaceRole::Owner {
-                    return Err(HttpResponse::Forbidden()
-                        .body("Only namespace owners can create repositories"));
+                let required_permission = if repo_exists {
+                    NamespacePermission::PushChanges
+                } else {
+                    NamespacePermission::CreateRepositories
+                };
+                if !auth_result.permissions.contains(required_permission) {
+                    if required_permission == NamespacePermission::CreateRepositories {
+                        return Err(HttpResponse::Forbidden()
+                            .body("Only namespace owners can create repositories"));
+                    }
+                    return Err(
+                        HttpResponse::Forbidden().body("Push permission required for namespace")
+                    );
                 }
                 if let Err(e) = ensure_repo_exists(server.project_root(), namespace, repo) {
                     log::error!("Failed to ensure repo exists: {e}");
@@ -175,21 +190,31 @@ async fn authenticate_git_request(
                 }
                 Ok(Some(AuthenticatedGitUser {
                     username: auth_result.user.username,
-                    role: auth_result.role,
+                    may_rewrite_protected_branches: auth_result
+                        .permissions
+                        .contains(NamespacePermission::RewriteProtectedBranches),
                 }))
             }
             Ok(None) => Err(HttpResponse::Forbidden().body("Access denied to namespace")),
             Err(response) => Err(response),
         }
     } else if bare::is_repo_private(server.project_root(), namespace, repo) {
-        match is_authenticated(req, auth_state, namespace).await {
+        match is_authenticated(req, server, auth_state, namespace).await {
             Ok(Some(auth_result)) => {
                 if !auth_result.namespace_exists {
                     return Err(HttpResponse::NotFound().body("Repository not found"));
                 }
+                if !auth_result
+                    .permissions
+                    .contains(NamespacePermission::ViewNamespace)
+                {
+                    return Err(HttpResponse::Forbidden().body("Read permission required"));
+                }
                 Ok(Some(AuthenticatedGitUser {
                     username: auth_result.user.username,
-                    role: auth_result.role,
+                    may_rewrite_protected_branches: auth_result
+                        .permissions
+                        .contains(NamespacePermission::RewriteProtectedBranches),
                 }))
             }
             Ok(None) => Err(HttpResponse::Forbidden().body("Access denied to namespace")),
@@ -202,17 +227,18 @@ async fn authenticate_git_request(
 
 struct AuthenticatedGitUser {
     username: String,
-    role: NamespaceRole,
+    may_rewrite_protected_branches: bool,
 }
 
 struct AuthResult {
     user: User,
     namespace_exists: bool,
-    role: NamespaceRole,
+    permissions: PermissionSet,
 }
 
 async fn is_authenticated(
     req: &actix_web::HttpRequest,
+    server: &config::Server,
     auth_state: &web::Data<TwigContext>,
     namespace_name: &str,
 ) -> Result<Option<AuthResult>, HttpResponse> {
@@ -259,22 +285,29 @@ async fn is_authenticated(
         }
     }
 
-    // Resolve the user's namespace role. Unknown namespaces can only be
+    // Resolve effective permissions. Unknown namespaces can only be
     // bootstrapped by users who still have namespace-creation permission.
     log::debug!(
         "Checking namespace access: user_id='{}' namespace='{}'",
         user.id,
         namespace_name
     );
-    match db.get_namespace_role(&user.id, namespace_name).await {
-        Ok(Some(role)) => {
+    match permissions::for_user(
+        db,
+        &user.id,
+        namespace_name,
+        server.is_configured_admin(&user.username),
+    )
+    .await
+    {
+        Ok(Some(permissions)) => {
             log::info!(
                 "Git auth success: user='{username}' has access to namespace='{namespace_name}'"
             );
             Ok(Some(AuthResult {
                 user,
                 namespace_exists: true,
-                role,
+                permissions,
             }))
         }
         Ok(None) => {
@@ -298,7 +331,9 @@ async fn is_authenticated(
                         Ok(Some(AuthResult {
                             user,
                             namespace_exists: false,
-                            role: NamespaceRole::Owner,
+                            permissions: PermissionSet::from_role(
+                                crate::auth::NamespaceRole::Owner,
+                            ),
                         }))
                     }
                     Ok(false) => {

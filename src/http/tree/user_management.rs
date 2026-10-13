@@ -6,6 +6,7 @@ use crate::{
     auth::{
         Namespace, NamespaceInvitation, NamespaceRole, NewNamespaceInvitation, TwigContext, User,
         UserManagementEntry,
+        permissions::{NamespacePermission, PermissionSet},
     },
     config,
     email::{InvitationDelivery, invitation_url, send_invitation_if_configured},
@@ -58,29 +59,23 @@ async fn user_management_scope(
     };
 
     let is_site_admin = server.is_configured_admin(&user.username);
-    let namespaces: Vec<Namespace> = if is_site_admin {
-        match db.get_all_namespaces_with_owners().await {
-            Ok(namespaces) => namespaces
-                .into_iter()
-                .map(|(namespace, _)| namespace)
-                .collect(),
-            Err(error) => {
-                log::error!("Failed to load namespaces for User Management: {error}");
-                return Err(HttpResponse::InternalServerError().finish());
-            }
-        }
-    } else {
-        match db.get_owned_namespaces_for_user(&user_id).await {
-            Ok(namespaces) => namespaces,
-            Err(error) => {
-                log::error!("Failed to load owned namespaces for User Management: {error}");
-                return Err(HttpResponse::InternalServerError().finish());
-            }
+    let namespaces = match crate::auth::permissions::namespaces_for_user(
+        db,
+        &user_id,
+        is_site_admin,
+        NamespacePermission::ManageMembers,
+    )
+    .await
+    {
+        Ok(namespaces) => namespaces,
+        Err(error) => {
+            log::error!("Failed to load manageable namespaces for User Management: {error}");
+            return Err(HttpResponse::InternalServerError().finish());
         }
     };
 
     if namespaces.is_empty() && !is_site_admin {
-        return Err(HttpResponse::Forbidden().body("Namespace owner access required"));
+        return Err(HttpResponse::Forbidden().body("Namespace member-management access required"));
     }
 
     Ok(UserManagementScope {
@@ -186,29 +181,71 @@ fn render_user_management_content(
                     @if users.is_empty() {
                         p class="twig-empty-body" { "No users found." }
                     } @else {
-                        div class="twig-list" {
+                        div class="twig-access-list" {
                             @for user in users {
-                                div class="twig-row" {
-                                    span class="twig-row-id" { (&user.username) }
-                                    span class="twig-row-meta" {
-                                        @if let Some(email) = &user.email {
-                                            (email)
-                                        } @else {
-                                            "Email not set"
-                                        }
-                                    }
-                                    @if user.memberships.is_empty() {
-                                        span class="twig-row-meta" {
-                                            "No namespace membership"
-                                        }
-                                    } @else {
-                                        span class="twig-row-meta" {
-                                            @for (index, (namespace, role)) in user.memberships.iter().enumerate() {
-                                                @if index > 0 { ", " }
-                                                (namespace) " · " (role.display_name())
-                                            }
-                                        }
-                                    }
+                                (render_user_access_tree(user))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn render_permission_list(permissions: &PermissionSet) -> Markup {
+    html! {
+        ul class="twig-access-permissions" aria-label="Permissions" {
+            @for permission in permissions.iter() {
+                li class="twig-access-permission" { (permission.display_name()) }
+            }
+        }
+    }
+}
+
+fn render_user_access_tree(user: &UserManagementEntry) -> Markup {
+    html! {
+        details class="twig-access-user" open {
+            summary class="twig-access-user-summary" {
+                span class="twig-row-id" { (&user.username) }
+                span class="twig-row-meta" {
+                    @if let Some(email) = &user.email {
+                        (email)
+                    } @else {
+                        "Email not set"
+                    }
+                }
+                @if user.is_site_admin {
+                    span class="twig-access-role twig-access-role--admin" { "Admin" }
+                } @else {
+                    span class="twig-access-role" {
+                        (user.memberships.len()) " namespace" @if user.memberships.len() != 1 { "s" }
+                    }
+                }
+            }
+            @if user.is_site_admin {
+                ul class="twig-access-namespaces" {
+                    li class="twig-access-namespace" {
+                        details open {
+                            summary { "All namespaces" }
+                            div class="twig-access-role-group" {
+                                p class="twig-access-role" { "Admin" }
+                                (render_permission_list(&PermissionSet::all()))
+                            }
+                        }
+                    }
+                }
+            } @else if user.memberships.is_empty() {
+                p class="twig-access-empty" { "No namespace membership" }
+            } @else {
+                ul class="twig-access-namespaces" {
+                    @for (namespace, role) in &user.memberships {
+                        li class="twig-access-namespace" {
+                            details open {
+                                summary { (namespace) }
+                                div class="twig-access-role-group" {
+                                    p class="twig-access-role" { (role.display_name()) }
+                                    (render_permission_list(&PermissionSet::from_role(*role)))
                                 }
                             }
                         }
@@ -436,7 +473,12 @@ pub async fn user_management_page(
             .list_users_for_management(namespace_ids.as_deref())
             .await
         {
-            Ok(users) => users,
+            Ok(mut users) => {
+                for user in &mut users {
+                    user.is_site_admin = server.is_configured_admin(&user.username);
+                }
+                users
+            }
             Err(error) => {
                 log::error!("Failed to load users for User Management: {error}");
                 return HttpResponse::InternalServerError().finish();
@@ -698,20 +740,57 @@ mod tests {
     }
 
     #[test]
-    fn user_memberships_render_in_a_single_table_cell() {
+    fn user_memberships_render_as_namespace_role_permission_trees() {
         let user = UserManagementEntry {
             username: "silen".to_string(),
             email: Some("silen@example.com".to_string()),
             memberships: vec![
                 ("experiments".to_string(), NamespaceRole::Owner),
-                ("hco".to_string(), NamespaceRole::Owner),
+                ("hco".to_string(), NamespaceRole::Contributor),
             ],
+            is_site_admin: false,
         };
 
         let markup = render_user_management(&scope(), "users", &[], &[user]).into_string();
 
-        assert!(markup.contains("experiments · Owner, hco · Owner"));
-        assert_eq!(markup.matches("class=\"twig-row-meta\"").count(), 2);
+        for expected in [
+            "<summary>experiments</summary>",
+            "<p class=\"twig-access-role\">Owner</p>",
+            "<summary>hco</summary>",
+            "<p class=\"twig-access-role\">Contributor</p>",
+            "View namespace",
+            "Push changes",
+            "Manage members",
+        ] {
+            assert!(markup.contains(expected), "missing {expected}: {markup}");
+        }
+        assert_eq!(markup.matches("class=\"twig-access-namespace\"").count(), 2);
+    }
+
+    #[test]
+    fn site_admin_tree_shows_all_namespace_permissions() {
+        let user = UserManagementEntry {
+            username: "admin".to_string(),
+            email: Some("admin@example.com".to_string()),
+            memberships: Vec::new(),
+            is_site_admin: true,
+        };
+
+        let markup = render_user_management(&scope(), "users", &[], &[user]).into_string();
+
+        for expected in [
+            "All namespaces",
+            "Admin",
+            "View namespace",
+            "Push changes",
+            "Create repositories",
+            "Manage repositories",
+            "Manage namespace",
+            "Manage members",
+            "Rewrite protected branches",
+        ] {
+            assert!(markup.contains(expected), "missing {expected}: {markup}");
+        }
     }
 
     #[test]

@@ -1,7 +1,15 @@
 use actix_web::{HttpRequest, HttpResponse, get, web};
 use serde::Deserialize;
 
-use crate::{auth::TwigContext, config, db::data::TablePage, git};
+use crate::{
+    auth::{
+        TwigContext,
+        permissions::{self, NamespacePermission},
+    },
+    config,
+    db::data::TablePage,
+    git,
+};
 
 #[derive(Debug, Deserialize)]
 pub struct DataQuery {
@@ -49,7 +57,8 @@ pub(crate) fn render_tree_hub(
 
 fn render_namespaces_page(
     repos_by_namespace: &[(String, Vec<git::bare::RepoInfo>)],
-    owned_namespaces: &[String],
+    repository_namespaces: &[String],
+    manageable_namespaces: &[String],
     deletable_namespaces: &[String],
 ) -> maud::Markup {
     let has_repositories = repos_by_namespace
@@ -75,9 +84,12 @@ fn render_namespaces_page(
                     div id="move-repo-result" aria-live="polite" {}
                 }
                 @if !repos_by_namespace.iter().any(|(source, repos)| {
-                    !repos.is_empty() && owned_namespaces.iter().any(|target| target != source)
+                    !repos.is_empty()
+                        && repository_namespaces
+                            .iter()
+                            .any(|target| target != source)
                 }) {
-                    p class="twig-empty-body" { "Create another namespace you own to move repositories." }
+                    p class="twig-empty-body" { "There is no other namespace you can move repositories to." }
                 }
                 div class="twig-list" {
                     @for (source, repos) in repos_by_namespace {
@@ -88,7 +100,7 @@ fn render_namespaces_page(
                                     span class="twig-label" { "Move to namespace" }
                                 }
                                 div class="twig-form-actions" aria-label=(format!("Move {}/{} to namespace", source, repo.name)) {
-                                    @for target in owned_namespaces {
+                                    @for target in repository_namespaces {
                                         @if target != source {
                                             form
                                                 hx-post="/settings/move-repo"
@@ -112,12 +124,12 @@ fn render_namespaces_page(
                 }
             }
         }
-        (render_namespace_rename_panel(owned_namespaces))
+        (render_namespace_rename_panel(manageable_namespaces))
         (render_namespace_deletion_panel(deletable_namespaces))
     }
 }
 
-/// Namespaces the user owns, each with a field for a new name.
+/// Namespaces the user can manage, each with a field for a new name.
 fn render_namespace_rename_panel(owned_namespaces: &[String]) -> maud::Markup {
     maud::html! {
         section class="twig-panel" aria-labelledby="namespace-rename-heading" {
@@ -359,27 +371,65 @@ pub async fn namespaces_page(
             .insert_header(("Location", "/auth/login"))
             .finish();
     };
-    let namespaces = match db.get_owned_namespaces_for_user(&user_id).await {
+    let is_site_admin = server.is_configured_admin(&user.username);
+    let namespaces = match permissions::namespaces_for_user(
+        db,
+        &user_id,
+        is_site_admin,
+        NamespacePermission::ManageNamespace,
+    )
+    .await
+    {
         Ok(namespaces) => namespaces,
         Err(error) => {
-            log::error!("Failed to load namespaces for namespace tree: {error}");
+            log::error!("Failed to load manageable namespaces for namespace tree: {error}");
             return HttpResponse::InternalServerError().finish();
         }
     };
-    let owned_namespaces: Vec<String> = namespaces
+    let manageable_namespaces: Vec<String> = namespaces
         .iter()
         .map(|namespace| namespace.name.clone())
         .collect();
-    let user_management_enabled =
-        server.is_configured_admin(&user.username) || !owned_namespaces.is_empty();
-    let deletable_namespaces: Vec<String> = owned_namespaces
+    let repository_namespaces = match permissions::namespaces_for_user(
+        db,
+        &user_id,
+        is_site_admin,
+        NamespacePermission::ManageRepositories,
+    )
+    .await
+    {
+        Ok(namespaces) => namespaces,
+        Err(error) => {
+            log::error!("Failed to load repository-manageable namespaces: {error}");
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+    let repository_namespace_names: Vec<String> = repository_namespaces
+        .iter()
+        .map(|namespace| namespace.name.clone())
+        .collect();
+    let user_management_enabled = match permissions::namespaces_for_user(
+        db,
+        &user_id,
+        is_site_admin,
+        NamespacePermission::ManageMembers,
+    )
+    .await
+    {
+        Ok(namespaces) => is_site_admin || !namespaces.is_empty(),
+        Err(error) => {
+            log::error!("Failed to load member-manageable namespaces: {error}");
+            false
+        }
+    };
+    let deletable_namespaces: Vec<String> = manageable_namespaces
         .iter()
         .filter(|namespace| {
             !git::bare::namespace::has_any_repository(server.project_root(), namespace)
         })
         .cloned()
         .collect();
-    let repos_by_namespace: Vec<(String, Vec<git::bare::RepoInfo>)> = owned_namespaces
+    let repos_by_namespace: Vec<(String, Vec<git::bare::RepoInfo>)> = repository_namespace_names
         .iter()
         .filter_map(|namespace| {
             let repos: Vec<_> = git::bare::get_repos_with_info(server.project_root(), namespace)
@@ -392,13 +442,14 @@ pub async fn namespaces_page(
     let content = maud::html! {
         (render_tree_hub(
             server.is_test_user_enabled(),
-            server.is_configured_admin(&user.username),
+            is_site_admin,
             user_management_enabled,
             Some("namespaces"),
         ))
         (render_namespaces_page(
             &repos_by_namespace,
-            &owned_namespaces,
+            &repository_namespace_names,
+            &manageable_namespaces,
             &deletable_namespaces,
         ))
     };
@@ -435,15 +486,35 @@ pub async fn repositories_page(
             .insert_header(("Location", "/auth/login"))
             .finish();
     };
-    let namespaces = match db.get_owned_namespaces_for_user(&user_id).await {
+    let is_site_admin = server.is_configured_admin(&user.username);
+    let namespaces = match permissions::namespaces_for_user(
+        db,
+        &user_id,
+        is_site_admin,
+        NamespacePermission::ManageRepositories,
+    )
+    .await
+    {
         Ok(namespaces) => namespaces,
         Err(error) => {
-            log::error!("Failed to load namespaces for repository tree: {error}");
+            log::error!("Failed to load repository-manageable namespaces: {error}");
             return HttpResponse::InternalServerError().finish();
         }
     };
-    let user_management_enabled =
-        server.is_configured_admin(&user.username) || !namespaces.is_empty();
+    let user_management_enabled = match permissions::namespaces_for_user(
+        db,
+        &user_id,
+        is_site_admin,
+        NamespacePermission::ManageMembers,
+    )
+    .await
+    {
+        Ok(namespaces) => is_site_admin || !namespaces.is_empty(),
+        Err(error) => {
+            log::error!("Failed to load member-manageable namespaces: {error}");
+            false
+        }
+    };
     let mut renameable_repos_by_namespace: Vec<(String, Vec<git::bare::RepoInfo>)> = Vec::new();
     let mut deletable_repos_by_namespace: Vec<(String, Vec<git::bare::RepoInfo>)> = Vec::new();
     for namespace in namespaces {
@@ -472,7 +543,7 @@ pub async fn repositories_page(
     let content = maud::html! {
         (render_tree_hub(
             server.is_test_user_enabled(),
-            server.is_configured_admin(&user.username),
+            is_site_admin,
             user_management_enabled,
             Some("repositories"),
         ))
@@ -615,6 +686,7 @@ mod tests {
             )],
             &["acme".to_string(), "solo".to_string()],
             &["solo".to_string()],
+            &["solo".to_string()],
         )
         .into_string();
 
@@ -638,7 +710,7 @@ mod tests {
 
     #[test]
     fn namespace_page_explains_when_no_namespace_can_be_deleted() {
-        let html = render_namespaces_page(&[], &[], &[]).into_string();
+        let html = render_namespaces_page(&[], &[], &[], &[]).into_string();
 
         assert!(html.contains("Delete Namespace"));
         assert!(html.contains(">NO NAMESPACES<"));

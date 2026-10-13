@@ -7,7 +7,11 @@ use log::info;
 use serde::Deserialize;
 use xshell::cmd;
 
-use crate::auth::{TwigContext, extract_basic_auth, verify_password};
+use crate::auth::{
+    TwigContext, extract_basic_auth,
+    permissions::{self, NamespacePermission},
+    verify_password,
+};
 use crate::config;
 
 #[derive(Deserialize)]
@@ -63,7 +67,15 @@ pub async fn init(
     }
 
     // Check if user has access to namespace
-    match db.user_owns_namespace(&user.id, &init_repo.namespace).await {
+    match permissions::has(
+        db,
+        &user.id,
+        &init_repo.namespace,
+        server.is_configured_admin(&user.username),
+        NamespacePermission::CreateRepositories,
+    )
+    .await
+    {
         Ok(true) => {}
         Ok(false) => {
             return HttpResponse::Forbidden().body("Only namespace owners can create repositories");
@@ -332,15 +344,23 @@ mod tests {
 
     fn run_pre_receive(
         repo_path: &Path,
-        namespace_role: &str,
+        may_rewrite_protected_branches: Option<bool>,
         updates: &str,
         extra_env: &[(&str, &str)],
     ) -> Output {
-        let mut child = Command::new(repo_path.join("hooks/pre-receive"))
+        let mut command = Command::new(repo_path.join("hooks/pre-receive"));
+        command
             .current_dir(repo_path)
             .env("GIT_DIR", repo_path)
-            .env("TWIG_NAMESPACE_ROLE", namespace_role)
-            .envs(extra_env.iter().copied())
+            .env_remove("TWIG_CAN_REWRITE_PROTECTED_BRANCHES")
+            .envs(extra_env.iter().copied());
+        if let Some(may_rewrite) = may_rewrite_protected_branches {
+            command.env(
+                "TWIG_CAN_REWRITE_PROTECTED_BRANCHES",
+                if may_rewrite { "1" } else { "0" },
+            );
+        }
+        let mut child = command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -440,7 +460,7 @@ mod tests {
 
         let allowed = run_pre_receive(
             repo_path,
-            "contributor",
+            Some(false),
             &format!("{} {} refs/heads/main\n", base.id(), fast_forward),
             &[],
         );
@@ -448,30 +468,36 @@ mod tests {
 
         let force_push = run_pre_receive(
             repo_path,
-            "contributor",
+            Some(false),
             &format!("{} {} refs/heads/main\n", base.id(), rewrite),
             &[],
         );
         assert!(!force_push.status.success());
         assert!(
-            String::from_utf8_lossy(&force_push.stderr)
-                .contains("Contributors cannot rewrite history on main")
+            String::from_utf8_lossy(&force_push.stderr).contains("cannot rewrite history on main")
         );
 
         let deletion = run_pre_receive(
             repo_path,
-            "contributor",
+            Some(false),
             &format!("{} {} refs/heads/main\n", base.id(), zero_oid),
             &[],
         );
         assert!(!deletion.status.success());
-        assert!(
-            String::from_utf8_lossy(&deletion.stderr).contains("Contributors cannot delete main")
+        assert!(String::from_utf8_lossy(&deletion.stderr).contains("cannot delete main"));
+
+        let missing_permission = run_pre_receive(
+            repo_path,
+            None,
+            &format!("{} {} refs/heads/main\n", base.id(), zero_oid),
+            &[],
         );
+        assert!(!missing_permission.status.success());
+        assert!(String::from_utf8_lossy(&missing_permission.stderr).contains("cannot delete main"));
 
         let new_main = run_pre_receive(
             repo_path,
-            "contributor",
+            Some(false),
             &format!("{zero_oid} {} refs/heads/main\n", base.id()),
             &[],
         );
@@ -479,7 +505,7 @@ mod tests {
 
         let owner_rewrite = run_pre_receive(
             repo_path,
-            "owner",
+            Some(true),
             &format!("{} {} refs/heads/main\n", base.id(), rewrite),
             &[],
         );
@@ -500,7 +526,7 @@ mod tests {
             .expect("initialize bare repository");
         assert!(init_output.status.success());
 
-        let custom_hook = "#!/bin/sh\nprintf '%s\\n' \"${TWIG_NAMESPACE_ROLE:-}\" > \"$TWIG_HOOK_ROLE_CAPTURE\"\nprintf '%s\\n' \"${REMOTE_USER:-}\" > \"$TWIG_HOOK_REMOTE_USER_CAPTURE\"\ncat > \"$TWIG_HOOK_INPUT_CAPTURE\"\nexit \"${TWIG_CUSTOM_HOOK_EXIT:-0}\"\n";
+        let custom_hook = "#!/bin/sh\nprintf '%s\\n' \"${TWIG_CAN_REWRITE_PROTECTED_BRANCHES:-}\" > \"$TWIG_HOOK_PERMISSION_CAPTURE\"\nprintf '%s\\n' \"${REMOTE_USER:-}\" > \"$TWIG_HOOK_REMOTE_USER_CAPTURE\"\ncat > \"$TWIG_HOOK_INPUT_CAPTURE\"\nexit \"${TWIG_CUSTOM_HOOK_EXIT:-0}\"\n";
         let original_hook = repo_path.join("hooks/pre-receive");
         std::fs::write(&original_hook, custom_hook).unwrap();
         #[cfg(unix)]
@@ -548,16 +574,19 @@ mod tests {
         );
 
         let input = format!("{} {} refs/heads/feature\n", "0".repeat(40), "1".repeat(40));
-        let role_capture = repo_path.join("role.capture");
+        let permission_capture = repo_path.join("permission.capture");
         let remote_user_capture = repo_path.join("remote-user.capture");
         let input_capture = repo_path.join("input.capture");
         let output = run_pre_receive(
             repo_path,
-            "contributor",
+            Some(false),
             &input,
             &[
                 ("REMOTE_USER", "hook-user"),
-                ("TWIG_HOOK_ROLE_CAPTURE", role_capture.to_str().unwrap()),
+                (
+                    "TWIG_HOOK_PERMISSION_CAPTURE",
+                    permission_capture.to_str().unwrap(),
+                ),
                 (
                     "TWIG_HOOK_REMOTE_USER_CAPTURE",
                     remote_user_capture.to_str().unwrap(),
@@ -566,10 +595,7 @@ mod tests {
             ],
         );
         assert!(output.status.success());
-        assert_eq!(
-            std::fs::read_to_string(role_capture).unwrap(),
-            "contributor\n"
-        );
+        assert_eq!(std::fs::read_to_string(permission_capture).unwrap(), "0\n");
         assert_eq!(
             std::fs::read_to_string(remote_user_capture).unwrap(),
             "hook-user\n"
@@ -578,7 +604,7 @@ mod tests {
 
         let rejection = run_pre_receive(
             repo_path,
-            "owner",
+            Some(true),
             &input,
             &[("TWIG_CUSTOM_HOOK_EXIT", "23")],
         );
