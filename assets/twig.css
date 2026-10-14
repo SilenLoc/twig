@@ -1319,11 +1319,6 @@ body.twig-workspace-shell {
     tab-size: 4;
 }
 
-.twig-editor-file-actions {
-    display: flex;
-    justify-content: flex-end;
-}
-
 .twig-editor-status:empty {
     display: none;
 }
@@ -2106,9 +2101,7 @@ body.twig-workspace-shell {
     }
 }
 
-/* The per-page copy control: an eyebrow naming what copying yields, with the
-   button pushed to the trailing edge so the prose below starts at the same
-   line every time. */
+/* Compact source actions for Markdown files in the Content tab. */
 .twig-docbar {
     display: flex;
     flex-wrap: wrap;
@@ -2117,6 +2110,12 @@ body.twig-workspace-shell {
     gap: var(--twig-space-4);
     padding-block-end: var(--twig-space-4);
     border-block-end: 1px solid var(--twig-rule);
+}
+
+.twig-docbar .twig-btn {
+    min-block-size: calc(var(--twig-control-h) - 8px);
+    padding-inline: var(--twig-space-3);
+    font-size: var(--twig-t-eyebrow);
 }
 
 /* ---- 12. Breadcrumbs ----------------------------------------------------- */
