@@ -16,6 +16,8 @@ mod tests {
     mod repo_binaries;
     #[path = "../repo_content.rs"]
     mod repo_content;
+    #[path = "../repo_git_http.rs"]
+    mod repo_git_http;
     #[path = "../repo_management.rs"]
     mod repo_management;
     #[path = "../repo_traversal.rs"]

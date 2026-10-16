@@ -1,10 +1,10 @@
 [package]
 name = "twig"
-version = "0.2.23"
+version = "0.2.24"
 edition = "2024"
 
 [workspace]
-members = ["crates/twig-highlight"]
+members = ["crates/twig-highlight", "crates/twig-http"]
 resolver = "3"
 
 [dependencies]
@@ -23,7 +23,6 @@ resend-rs = { version = "0.34.0", default-features = false, features = ["rustls-
 semver = "1"
 toml = "1.1"
 turso = { version = "0.8.2", default-features = false }
-xshell = "0.2.7"
 
 [dependencies.actix-http]
 version = "3"
@@ -81,12 +80,16 @@ features = ["macros", "rt-multi-thread", "sync"]
 [dependencies.twig-highlight]
 path = "crates/twig-highlight"
 
+[dependencies.twig-http]
+path = "crates/twig-http"
+
 [dependencies.uuid]
 version = "1.23.0"
 features = ["v4"]
 
 [dev-dependencies]
 serde_urlencoded = "0.7"
+xshell = "0.2.7"
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }

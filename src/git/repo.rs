@@ -1,9 +1,9 @@
 use std::path::Path;
 
 use actix_web::{HttpRequest, HttpResponse, Responder, post, web};
+use git2::{Repository, RepositoryInitOptions, Signature};
 use log::info;
 use serde::Deserialize;
-use xshell::cmd;
 
 use crate::auth::{
     TwigContext, extract_basic_auth,
@@ -127,9 +127,7 @@ fn create_repo(
     crate::git::reserved::validate_repo_name(&repo)?;
     let repo = ns.join(repo);
 
-    if repo.exists() {
-        install_pre_receive_hook(&repo)?;
-    } else {
+    if !repo.exists() {
         std::fs::create_dir_all(&repo)
             .map_err(|e| format!("Failed to create repo directory: {e}"))?;
         let output = bare_init(&repo, &branch, "Twig", "twig@localhost")?;
@@ -145,21 +143,20 @@ pub fn bare_init(
     author_name: &str,
     author_email: &str,
 ) -> Result<String, String> {
-    let sh = sh()?;
-    sh.change_dir(repo_path);
-
-    // Initialize bare repo
-    let output = cmd!(sh, "git init --bare --initial-branch={branch}")
-        .read()
-        .map_err(|e| e.to_string())?;
-
-    // Enable http.receivepack to allow pushes via HTTP
-    cmd!(sh, "git config http.receivepack true")
-        .run()
+    let branch_ref = format!("refs/heads/{branch}");
+    if !git2::Reference::is_valid_name(&branch_ref) {
+        return Err(format!("Invalid initial branch name: {branch}"));
+    }
+    let mut options = RepositoryInitOptions::new();
+    options.bare(true).initial_head(branch);
+    let repo = Repository::init_opts(repo_path, &options)
+        .map_err(|e| format!("Failed to initialize bare repository: {e}"))?;
+    repo.config()
+        .and_then(|mut config| config.set_bool("http.receivepack", true))
         .map_err(|e| format!("Failed to enable http.receivepack: {e}"))?;
 
     // Create initial commit with .twig.toml file
-    // Use git plumbing commands to create a commit in a bare repo
+    // Create the initial configuration commit directly through libgit2.
     let blob_content = r#"#:schema https://twig.silenlocatelli.ch/assets/twig.schema.json
 # Created with Twig
 # All configuration options are listed below, commented out with their defaults.
@@ -194,40 +191,35 @@ pub fn bare_init(
 #    { name = "Install", path = "scripts/install.sh" },
 #]
 "#;
-    let blob_hash = cmd!(sh, "git hash-object -w --stdin")
-        .stdin(blob_content)
-        .read()
-        .map_err(|e| format!("Failed to create blob: {e}"))?;
+    let blob_id = repo
+        .blob(blob_content.as_bytes())
+        .map_err(|e| format!("Failed to create .twig.toml blob: {e}"))?;
+    let mut tree_builder = repo
+        .treebuilder(None)
+        .map_err(|e| format!("Failed to create initial tree: {e}"))?;
+    tree_builder
+        .insert(".twig.toml", blob_id, 0o100644)
+        .map_err(|e| format!("Failed to add .twig.toml to initial tree: {e}"))?;
+    let tree_id = tree_builder
+        .write()
+        .map_err(|e| format!("Failed to write initial tree: {e}"))?;
+    let tree = repo
+        .find_tree(tree_id)
+        .map_err(|e| format!("Failed to load initial tree: {e}"))?;
+    let signature = Signature::now(author_name, author_email)
+        .map_err(|e| format!("Failed to create initial commit signature: {e}"))?;
+    let commit_id = repo
+        .commit(
+            Some(&branch_ref),
+            &signature,
+            &signature,
+            "Initial commit",
+            &tree,
+            &[],
+        )
+        .map_err(|e| format!("Failed to create initial commit: {e}"))?;
 
-    let tree_entry = format!("100644 blob {blob_hash}\t.twig.toml\n");
-    let tree_hash = cmd!(sh, "git mktree")
-        .stdin(tree_entry)
-        .read()
-        .map_err(|e| format!("Failed to create tree: {e}"))?;
-
-    // Set author and committer info from user to avoid "Author unknown" error
-    let commit_hash = cmd!(sh, "git commit-tree {tree_hash} -m 'Initial commit'")
-        .env("GIT_AUTHOR_NAME", author_name)
-        .env("GIT_AUTHOR_EMAIL", author_email)
-        .env("GIT_COMMITTER_NAME", author_name)
-        .env("GIT_COMMITTER_EMAIL", author_email)
-        .read()
-        .map_err(|e| format!("Failed to create commit: {e}"))?;
-
-    cmd!(sh, "git update-ref refs/heads/{branch} {commit_hash}")
-        .run()
-        .map_err(|e| format!("Failed to update ref: {e}"))?;
-
-    install_pre_receive_hook(repo_path)?;
-
-    Ok(output)
-}
-
-mod hooks;
-pub use hooks::install_pre_receive_hook;
-
-fn sh() -> Result<xshell::Shell, String> {
-    xshell::Shell::new().map_err(|e| format!("Failed to create shell: {e}"))
+    Ok(commit_id.to_string())
 }
 
 #[cfg(test)]

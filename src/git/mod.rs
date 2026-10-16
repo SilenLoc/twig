@@ -9,7 +9,6 @@ use crate::auth::{
 };
 use crate::config;
 use crate::git::repo::bare_init;
-pub mod backend;
 pub mod bare;
 pub mod repo;
 pub mod reserved;
@@ -43,8 +42,6 @@ pub async fn git_handler(
         repo.clone()
     };
 
-    let git_backend_config = crate::git::backend::Config::new(server.project_root());
-
     let method = req.method().as_str();
     let query = req.query_string();
     let content_type = req
@@ -55,85 +52,68 @@ pub async fn git_handler(
 
     let path_info = format!("/{clean_repo}/{endpoint}");
 
-    let git_req = crate::git::backend::GitRequest::new(method, path_info, query, content_type);
+    let kind = twig_http::classify_request(method, &path_info, query);
 
-    let kind = git_req.kind();
-
-    let authenticated_user = match authenticate_git_request(
-        &req,
-        &server,
-        &auth_state,
-        &namespace,
-        &repo,
-        &kind,
-    )
-    .await
-    {
-        Ok(authenticated_user) => authenticated_user,
-        Err(response) => return response,
-    };
+    let authenticated_user =
+        match authenticate_git_request(&req, &server, &auth_state, &namespace, &clean_repo, &kind)
+            .await
+        {
+            Ok(authenticated_user) => authenticated_user,
+            Err(response) => return response,
+        };
     let username = authenticated_user
         .as_ref()
         .map(|authenticated_user| authenticated_user.username.clone());
     let may_rewrite_protected_branches = authenticated_user
         .is_some_and(|authenticated_user| authenticated_user.may_rewrite_protected_branches);
 
-    // Run in blocking thread — xshell/process::Command is blocking
-    let req = git_req.clone();
+    let project_root = server.project_root().to_owned();
+    let namespace = namespace.clone();
+    let method = method.to_owned();
+    let path_info = path_info.clone();
+    let query_string = query.to_owned();
+    let content_type = content_type.to_owned();
     let body_bytes = body.to_vec();
-    let namespace_clone = namespace.clone();
+    let username = username.clone();
+    let receive_hooks = server.git_receive_hooks();
     let result = web::block(move || {
-        crate::git::backend::run_with_config(
-            &git_backend_config,
-            &namespace_clone,
-            &req,
-            body_bytes,
-            username.as_deref(),
+        let config = twig_http::Config::new(project_root);
+        let request = twig_http::Request {
+            method: &method,
+            path_info: &path_info,
+            query_string: &query_string,
+            content_type: (!content_type.is_empty()).then_some(content_type.as_str()),
+            body: &body_bytes,
+            authenticated_user: username.as_deref(),
             may_rewrite_protected_branches,
-        )
+            receive_hooks: &receive_hooks,
+        };
+        twig_http::handle(&config, &namespace, request)
     })
     .await;
 
     match result {
-        Ok(Ok(cgi_output)) => {
-            let (headers, body) = cgi_output;
-            build_response(&headers, body)
-        }
+        Ok(Ok(response)) => build_library_response(response),
+        Ok(Err(twig_http::Error::UnsupportedRequest)) => HttpResponse::NotFound().finish(),
         Ok(Err(e)) => {
-            log::error!("{e:?}");
-            actix_web::HttpResponse::InternalServerError().body(e)
+            log::error!("Git HTTP library failed: {e}");
+            HttpResponse::InternalServerError().body(e.to_string())
         }
         Err(e) => {
-            log::error!("{e:?}");
-            actix_web::HttpResponse::InternalServerError().body("blocking task failed")
+            log::error!("Git HTTP library blocking task failed: {e}");
+            HttpResponse::InternalServerError().body("blocking task failed")
         }
     }
 }
 
-// Parse CGI headers into an actix HttpResponse
-fn build_response(headers: &str, body: Vec<u8>) -> actix_web::HttpResponse {
-    let mut response = actix_web::HttpResponse::Ok();
-    for line in headers.lines() {
-        if let Some((key, value)) = line.split_once(':') {
-            let key = key.trim();
-            let value = value.trim();
-            // Pick up the status line if git sets it (e.g. "Status: 401 Unauthorized")
-            if key.eq_ignore_ascii_case("Status") {
-                let code = value
-                    .split_whitespace()
-                    .next()
-                    .and_then(|s| s.parse::<u16>().ok())
-                    .unwrap_or(200);
-                response.status(
-                    actix_web::http::StatusCode::from_u16(code)
-                        .unwrap_or(actix_web::http::StatusCode::OK),
-                );
-            } else {
-                response.insert_header((key.to_owned(), value.to_owned()));
-            }
-        }
+fn build_library_response(response: twig_http::Response) -> HttpResponse {
+    let status = actix_web::http::StatusCode::from_u16(response.status)
+        .unwrap_or(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR);
+    let mut builder = HttpResponse::build(status);
+    for (key, value) in response.headers {
+        builder.insert_header((key, value));
     }
-    response.body(body)
+    builder.body(response.body)
 }
 
 async fn authenticate_git_request(
@@ -142,14 +122,12 @@ async fn authenticate_git_request(
     auth_state: &web::Data<TwigContext>,
     namespace: &str,
     repo: &str,
-    kind: &crate::git::backend::GitRequestKind,
+    kind: &twig_http::RequestKind,
 ) -> Result<Option<AuthenticatedGitUser>, HttpResponse> {
     let is_write = matches!(
         kind,
-        crate::git::backend::GitRequestKind::Push
-            | crate::git::backend::GitRequestKind::AdvertiseRefs(
-                crate::git::backend::GitService::WriteRef,
-            )
+        twig_http::RequestKind::ReceivePack
+            | twig_http::RequestKind::AdvertiseRefs(twig_http::Service::ReceivePack)
     );
 
     if is_write {
@@ -397,8 +375,7 @@ fn ensure_repo_exists(project_root: &str, namespace: &str, repo_name: &str) -> R
     let repo_path = Path::new(project_root).join(namespace).join(repo_name);
 
     if repo_path.exists() {
-        // Install/update policy hooks on repositories created by older Twig versions.
-        return repo::install_pre_receive_hook(&repo_path);
+        return Ok(());
     }
 
     // Create namespace directory if needed
@@ -425,34 +402,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_build_response_status_header() {
-        let headers = "Content-Type: text/html\r\nStatus: 401 Unauthorized".to_string();
-        let body = b"Unauthorized".to_vec();
-        let response = build_response(&headers, body);
+    fn library_response_keeps_status_and_headers() {
+        let response = build_library_response(twig_http::Response {
+            status: 401,
+            headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
+            body: b"Unauthorized".to_vec(),
+        });
         assert_eq!(response.status(), actix_web::http::StatusCode::UNAUTHORIZED);
-    }
-
-    #[test]
-    fn test_build_response_default_status() {
-        let headers = "Content-Type: text/html".to_string();
-        let body = b"OK".to_vec();
-        let response = build_response(&headers, body);
-        assert_eq!(response.status(), actix_web::http::StatusCode::OK);
-    }
-
-    #[test]
-    fn test_build_response_content_type() {
-        let headers = "Content-Type: application/git-upload-pack-advertisement".to_string();
-        let body = b"data".to_vec();
-        let response = build_response(&headers, body);
-        assert_eq!(response.status(), actix_web::http::StatusCode::OK);
-    }
-
-    #[test]
-    fn test_build_response_multiple_headers() {
-        let headers = "Content-Type: text/plain\r\nCache-Control: no-cache".to_string();
-        let body = b"test".to_vec();
-        let response = build_response(&headers, body);
-        assert_eq!(response.status(), actix_web::http::StatusCode::OK);
+        assert_eq!(
+            response.headers().get("content-type").unwrap(),
+            "text/plain"
+        );
     }
 }
