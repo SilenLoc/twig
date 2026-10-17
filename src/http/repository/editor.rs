@@ -1,5 +1,4 @@
 use actix_web::{HttpRequest, HttpResponse, get, post, web};
-use maud::Markup;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -8,6 +7,9 @@ use crate::{
     git::bare::{CommitFileOutcome, RepoHandle, is_safe_repo_path},
     http::auth::session::get_username_from_request,
 };
+
+mod render;
+use render::render_editor_page;
 
 const MAX_EDIT_BYTES: usize = 1024 * 1024;
 const MAX_FILE_NAME_BYTES: usize = 255;
@@ -348,6 +350,10 @@ pub async fn commit_file_handler(
     }
 }
 
+#[cfg(test)]
+#[path = "editor/tests.rs"]
+mod tests;
+
 fn save_conflict_copy(
     ctx: &EditContext,
     params: &EditParams,
@@ -403,226 +409,5 @@ fn save_conflict_copy(
             log::error!("Failed to commit conflict copy '{copy_path}': {error}");
             HttpResponse::InternalServerError().body("The conflict copy could not be committed.")
         }
-    }
-}
-
-fn render_editor_page(
-    namespace: &str,
-    repo: &str,
-    path: &str,
-    content: &str,
-    head: git2::Oid,
-    markdown: bool,
-    has_email: bool,
-) -> Markup {
-    let encoded_path = encode_file_path(path);
-    let save_url = format!("/{namespace}/{repo}/edit/{encoded_path}");
-    let content_url = format!("/{namespace}/{repo}/content/{encoded_path}");
-    maud::html! {
-        div class="twig-stack twig-editor" {
-            nav class="twig-crumbs twig-crumbs--page" aria-label="Breadcrumb" {
-                a href="/" { "Namespaces" }
-                span class="twig-crumb-sep" aria-hidden="true" { "/" }
-                a href=(format!("/{namespace}")) { (namespace) }
-                span class="twig-crumb-sep" aria-hidden="true" { "/" }
-                a href=(format!("/{namespace}/{repo}")) { (repo) }
-                span class="twig-crumb-sep" aria-hidden="true" { "/" }
-                span aria-current="page" { (path) }
-            }
-            header class="twig-stack twig-stack--tight" {
-                h1 class="twig-section" { "Edit file" }
-                p class="twig-hint" { "Changes are saved as a new commit in this repository." }
-            }
-            @if !has_email {
-                div class="twig-notice twig-notice--warning" role="status" {
-                    p class="twig-notice-body" {
-                        "Set an email address in " a href="/settings" { "account settings" }
-                        " before committing."
-                    }
-                }
-            }
-            @if markdown {
-                link rel="stylesheet" href=(crate::http::assets::url("quill.snow.css"));
-            }
-            form
-                id="repository-editor-form"
-                class="twig-panel twig-editor-panel"
-                data-save-url=(save_url)
-                data-markdown=[markdown.then_some("true")]
-            {
-                div class="twig-panel-head twig-editor-head" {
-                    code class="twig-mono" { (path) }
-                    @if markdown {
-                        nav class="twig-editor-modes" aria-label="Editing mode" {
-                            button type="button" class="twig-btn twig-btn--quiet" data-editor-mode="rich" aria-pressed="false" { "Rich text" }
-                            button type="button" class="twig-btn twig-btn--quiet" data-editor-mode="source" aria-pressed="true" { "Markdown source" }
-                        }
-                    } @else {
-                        span class="twig-row-meta" { "Source editor" }
-                    }
-                }
-                @if markdown {
-                    div class="twig-editor-toolbar" data-editor-toolbar hidden aria-label="Formatting" {
-                        select class="ql-header" aria-label="Heading" {
-                            option selected value="" { "Paragraph" }
-                            option value="2" { "Heading 2" }
-                            option value="3" { "Heading 3" }
-                        }
-                        button class="ql-bold" type="button" aria-label="Bold" {}
-                        button class="ql-italic" type="button" aria-label="Italic" {}
-                        button class="ql-strike" type="button" aria-label="Strikethrough" {}
-                        button class="ql-blockquote" type="button" aria-label="Block quote" {}
-                        button class="ql-code-block" type="button" aria-label="Code block" {}
-                        button class="ql-list" type="button" value="ordered" aria-label="Numbered list" {}
-                        button class="ql-list" type="button" value="bullet" aria-label="Bulleted list" {}
-                        button class="ql-link" type="button" aria-label="Link" {}
-                        button class="ql-clean" type="button" aria-label="Clear formatting" {}
-                    }
-                    div class="twig-editor-rich" data-editor-rich hidden aria-label=(format!("Rich text editor for {path}")) {}
-                }
-                textarea
-                    id="repository-editor-content"
-                    class="twig-editor-source"
-                    aria-label=(format!("{} source", path))
-                    spellcheck=[(!markdown).then_some("false")]
-                    rows="20"
-                { (content) }
-                input type="hidden" name="expected_head" value=(head);
-                div class="twig-editor-commit" {
-                    label class="twig-label" for="repository-editor-message" { "Commit message" }
-                    input
-                        id="repository-editor-message"
-                        class="twig-input"
-                        type="text"
-                        maxlength="200"
-                        required
-                        value=(format!("Update {path}"));
-                    p class="twig-editor-status" role="status" aria-live="polite" data-editor-status {}
-                    (render_conflict_actions(&save_url))
-                    div class="twig-form-actions" {
-                        a class="twig-btn twig-btn--quiet" href=(content_url) { "Cancel" }
-                        button class="twig-btn twig-btn--primary" type="submit" disabled[!has_email] { "Commit changes" }
-                    }
-                }
-            }
-            (render_editor_scripts(markdown))
-        }
-    }
-}
-
-fn render_conflict_actions(save_url: &str) -> Markup {
-    maud::html! {
-        a class="twig-btn twig-btn--quiet" href=(save_url) data-editor-reload hidden {
-            "Reload latest revision (discard this draft)"
-        }
-        button
-            class="twig-btn twig-btn--primary"
-            type="button"
-            data-editor-conflict-copy
-            hidden
-        { "Save draft as a conflict copy" }
-    }
-}
-
-fn render_editor_scripts(markdown: bool) -> Markup {
-    maud::html! {
-        @if markdown {
-            script src=(crate::http::assets::url("marked.js")) {}
-            script src=(crate::http::assets::url("purify.js")) {}
-            script src=(crate::http::assets::url("turndown.js")) {}
-            script src=(crate::http::assets::url("quill.js")) {}
-        }
-        script src=(crate::http::assets::url("repository-editor.js")) {}
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn editor_page_includes_source_and_commit_precondition() {
-        let html = render_editor_page(
-            "acme",
-            "twig",
-            "docs/guide.md",
-            "# Guide\n",
-            git2::Oid::ZERO_SHA1,
-            true,
-            true,
-        )
-        .into_string();
-
-        assert!(html.contains("id=\"repository-editor-form\""));
-        assert!(
-            html.contains(
-                "name=\"expected_head\" value=\"0000000000000000000000000000000000000000\""
-            )
-        );
-        assert!(html.contains("# Guide\n"));
-        assert!(html.contains("Markdown source"));
-        assert!(html.contains("data-editor-reload"));
-        assert!(html.contains("data-editor-conflict-copy"));
-        assert!(html.contains(&crate::http::assets::url("quill.js")));
-        assert!(html.contains(&crate::http::assets::url("marked.js")));
-        assert!(html.contains(&crate::http::assets::url("purify.js")));
-        assert!(html.contains(&crate::http::assets::url("turndown.js")));
-        assert!(html.contains(&crate::http::assets::url("quill.snow.css")));
-        assert!(
-            !html.contains("https://"),
-            "editor dependencies must be local"
-        );
-        assert!(html.contains("Commit changes"));
-    }
-
-    #[test]
-    fn source_page_does_not_offer_rich_controls() {
-        let html = render_editor_page(
-            "acme",
-            "twig",
-            "src/main.rs",
-            "fn main() {}\n",
-            git2::Oid::ZERO_SHA1,
-            false,
-            true,
-        )
-        .into_string();
-
-        assert!(html.contains("Source editor"));
-        assert!(!html.contains("Markdown source"));
-        assert!(html.contains("fn main() {}"));
-    }
-
-    #[test]
-    fn file_paths_are_encoded_without_losing_directory_separators() {
-        assert_eq!(
-            encode_file_path("docs/my file #1.md"),
-            "docs/my%20file%20%231.md"
-        );
-        assert_eq!(encode_file_path("src/name?.rs"), "src/name%3F.rs");
-    }
-
-    #[test]
-    fn conflict_copy_names_include_a_safe_user_timestamp_and_collision_suffix() {
-        assert_eq!(
-            conflict_copy_candidate("docs/README.md", "alice@example.com", "20261010-123456", 0,)
-                .unwrap(),
-            "docs/alice-example-com-20261010-123456-README.md"
-        );
-        assert_eq!(
-            conflict_copy_candidate("docs/README.md", "alice@example.com", "20261010-123456", 1,)
-                .unwrap(),
-            "docs/alice-example-com-20261010-123456-2-README.md"
-        );
-        assert!(conflict_copy_candidate("../README.md", "alice", "now", 0).is_err());
-    }
-
-    #[test]
-    fn conflict_copy_filename_truncation_preserves_utf8_and_component_limit() {
-        let source = format!("docs/{}.md", "語".repeat(200));
-        let candidate = conflict_copy_candidate(&source, "alice", "20261010-123456", 0).unwrap();
-        let name = candidate.rsplit('/').next().unwrap();
-        assert!(name.len() <= 255);
-        assert!(std::str::from_utf8(name.as_bytes()).is_ok());
     }
 }

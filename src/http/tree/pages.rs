@@ -1,7 +1,14 @@
 use actix_web::{HttpRequest, HttpResponse, get, web};
 use serde::Deserialize;
 
-use crate::{auth::TwigContext, config, db::data::TablePage, git};
+use crate::{auth::TwigContext, config, git};
+
+mod data;
+#[cfg(test)]
+use crate::db::data::TablePage;
+#[cfg(test)]
+use data::{DATA_PAGE_SIZE, render_data_page};
+pub use data::{data_page, data_rows};
 
 #[derive(Debug, Deserialize)]
 pub struct DataQuery {
@@ -13,15 +20,6 @@ pub struct RowsQuery {
     table: String,
     offset: usize,
 }
-
-const DATA_PAGE_SIZE: usize = 50;
-
-/// Upper bound on the OFFSET the rows route accepts. The infinite-scroll chain
-/// only ever requests page-aligned offsets counting up from 0, so anything
-/// larger is a hand-crafted URL; reject it instead of making `SQLite` walk that
-/// many rows (OFFSET scans are O(offset)). Offsets past the end of a table
-/// within this bound are fine — they yield an empty page and the chain stops.
-const MAX_DATA_OFFSET: usize = 1_000_000;
 
 pub(crate) fn render_tree_hub(
     test_enabled: bool,
@@ -219,107 +217,6 @@ fn render_namespace_deletion_panel(deletable_namespaces: &[String]) -> maud::Mar
     }
 }
 
-fn render_data_page(
-    tables: &[String],
-    selected: &str,
-    page: Option<&TablePage>,
-    offset: usize,
-    test_enabled: bool,
-) -> maud::Markup {
-    maud::html! {
-        (render_tree_hub(test_enabled, true, true, Some("data")))
-        section class="twig-panel" {
-            header class="twig-panel-head" {
-                h1 class="twig-eyebrow" { "Database tables" }
-                p class="twig-row-meta" { "Read-only table data" }
-            }
-            div class="twig-panel-body" {
-                nav class="twig-tabs" aria-label="Database tables" {
-                    @for table in tables {
-                        a class="twig-tab" aria-current=[(table == selected).then_some("page")] href=(format!("/tree/data?table={table}")) { (table) }
-                    }
-                }
-                @if let Some(page) = page {
-                    @if page.rows.is_empty() && offset == 0 {
-                        p class="twig-empty-body" { "This table has no rows." }
-                    } @else {
-                        div class="twig-table-scroll" {
-                            table class="twig-table" {
-                                thead {
-                                    tr {
-                                        @for column in &page.columns {
-                                            th scope="col" { (column) }
-                                        }
-                                    }
-                                }
-                                tbody id="database-rows" {
-                                    @for row in &page.rows {
-                                        (render_data_row(row))
-                                    }
-                                    @if page.rows.len() == DATA_PAGE_SIZE {
-                                        (render_load_more(selected, offset + page.rows.len()))
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn render_data_row(row: &[String]) -> maud::Markup {
-    maud::html! {
-        tr {
-            @for value in row {
-                td class="twig-data" { (value) }
-            }
-        }
-    }
-}
-
-fn render_load_more(table: &str, offset: usize) -> maud::Markup {
-    maud::html! {
-        tr
-            hx-get=(format!("/tree/data/rows?table={table}&offset={offset}"))
-            hx-trigger="revealed"
-            hx-swap="outerHTML"
-        {
-            td colspan="100" class="twig-row-meta" { "Loading more rows…" }
-        }
-    }
-}
-
-fn render_more_rows(table: &str, offset: usize, page: &TablePage) -> maud::Markup {
-    maud::html! {
-        @for row in &page.rows {
-            (render_data_row(row))
-        }
-        @if page.rows.len() == DATA_PAGE_SIZE {
-            (render_load_more(table, offset + page.rows.len()))
-        }
-    }
-}
-
-async fn require_admin(
-    req: &HttpRequest,
-    server: &config::Server,
-    auth_state: &web::Data<TwigContext>,
-) -> Result<String, HttpResponse> {
-    let Some(admin_user) = server.admin_user() else {
-        return Err(HttpResponse::NotFound().finish());
-    };
-    let username = crate::http::auth::session::get_username_from_request(req, auth_state).await;
-    if !username
-        .as_deref()
-        .is_some_and(|username| server.is_configured_admin(username))
-    {
-        return Err(HttpResponse::Forbidden().body("Forbidden"));
-    }
-    Ok(admin_user.to_string())
-}
-
 #[get("/tree")]
 pub async fn tree_page(req: HttpRequest, auth_state: web::Data<TwigContext>) -> HttpResponse {
     if crate::http::auth::session::get_username_from_request(&req, &auth_state)
@@ -412,6 +309,10 @@ pub async fn namespaces_page(
         .body(content.into_string())
 }
 
+#[cfg(test)]
+#[path = "pages/tests.rs"]
+mod tests;
+
 #[get("/tree/repositories")]
 pub async fn repositories_page(
     req: HttpRequest,
@@ -489,218 +390,4 @@ pub async fn repositories_page(
     HttpResponse::Ok()
         .content_type("text/html")
         .body(content.into_string())
-}
-
-#[get("/tree/data")]
-pub async fn data_page(
-    req: HttpRequest,
-    server: web::Data<config::Server>,
-    auth_state: web::Data<TwigContext>,
-    query: web::Query<DataQuery>,
-) -> HttpResponse {
-    let username = match require_admin(&req, &server, &auth_state).await {
-        Ok(username) => username,
-        Err(response) => return response,
-    };
-    let db = auth_state.db();
-    let tables = match db.list_table_names().await {
-        Ok(tables) => tables,
-        Err(error) => {
-            log::error!("Failed to list database tables: {error}");
-            return HttpResponse::InternalServerError().finish();
-        }
-    };
-    let selected = query
-        .table
-        .as_deref()
-        .filter(|table| tables.iter().any(|name| name == table))
-        .or_else(|| tables.first().map(String::as_str));
-    let Some(selected) = selected else {
-        return HttpResponse::Ok().body("No database tables found");
-    };
-    let page = match db.read_table_page(selected, DATA_PAGE_SIZE, 0).await {
-        Ok(page) => page,
-        Err(error) => {
-            log::error!("Failed to read database table '{selected}': {error}");
-            return HttpResponse::InternalServerError().finish();
-        }
-    };
-    let content = render_data_page(
-        &tables,
-        selected,
-        page.as_ref(),
-        0,
-        server.is_test_user_enabled(),
-    );
-    let content = if req.headers().get("HX-Request").is_some() {
-        content
-    } else {
-        crate::http::view::render_layout(&content, Some(&username), Some("Database Data"))
-    };
-    HttpResponse::Ok()
-        .content_type("text/html")
-        .body(content.into_string())
-}
-
-#[get("/tree/data/rows")]
-pub async fn data_rows(
-    req: HttpRequest,
-    server: web::Data<config::Server>,
-    auth_state: web::Data<TwigContext>,
-    query: web::Query<RowsQuery>,
-) -> HttpResponse {
-    if let Err(response) = require_admin(&req, &server, &auth_state).await {
-        return response;
-    }
-    if query.offset > MAX_DATA_OFFSET {
-        return HttpResponse::BadRequest().body("Offset out of range");
-    }
-    let page = match auth_state
-        .db()
-        .read_table_page(&query.table, DATA_PAGE_SIZE, query.offset)
-        .await
-    {
-        Ok(Some(page)) => page,
-        Ok(None) => return HttpResponse::NotFound().finish(),
-        Err(error) => {
-            log::error!("Failed to read database table '{}': {error}", query.table);
-            return HttpResponse::InternalServerError().finish();
-        }
-    };
-    HttpResponse::Ok()
-        .content_type("text/html")
-        .body(render_more_rows(&query.table, query.offset, &page).into_string())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn tree_hub_only_renders_enabled_sections() {
-        let minimal = render_tree_hub(false, false, false, None).into_string();
-        assert!(minimal.contains(">Account</a>"));
-        assert!(minimal.contains("href=\"/tree/repositories\">Repository</a>"));
-        assert!(minimal.contains("href=\"/tree/namespaces\""));
-        assert!(!minimal.contains(">Test</a>"));
-        assert!(!minimal.contains(">Data</a>"));
-
-        let enabled = render_tree_hub(true, true, true, Some("data")).into_string();
-        assert!(enabled.contains("href=\"/_test\""));
-        assert!(enabled.contains("href=\"/tree/namespaces\""));
-        assert!(
-            !enabled.contains("aria-current=\"page\" href=\"/tree/repositories\">Repository</a>")
-        );
-        assert!(enabled.contains("href=\"/tree/data\""));
-        assert!(enabled.contains("aria-current=\"page\" href=\"/tree/data\""));
-        assert!(enabled.contains("href=\"/tree/users\">User Management</a>"));
-        let repository_active =
-            render_tree_hub(false, false, false, Some("repositories")).into_string();
-        assert!(
-            repository_active
-                .contains("aria-current=\"page\" href=\"/tree/repositories\">Repository</a>")
-        );
-    }
-
-    #[test]
-    fn namespace_page_lists_repositories_with_confirmed_namespace_buttons() {
-        let html = render_namespaces_page(
-            &[(
-                "acme".to_string(),
-                vec![git::bare::RepoInfo {
-                    name: "twig".to_string(),
-                    last_commit_date: None,
-                    is_private: false,
-                }],
-            )],
-            &["acme".to_string(), "solo".to_string()],
-            &["solo".to_string()],
-        )
-        .into_string();
-
-        assert!(html.contains("<span class=\"twig-row-id\">acme/twig</span>"));
-        assert!(html.contains(
-            "hx-confirm=\"Move 'acme/twig' to the 'solo' namespace? Its URL will change.\""
-        ));
-        assert!(
-            html.contains(
-                "<button class=\"twig-btn twig-btn--ghost\" type=\"submit\">solo</button>"
-            )
-        );
-        assert!(html.contains("name=\"target_namespace\" value=\"solo\""));
-        assert!(!html.contains("<select"));
-        assert!(html.contains("Delete Namespace"));
-        assert!(!html.contains("NO NAMESPACES"));
-        assert!(html.contains("hx-post=\"/settings/delete-namespace/\""));
-        assert!(html.contains("hx-confirm=\"Are you sure you want to permanently delete the namespace 'solo'? This cannot be undone.\""));
-        assert!(html.contains("<span class=\"twig-row-id\">solo</span>"));
-    }
-
-    #[test]
-    fn namespace_page_explains_when_no_namespace_can_be_deleted() {
-        let html = render_namespaces_page(&[], &[], &[]).into_string();
-
-        assert!(html.contains("Delete Namespace"));
-        assert!(html.contains(">NO NAMESPACES<"));
-        assert!(html.contains(
-            "No namespaces available for deletion. You can only delete namespaces you own that have no repositories."
-        ));
-        assert!(!html.contains("hx-confirm"));
-        assert!(!html.contains("twig-btn--danger"));
-    }
-
-    #[test]
-    fn namespace_page_lists_owned_namespaces_for_rename_with_the_htmx_contract() {
-        let html =
-            render_namespace_rename_panel(&["acme".to_string(), "solo".to_string()]).into_string();
-
-        assert!(html.contains(
-            "<h2 class=\"twig-eyebrow\" id=\"namespace-rename-heading\">Rename Namespace</h2>"
-        ));
-        assert!(html.contains("hx-post=\"/settings/rename-namespace\""));
-        assert!(html.contains("hx-target=\"#rename-namespace-result\""));
-        assert!(html.contains(
-            "hx-confirm=\"Rename namespace 'acme'? Every repository URL inside it will change.\""
-        ));
-        assert!(html.contains("<span class=\"twig-row-id\">acme</span>"));
-        assert!(html.contains("<span class=\"twig-row-id\">solo</span>"));
-        assert!(html.contains("<input type=\"hidden\" name=\"namespace\" value=\"acme\">"));
-        assert!(html.contains(
-            "<input class=\"twig-input twig-input--mono\" type=\"text\" name=\"new_name\" required minlength=\"2\" autocomplete=\"off\" spellcheck=\"false\" value=\"acme\">"
-        ));
-        assert!(html.contains(
-            "<button class=\"twig-btn twig-btn--primary\" type=\"submit\">Rename</button>"
-        ));
-        assert_eq!(
-            html.matches("hx-post=\"/settings/rename-namespace\"")
-                .count(),
-            2
-        );
-    }
-
-    #[test]
-    fn namespace_rename_panel_empty_state_offers_no_targets() {
-        let html = render_namespace_rename_panel(&[]).into_string();
-
-        assert!(html.contains("Rename Namespace"));
-        assert!(html.contains(">NO NAMESPACES<"));
-        assert!(html.contains("You don't have any namespaces to rename."));
-        assert!(!html.contains("hx-confirm"));
-        assert!(!html.contains("twig-btn--primary"));
-    }
-
-    #[test]
-    fn data_page_uses_the_infinite_scroll_placeholder() {
-        let page = TablePage {
-            columns: vec!["id".to_string()],
-            rows: (0..DATA_PAGE_SIZE)
-                .map(|index| vec![index.to_string()])
-                .collect(),
-        };
-        let html =
-            render_data_page(&["users".to_string()], "users", Some(&page), 0, false).into_string();
-        assert!(html.contains("hx-trigger=\"revealed\""));
-        assert!(html.contains("hx-swap=\"outerHTML\""));
-        assert!(html.contains("/tree/data/rows?table=users&amp;offset=50"));
-    }
 }
