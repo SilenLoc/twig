@@ -71,7 +71,6 @@ pub async fn logout_ui_handler(
 
 #[post("/auth/invite")]
 pub async fn create_invite_ui_handler(
-    _req: HttpRequest,
     auth_state: web::Data<TwigContext>,
     form: web::Form<InviteForm>,
 ) -> impl Responder {
@@ -111,7 +110,6 @@ pub async fn create_invite_ui_handler(
 
 #[post("/auth/signup")]
 pub async fn signup_ui_handler(
-    _req: HttpRequest,
     auth_state: web::Data<TwigContext>,
     form: web::Form<SignupForm>,
 ) -> impl Responder {

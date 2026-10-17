@@ -222,11 +222,11 @@ fn test_create_repo_form_preserves_the_htmx_contract() {
 fn test_create_repo_form_cancel_is_plain_text_with_its_dismiss_behaviour() {
     let html = render_create_repo_form("acme").into_string();
     assert!(
-            html.contains(
-                "<button type=\"button\" class=\"twig-btn twig-btn--quiet\" onclick=\"document.getElementById('create-repo-container').innerHTML = ''\">Cancel</button>"
-            ),
-            "{html}"
-        );
+        html.contains(
+            "<button type=\"button\" class=\"twig-btn twig-btn--quiet\" onclick=\"document.getElementById('create-repo-container').innerHTML = ''\">Cancel</button>"
+        ),
+        "{html}"
+    );
     assert!(
         !html.contains('\u{2715}'),
         "the cross glyph is removed: {html}"

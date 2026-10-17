@@ -1,7 +1,8 @@
 use super::*;
+use crate::git;
 use crate::http::view::test_util::{classes_in, index_of};
 
-pub(super) fn user_fixture(email: Option<&str>) -> crate::auth::User {
+fn user_fixture(email: Option<&str>) -> crate::auth::User {
     crate::auth::User {
         id: "11111111-2222-3333-4444-555555555555".to_string(),
         username: "silen".to_string(),
@@ -11,7 +12,7 @@ pub(super) fn user_fixture(email: Option<&str>) -> crate::auth::User {
     }
 }
 
-pub(super) fn repo_fixture(name: &str) -> git::bare::RepoInfo {
+fn repo_fixture(name: &str) -> git::bare::RepoInfo {
     git::bare::RepoInfo {
         name: name.to_string(),
         last_commit_date: None,
@@ -19,32 +20,32 @@ pub(super) fn repo_fixture(name: &str) -> git::bare::RepoInfo {
     }
 }
 
-pub(super) fn populated_html() -> String {
+fn populated_html() -> String {
     render_settings(&user_fixture(Some("silen@example.com"))).into_string()
 }
 
-pub(super) fn empty_html() -> String {
+fn empty_html() -> String {
     render_settings(&user_fixture(None)).into_string()
 }
 
-pub(super) fn repo_panel_html() -> String {
+fn repo_panel_html() -> String {
     render_repo_deletion_panel(&[("acme".to_string(), vec![repo_fixture("twig")])]).into_string()
 }
 
-pub(super) fn empty_repo_panel_html() -> String {
+fn empty_repo_panel_html() -> String {
     render_repo_deletion_panel(&[]).into_string()
 }
 
-pub(super) fn rename_panel_html() -> String {
+fn rename_panel_html() -> String {
     render_repo_rename_panel(&[("acme".to_string(), vec![repo_fixture("twig")])]).into_string()
 }
 
-pub(super) fn empty_rename_panel_html() -> String {
+fn empty_rename_panel_html() -> String {
     render_repo_rename_panel(&[]).into_string()
 }
 
 #[test]
-pub(super) fn test_settings_leads_with_crumbs_and_page_head() {
+fn test_settings_leads_with_crumbs_and_page_head() {
     let html = populated_html();
     assert!(
         html.contains("<nav class=\"twig-crumbs twig-crumbs--page\" aria-label=\"Breadcrumb\">"),
@@ -67,7 +68,7 @@ pub(super) fn test_settings_leads_with_crumbs_and_page_head() {
 }
 
 #[test]
-pub(super) fn test_account_page_renders_account_panel_only() {
+fn test_account_page_renders_account_panel_only() {
     let html = populated_html();
     assert_eq!(
         html.matches("class=\"twig-bento\"").count(),
@@ -108,7 +109,7 @@ pub(super) fn test_account_page_renders_account_panel_only() {
 }
 
 #[test]
-pub(super) fn test_settings_does_not_render_repository_moves() {
+fn test_settings_does_not_render_repository_moves() {
     let html = populated_html();
     assert!(!html.contains("/settings/move-repo"), "{html}");
     assert!(!html.contains("Move Repository"), "{html}");
@@ -116,7 +117,7 @@ pub(super) fn test_settings_does_not_render_repository_moves() {
 }
 
 #[test]
-pub(super) fn test_settings_deletion_panels_carry_danger_and_caution_affordances() {
+fn test_settings_deletion_panels_carry_danger_and_caution_affordances() {
     let html = repo_panel_html();
     assert_eq!(
         html.matches("twig-panel twig-panel--danger").count(),
@@ -149,7 +150,7 @@ pub(super) fn test_settings_deletion_panels_carry_danger_and_caution_affordances
 }
 
 #[test]
-pub(super) fn test_settings_delete_repo_rows_preserve_the_htmx_contract() {
+fn test_settings_delete_repo_rows_preserve_the_htmx_contract() {
     let html = repo_panel_html();
     for attribute in [
         "hx-post=\"/settings/delete-repo\"",
@@ -179,7 +180,7 @@ pub(super) fn test_settings_delete_repo_rows_preserve_the_htmx_contract() {
 }
 
 #[test]
-pub(super) fn test_settings_rename_repo_rows_preserve_the_htmx_contract() {
+fn test_settings_rename_repo_rows_preserve_the_htmx_contract() {
     let html = rename_panel_html();
     for attribute in [
         "hx-post=\"/settings/rename-repo\"",
@@ -207,11 +208,11 @@ pub(super) fn test_settings_rename_repo_rows_preserve_the_htmx_contract() {
         assert!(html.contains(hidden), "missing payload {hidden}: {html}");
     }
     assert!(
-            html.contains(
-                "<input class=\"twig-input twig-input--mono\" type=\"text\" name=\"new_name\" required autocomplete=\"off\" spellcheck=\"false\" value=\"twig\">"
-            ),
-            "the new-name input is labelled, required and prefilled: {html}"
-        );
+        html.contains(
+            "<input class=\"twig-input twig-input--mono\" type=\"text\" name=\"new_name\" required autocomplete=\"off\" spellcheck=\"false\" value=\"twig\">"
+        ),
+        "the new-name input is labelled, required and prefilled: {html}"
+    );
     assert!(
         html.contains(
             "<button class=\"twig-btn twig-btn--primary\" type=\"submit\">Rename</button>"
@@ -225,7 +226,7 @@ pub(super) fn test_settings_rename_repo_rows_preserve_the_htmx_contract() {
 }
 
 #[test]
-pub(super) fn test_settings_rename_panel_empty_state_offers_no_targets() {
+fn test_settings_rename_panel_empty_state_offers_no_targets() {
     let html = empty_rename_panel_html();
     assert!(html.contains("Rename Repository"), "{html}");
     assert!(html.contains(">NO REPOSITORIES<"), "{html}");
@@ -238,14 +239,14 @@ pub(super) fn test_settings_rename_panel_empty_state_offers_no_targets() {
 }
 
 #[test]
-pub(super) fn test_settings_does_not_render_namespace_deletion_controls() {
+fn test_settings_does_not_render_namespace_deletion_controls() {
     let html = populated_html();
     assert!(!html.contains("Delete Namespace"), "{html}");
     assert!(!html.contains("delete-namespace"), "{html}");
 }
 
 #[test]
-pub(super) fn test_settings_email_form_preserves_the_htmx_contract() {
+fn test_settings_email_form_preserves_the_htmx_contract() {
     let html = populated_html();
     for attribute in [
         "hx-post=\"/settings/email\"",
@@ -262,11 +263,11 @@ pub(super) fn test_settings_email_form_preserves_the_htmx_contract() {
         "every input keeps a real label: {html}"
     );
     assert!(
-            html.contains(
-                "<input class=\"twig-input\" type=\"email\" name=\"email\" id=\"email\" required value=\"silen@example.com\""
-            ),
-            "the email input keeps its type, requirement and current value: {html}"
-        );
+        html.contains(
+            "<input class=\"twig-input\" type=\"email\" name=\"email\" id=\"email\" required value=\"silen@example.com\""
+        ),
+        "the email input keeps its type, requirement and current value: {html}"
+    );
     assert!(
         html.contains(
             "<button class=\"twig-btn twig-btn--primary\" type=\"submit\">Save Email</button>"
@@ -276,7 +277,7 @@ pub(super) fn test_settings_email_form_preserves_the_htmx_contract() {
 }
 
 #[test]
-pub(super) fn test_settings_result_targets_announce_swaps() {
+fn test_settings_result_targets_announce_swaps() {
     let html = populated_html();
     assert!(
         html.contains("<div id=\"settings-result\" aria-live=\"polite\">"),
@@ -285,7 +286,7 @@ pub(super) fn test_settings_result_targets_announce_swaps() {
 }
 
 #[test]
-pub(super) fn test_settings_keeps_identity_visible_and_email_break_safe() {
+fn test_settings_keeps_identity_visible_and_email_break_safe() {
     let html = populated_html();
     assert!(
         html.contains("<span class=\"twig-label\">Username</span>"),
@@ -309,7 +310,7 @@ pub(super) fn test_settings_keeps_identity_visible_and_email_break_safe() {
 }
 
 #[test]
-pub(super) fn test_settings_empty_states_name_their_condition_and_offer_no_targets() {
+fn test_settings_empty_states_name_their_condition_and_offer_no_targets() {
     let html = empty_repo_panel_html();
     assert_eq!(
         html.matches("<div class=\"twig-empty\">").count(),
@@ -332,7 +333,7 @@ pub(super) fn test_settings_empty_states_name_their_condition_and_offer_no_targe
 }
 
 #[test]
-pub(super) fn test_settings_uses_only_twig_design_system_classes() {
+fn test_settings_uses_only_twig_design_system_classes() {
     for html in [
         populated_html(),
         empty_html(),
@@ -357,26 +358,26 @@ pub(super) fn test_settings_uses_only_twig_design_system_classes() {
 }
 
 #[test]
-pub(super) fn test_namespace_form_deserialization() {
+fn test_namespace_form_deserialization() {
     let form: NamespaceForm = serde_urlencoded::from_str("namespace=my-namespace").unwrap();
     assert_eq!(form.namespace, "my-namespace");
 }
 
 #[test]
-pub(super) fn test_update_email_form_deserialization() {
+fn test_update_email_form_deserialization() {
     let form: UpdateEmailForm = serde_urlencoded::from_str("email=test@example.com").unwrap();
     assert_eq!(form.email, "test@example.com");
 }
 
 #[test]
-pub(super) fn test_delete_repo_form_deserialization() {
+fn test_delete_repo_form_deserialization() {
     let form: DeleteRepoForm = serde_urlencoded::from_str("namespace=ns&repo_name=repo").unwrap();
     assert_eq!(form.namespace, "ns");
     assert_eq!(form.repo_name, "repo");
 }
 
 #[test]
-pub(super) fn test_move_repo_form_deserialization() {
+fn test_move_repo_form_deserialization() {
     let form: MoveRepoForm = serde_urlencoded::from_str(
         "source_namespace=source&repo_name=repo&target_namespace=target",
     )
@@ -387,7 +388,7 @@ pub(super) fn test_move_repo_form_deserialization() {
 }
 
 #[test]
-pub(super) fn test_rename_repo_form_deserialization() {
+fn test_rename_repo_form_deserialization() {
     let form: RenameRepoForm =
         serde_urlencoded::from_str("namespace=ns&repo_name=old&new_name=new").unwrap();
     assert_eq!(form.namespace, "ns");
@@ -396,7 +397,7 @@ pub(super) fn test_rename_repo_form_deserialization() {
 }
 
 #[test]
-pub(super) fn test_rename_namespace_form_deserialization() {
+fn test_rename_namespace_form_deserialization() {
     let form: RenameNamespaceForm =
         serde_urlencoded::from_str("namespace=oldns&new_name=newns").unwrap();
     assert_eq!(form.namespace, "oldns");

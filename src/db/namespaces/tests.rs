@@ -156,7 +156,7 @@ async fn namespace_roles_control_owner_scopes_and_creation_permissions() {
         .unwrap()
         .execute(
             "INSERT INTO namespace_members (namespace_id, user_id, role, added_at)
-                 VALUES (?1, ?2, 'contributor', ?3)",
+             VALUES (?1, ?2, 'contributor', ?3)",
             turso::params![
                 namespace.id.clone(),
                 contributor_id.clone(),

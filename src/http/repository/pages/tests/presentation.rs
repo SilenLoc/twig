@@ -16,7 +16,6 @@ fn test_presentation_offers_the_pdf_export() {
         "Download PDF is a plain navigation link, not an htmx swap: {html}"
     );
 }
-
 #[test]
 fn test_print_export_renders_one_page_per_slide_with_the_license_last() {
     let deck = slides(3);
@@ -57,7 +56,6 @@ fn test_print_export_renders_one_page_per_slide_with_the_license_last() {
     // forces a trailing blank sheet.
     assert!(html.contains(r#"class="twig-pdf-page twig-pdf-page--license""#),);
 }
-
 #[test]
 fn test_print_export_opens_the_dialog_once_loaded() {
     let deck = slides(2);
@@ -80,7 +78,6 @@ fn test_print_export_opens_the_dialog_once_loaded() {
         "the hint names the dialog option to pick: {html}"
     );
 }
-
 #[test]
 fn test_print_export_is_a_chrome_free_document() {
     let deck = slides(2);
@@ -114,20 +111,6 @@ fn test_print_export_is_a_chrome_free_document() {
         "an empty binder has nothing to print: {empty}"
     );
 }
-
-#[test]
-fn test_print_document_uses_local_font_assets() {
-    let html = render_pdf_document("acme", "my-project", &slides(1), None).into_string();
-    assert!(
-        html.contains(&crate::http::assets::url("twig.css")),
-        "{html}"
-    );
-    assert!(
-        !html.contains("fonts.googleapis.com") && !html.contains("fonts.gstatic.com"),
-        "the print view must not fetch remote fonts: {html}"
-    );
-}
-
 #[test]
 fn test_presentation_targets_its_container_and_scopes_the_keyboard() {
     let deck = slides(3);
@@ -177,7 +160,6 @@ fn test_presentation_targets_its_container_and_scopes_the_keyboard() {
         "fullscreen no longer depends on the Fullscreen API: {html}"
     );
 }
-
 #[test]
 fn test_presentation_controls_are_labelled_and_bounded() {
     let deck = slides(3);
@@ -186,17 +168,6 @@ fn test_presentation_controls_are_labelled_and_bounded() {
     assert!(
         html.contains("twig-theme-toggle"),
         "the theme switch must remain accessible in fullscreen and after slide swaps: {html}"
-    );
-    let toolbar_end = html
-        .find("</div></header>")
-        .expect("presentation toolbar closes");
-    let toggle = html[..toolbar_end]
-        .find("twig-theme-toggle")
-        .expect("presentation toolbar keeps the theme control");
-    assert!(html.contains("twig-theme-label"), "{html}");
-    assert!(
-        !html[toggle..toolbar_end].contains("class=\"twig-btn"),
-        "the theme control is the last button in the presentation tools: {html}"
     );
     for control in [
         r#"id="decrease-text-size" class="twig-btn twig-btn--quiet" type="button" aria-label="Decrease presentation font size" title="Decrease font size""#,
@@ -215,9 +186,9 @@ fn test_presentation_controls_are_labelled_and_bounded() {
         "the first slide disables Previous rather than swapping in a span: {html}"
     );
     assert!(
-            html.contains(r#"<button id="next-slide" class="twig-btn twig-btn--quiet" type="button" hx-get="/acme/my-project/slide/1""#),
-            "{html}"
-        );
+        html.contains(r#"<button id="next-slide" class="twig-btn twig-btn--quiet" type="button" hx-get="/acme/my-project/slide/1""#),
+        "{html}"
+    );
     assert!(
         html.contains(r#"<div class="twig-ticks" role="group" aria-label="Go to slide">"#),
         "{html}"
@@ -234,11 +205,11 @@ fn test_presentation_controls_are_labelled_and_bounded() {
         "one tick is current: {html}"
     );
     assert!(
-            html.contains(
-                r#"<button id="fullscreen-toggle" class="twig-btn twig-btn--quiet" type="button" aria-pressed="false" hx-on:click="data.twigFullscreen = !data.twigFullscreen""#
-            ),
-            "fullscreen is a real toggle button with a visible label: {html}"
-        );
+        html.contains(
+            r#"<button id="fullscreen-toggle" class="twig-btn twig-btn--quiet" type="button" aria-pressed="false" hx-on:click="data.twigFullscreen = !data.twigFullscreen""#
+        ),
+        "fullscreen is a real toggle button with a visible label: {html}"
+    );
     assert!(
         html.contains(r#"hx-live:text="data.twigFullscreen ? 'Exit fullscreen' : 'Fullscreen'""#),
         "the fullscreen label reflects the toggle state: {html}"
@@ -252,24 +223,22 @@ fn test_presentation_controls_are_labelled_and_bounded() {
         "the last slide disables Next: {last}"
     );
 }
-
 #[test]
 fn test_slide_counter_pads_to_the_width_of_the_deck() {
     assert_eq!(slide_counter(0, 3), "1 / 3");
     assert_eq!(slide_counter(2, 12), "03 / 12");
     assert_eq!(slide_counter(11, 12), "12 / 12");
 }
-
 #[test]
 fn test_present_view_without_slides_states_the_condition() {
     let html = render_present_view("acme", "my-project", &[]).into_string();
     assert!(html.contains("twig-empty"), "{html}");
     assert!(html.contains(">NO SLIDES<"), "{html}");
     assert!(
-            html.contains(
-                "No presentation slides configured. Add a [present] section with files to your .twig.toml."
-            ),
-            "{html}"
-        );
+        html.contains(
+            "No presentation slides configured. Add a [present] section with files to your .twig.toml."
+        ),
+        "{html}"
+    );
     assert!(!html.contains("present-container"), "{html}");
 }

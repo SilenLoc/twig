@@ -1,29 +1,20 @@
-use super::tabs::markdown_files;
-use super::{
-    AwResult, CowStr, Event, HashMap, HttpRequest, Markup, Options, Parser, RepoContext, Tag,
-    TwigContext, config, get, html, is_safe_repo_path, md, open_repo, render_empty,
-    render_not_found_for_request, render_tab_response, web,
-};
-use super::{content::parent_path, paper::PaperHeading};
-use serde::Deserialize;
+use std::collections::HashMap;
 
-#[derive(Deserialize)]
-pub(super) struct MarkdownParams {
-    namespace: String,
-    repo: String,
-    file_path: String,
-}
+use actix_web::Result as AwResult;
+use actix_web::{HttpRequest, get, web};
+use maud::Markup;
+use pulldown_cmark::{CowStr, Event, Options, Parser, Tag, html};
 
-/// The Documentation tab: the default Markdown file, README preferred.
-pub(super) fn markdown_body(ctx: &RepoContext) -> Markup {
-    markdown_body_from(ctx, &markdown_files(ctx))
-}
+use crate::auth::TwigContext;
+use crate::config;
+use crate::git::bare::is_safe_repo_path;
+use crate::md;
 
-pub(super) fn markdown_body_from(ctx: &RepoContext, files: &[String]) -> Markup {
-    let file = get_default_markdown_file(files).unwrap_or("README.md");
-    let content = ctx.handle.read_file(file).ok().flatten();
-    render_markdown_view(&ctx.namespace, &ctx.repo, file, content.as_deref(), files)
-}
+use super::MarkdownParams;
+use super::content::parent_path;
+use super::context::{open_repo, render_empty, render_not_found_for_request};
+use super::paper::PaperHeading;
+use super::tabs::{markdown_files, render_tab_response};
 
 #[get("/{namespace}/{repo}/md/{file_path:.*}")]
 pub async fn markdown_handler(
@@ -69,10 +60,7 @@ pub async fn markdown_handler(
     Ok(render_tab_response(&req, &ctx.frame(), "markdown", &body))
 }
 
-/// Converts markdown to HTML, fixing relative links to point to repo root
-/// A destination is external when it carries a URL scheme such as `https:` or
-/// `mailto:`. A bare relative path never does, because a scheme cannot contain
-/// a `/`.
+/// Whether `page` sits inside `dir` (both repository-relative).
 pub(super) fn has_url_scheme(dest: &str) -> bool {
     match dest.find(':') {
         Some(0) | None => false,
@@ -146,7 +134,7 @@ pub(super) fn rewrite_markdown_link(
 /// Rewrites a link tag's destination into a Twig URL, returning every other tag
 /// unchanged. Shared by the Documentation view and presentations so relative
 /// repository links resolve the same way in both.
-pub(super) fn fix_link_tag<'a>(
+fn fix_link_tag<'a>(
     tag: pulldown_cmark::Tag<'a>,
     namespace: &str,
     repo: &str,
@@ -266,24 +254,62 @@ pub(super) fn render_slide_markdown(
     html_output
 }
 
-/// Get the default markdown file to show - prefers README.md if it exists
-pub(super) fn get_default_markdown_file(markdown_files: &[String]) -> Option<&str> {
-    // First try to find README.md (case-insensitive)
-    let readme = markdown_files
-        .iter()
-        .find(|f| f.eq_ignore_ascii_case("README.md"));
-    if readme.is_some() {
-        return readme.map(String::as_str);
+/// An Empty State (DESIGN.md 5.13). The eyebrow names the condition in words so
+/// the meaning never rests on colour alone.
+pub(super) const MARKDOWN_COPY_SCRIPT: &str = r"(function(){
+var s=document.currentScript;
+var src=s&&s.previousElementSibling;
+var bar=src&&src.previousElementSibling;
+var b=bar&&bar.querySelector('[data-twig-copy-markdown]');
+if(!src||!b)return;
+var done=function(ok){
+b.textContent=ok?'Copied':'Select manually';
+setTimeout(function(){b.textContent='Copy source';},1500);
+if(!ok){
+try{var range=document.createRange();range.selectNodeContents(src);var sel=window.getSelection();sel.removeAllRanges();sel.addRange(range);}catch(_){}
+}
+};
+b.addEventListener('click',function(){
+var text=src.textContent;
+if(navigator.clipboard&&navigator.clipboard.writeText){
+navigator.clipboard.writeText(text).then(function(){done(true);},function(){done(false);});
+}else{done(false);}
+});
+})();";
+
+/// The source actions shown only for Markdown files in the Content tab. The Raw
+/// link reuses the existing guarded `/raw/` route; the hidden source lets Copy
+/// preserve Markdown rather than rendered HTML.
+pub(super) fn render_markdown_controls(
+    namespace: &str,
+    repo: &str,
+    file_path: &str,
+    source: &str,
+) -> Markup {
+    let raw_url = format!("/{namespace}/{repo}/raw/{file_path}");
+    maud::html! {
+        header class="twig-docbar" {
+            p class="twig-eyebrow" { "MARKDOWN SOURCE" }
+            div class="twig-cluster twig-cluster--tight" {
+                a class="twig-btn twig-btn--quiet" href=(raw_url) { "Raw" }
+                button
+                    class="twig-btn twig-btn--ghost"
+                    type="button"
+                    data-twig-copy-markdown
+                    title="Copy this document as Markdown"
+                {
+                    "Copy source"
+                }
+            }
+        }
+        // A leading comment prevents the HTML parser's special <pre> newline
+        // handling from changing a source that begins with a newline.
+        pre class="twig-sr" data-twig-markdown-source {
+            (maud::PreEscaped("<!-- -->"))
+            (source)
+        }
+        script { (maud::PreEscaped(MARKDOWN_COPY_SCRIPT)) }
     }
-    // Then try any README variant
-    let readme = markdown_files
-        .iter()
-        .find(|f| f.to_lowercase().starts_with("readme"));
-    if readme.is_some() {
-        return readme.map(String::as_str);
-    }
-    // Fall back to first file
-    markdown_files.first().map(String::as_str)
 }
 
 pub(super) fn render_markdown_view(

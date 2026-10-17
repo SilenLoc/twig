@@ -5,24 +5,72 @@ use serde::Deserialize;
 
 use crate::http::auth::session::get_username_from_request;
 use crate::http::view::{render_error, render_error_with_action, render_success};
-use crate::{auth::TwigContext, config};
-use twig_git as git;
+use crate::{
+    auth::{
+        TwigContext,
+        permissions::{self, NamespacePermission},
+    },
+    config,
+    git::{self, repo::bare_init},
+};
 
 async fn user_can_create_repositories(
     req: &HttpRequest,
+    server: &config::Server,
     auth_state: &web::Data<TwigContext>,
     namespace: &str,
+) -> bool {
+    user_has_namespace_permission_for_request(
+        req,
+        auth_state,
+        server,
+        namespace,
+        NamespacePermission::CreateRepositories,
+    )
+    .await
+}
+
+async fn user_has_namespace_permission_for_request(
+    req: &HttpRequest,
+    auth_state: &web::Data<TwigContext>,
+    server: &config::Server,
+    namespace: &str,
+    permission: NamespacePermission,
 ) -> bool {
     let Some(user_id) = auth_state.user_id_from_request(req).await else {
         return false;
     };
+    user_has_namespace_permission(auth_state, server, &user_id, namespace, permission).await
+}
 
+async fn user_has_namespace_permission(
+    auth_state: &TwigContext,
+    server: &config::Server,
+    user_id: &str,
+    namespace: &str,
+    permission: NamespacePermission,
+) -> bool {
     let db = auth_state.db();
-
-    match db.user_owns_namespace(&user_id, namespace).await {
-        Ok(is_owner) => is_owner,
+    let user = match db.get_user_by_id(user_id).await {
+        Ok(Some(user)) => user,
+        Ok(None) => return false,
         Err(e) => {
-            log::error!("Failed to check repository creation permission: {e}");
+            log::error!("Failed to load user for namespace permission check: {e}");
+            return false;
+        }
+    };
+    match permissions::has(
+        db,
+        user_id,
+        namespace,
+        server.is_configured_admin(&user.username),
+        permission,
+    )
+    .await
+    {
+        Ok(allowed) => allowed,
+        Err(error) => {
+            log::error!("Failed to check namespace permission: {error}");
             false
         }
     }
@@ -36,7 +84,7 @@ struct Params {
 #[derive(Deserialize)]
 struct CreateRepoForm {
     repo_name: String,
-    #[serde(default = "twig_git::repo::default_branch")]
+    #[serde(default = "crate::git::repo::default_branch")]
     branch: String,
 }
 
@@ -184,7 +232,16 @@ pub async fn handler(
     let namespace = &params.namespace;
     let search_query = query.q.as_deref().unwrap_or("");
     let username = get_username_from_request(&req, &auth_state).await;
-    let can_create_repositories = user_can_create_repositories(&req, &auth_state, namespace).await;
+    let can_view_private_repositories = user_has_namespace_permission_for_request(
+        &req,
+        &auth_state,
+        &server,
+        namespace,
+        NamespacePermission::ViewNamespace,
+    )
+    .await;
+    let can_create_repositories =
+        user_can_create_repositories(&req, &server, &auth_state, namespace).await;
 
     let repos = if search_query.is_empty() {
         git::bare::get_repos_with_info(server.project_root(), namespace)
@@ -192,7 +249,7 @@ pub async fn handler(
         git::bare::search_repos_with_info(server.project_root(), namespace, search_query)
     };
 
-    let repos: Vec<_> = if username.is_some() {
+    let repos: Vec<_> = if can_view_private_repositories {
         repos
     } else {
         repos.into_iter().filter(|r| !r.is_private).collect()
@@ -271,10 +328,11 @@ fn render_create_repo_form(namespace: &str) -> maud::Markup {
 #[get("/{namespace}/create-repo-form")]
 pub async fn create_repo_form_handler(
     req: HttpRequest,
+    server: web::Data<config::Server>,
     auth_state: web::Data<TwigContext>,
     params: web::Path<Params>,
 ) -> impl Responder {
-    if !user_can_create_repositories(&req, &auth_state, &params.namespace).await {
+    if !user_can_create_repositories(&req, &server, &auth_state, &params.namespace).await {
         return HttpResponse::Forbidden()
             .body(render_error("Only namespace owners can create repositories").into_string());
     }
@@ -304,20 +362,20 @@ pub async fn create_repo_handler(
 
     let db = auth_state.db();
 
-    match db.user_owns_namespace(&user_id, namespace).await {
-        Ok(true) => {}
-        Ok(false) => {
-            return HttpResponse::Forbidden()
-                .body(render_error("Only namespace owners can create repositories").into_string());
-        }
-        Err(e) => {
-            log::error!("Database error: {e}");
-            return HttpResponse::InternalServerError()
-                .body(render_error("Database error").into_string());
-        }
+    if !user_has_namespace_permission(
+        &auth_state,
+        &server,
+        &user_id,
+        namespace,
+        NamespacePermission::CreateRepositories,
+    )
+    .await
+    {
+        return HttpResponse::Forbidden()
+            .body(render_error("Only namespace owners can create repositories").into_string());
     }
 
-    if let Err(message) = twig_git::reserved::validate_repo_name(&form.repo_name) {
+    if let Err(message) = crate::git::reserved::validate_repo_name(&form.repo_name) {
         return HttpResponse::BadRequest().body(render_error(&message).into_string());
     }
 
@@ -330,6 +388,12 @@ pub async fn create_repo_handler(
             .body(render_error("Repository already exists").into_string());
     }
 
+    if let Err(e) = std::fs::create_dir_all(&repo_path) {
+        log::error!("Failed to create repository directory: {e}");
+        return HttpResponse::InternalServerError()
+            .body(render_error("Failed to create repository directory").into_string());
+    }
+
     let Ok(Some(user)) = db.get_user_by_id(&user_id).await else {
         return HttpResponse::InternalServerError()
             .body(render_error("Failed to load user").into_string());
@@ -337,19 +401,13 @@ pub async fn create_repo_handler(
 
     // Require user to have set an email before creating repositories
     let Some(email) = &user.email else {
+        let _ = std::fs::remove_dir_all(&repo_path);
         return missing_email_response();
     };
     let author_email = email.as_str();
 
     // Initialize bare repository with user info
-    match twig_git::repo::create_repo_with_author(
-        server.project_root(),
-        namespace,
-        &form.repo_name,
-        &form.branch,
-        &user.username,
-        author_email,
-    ) {
+    match bare_init(&repo_path, &form.branch, &user.username, author_email) {
         Ok(_) => {
             info!(
                 "Created repository '{}/{}' via UI for user: {}",
@@ -365,6 +423,8 @@ pub async fn create_repo_handler(
         }
         Err(e) => {
             log::error!("Failed to initialize bare repository: {e}");
+            // Clean up the created directory
+            let _ = std::fs::remove_dir_all(&repo_path);
             HttpResponse::InternalServerError()
                 .body(render_error("Failed to initialize repository").into_string())
         }

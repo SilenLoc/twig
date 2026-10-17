@@ -1,3 +1,6 @@
+use crate::auth::{Namespace, NamespaceInvitation, NamespaceRole, User, UserManagementEntry};
+use crate::email::InvitationDelivery;
+
 use super::*;
 
 fn scope() -> UserManagementScope {
@@ -34,6 +37,28 @@ fn invitation() -> NamespaceInvitation {
 }
 
 #[test]
+fn full_user_management_render_has_one_link_per_tab() {
+    let markup = render_user_management(&scope(), "invites", &[], &[]).into_string();
+
+    assert_eq!(markup.matches("href=\"/tree/users?tab=users\"").count(), 1);
+    assert_eq!(
+        markup.matches("href=\"/tree/users?tab=invites\"").count(),
+        1
+    );
+}
+
+#[test]
+fn htmx_user_management_response_contains_content_without_tabs() {
+    for tab in ["users", "invites"] {
+        let markup = render_user_management_content(&scope(), tab, &[], &[]).into_string();
+
+        assert!(!markup.contains("href=\"/tree/users?tab=users\""));
+        assert!(!markup.contains("href=\"/tree/users?tab=invites\""));
+        assert!(!markup.contains("id=\"user-management-content\""));
+    }
+}
+
+#[test]
 fn invite_tab_renders_htmx_form_with_contributor_default_and_expiry() {
     let markup = render_user_management(&scope(), "invites", &[], &[]).into_string();
     for expected in [
@@ -59,20 +84,57 @@ fn users_tab_is_reachable_with_htmx_and_renders_scoped_placeholder() {
 }
 
 #[test]
-fn user_memberships_render_in_a_single_table_cell() {
+fn user_memberships_render_as_namespace_role_permission_trees() {
     let user = UserManagementEntry {
         username: "silen".to_string(),
         email: Some("silen@example.com".to_string()),
         memberships: vec![
             ("experiments".to_string(), NamespaceRole::Owner),
-            ("hco".to_string(), NamespaceRole::Owner),
+            ("hco".to_string(), NamespaceRole::Contributor),
         ],
+        is_site_admin: false,
     };
 
     let markup = render_user_management(&scope(), "users", &[], &[user]).into_string();
 
-    assert!(markup.contains("experiments · Owner, hco · Owner"));
-    assert_eq!(markup.matches("class=\"twig-row-meta\"").count(), 2);
+    for expected in [
+        "<summary>experiments</summary>",
+        "<p class=\"twig-access-role\">Owner</p>",
+        "<summary>hco</summary>",
+        "<p class=\"twig-access-role\">Contributor</p>",
+        "View namespace",
+        "Push changes",
+        "Manage members",
+    ] {
+        assert!(markup.contains(expected), "missing {expected}: {markup}");
+    }
+    assert_eq!(markup.matches("class=\"twig-access-namespace\"").count(), 2);
+}
+
+#[test]
+fn site_admin_tree_shows_all_namespace_permissions() {
+    let user = UserManagementEntry {
+        username: "admin".to_string(),
+        email: Some("admin@example.com".to_string()),
+        memberships: Vec::new(),
+        is_site_admin: true,
+    };
+
+    let markup = render_user_management(&scope(), "users", &[], &[user]).into_string();
+
+    for expected in [
+        "All namespaces",
+        "Admin",
+        "View namespace",
+        "Push changes",
+        "Create repositories",
+        "Manage repositories",
+        "Manage namespace",
+        "Manage members",
+        "Rewrite protected branches",
+    ] {
+        assert!(markup.contains(expected), "missing {expected}: {markup}");
+    }
 }
 
 #[test]
@@ -118,8 +180,13 @@ fn delivery_notices_preserve_link_and_distinguish_sent_skipped_and_failed() {
             "Retry delivery or share this link directly",
         ),
     ] {
-        let markup = render_invitation_created(&invitation, &url, &[invitation.clone()], &delivery)
-            .into_string();
+        let markup = render_invitation_created(
+            &invitation,
+            &url,
+            std::slice::from_ref(&invitation),
+            &delivery,
+        )
+        .into_string();
         assert!(markup.contains(expected), "missing {expected}: {markup}");
         assert!(markup.contains(&url));
         assert!(markup.contains("hx-swap-oob=\"outerHTML\""));

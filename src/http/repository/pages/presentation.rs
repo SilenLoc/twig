@@ -1,16 +1,21 @@
-use super::markdown::render_slide_markdown;
-use super::{
-    AwResult, DOCTYPE, Deserialize, HttpRequest, Markup, PRESENT_TEXT_SIZE_KEY, Params,
-    PresentConfig, RepoContext, RepoHandle, TEXT_SIZES, TwigContext, config, get,
-    get_username_from_request, render_empty, render_for_request, render_git_error,
-    render_repo_auth_error, text_size_restore, text_size_step, web,
-};
+use actix_web::Result as AwResult;
+use actix_web::{HttpRequest, get, web};
+use maud::{DOCTYPE, Markup};
 
-/// The export document's auto-print. Only once every webfont and image has
-/// loaded does the binder open the print dialog, and the hint banner flips to
-/// its "ready" state so the reader knows what to pick. The `load` event joins
-/// the wait so stylesheet-driven fonts cannot race the first pagination pass.
-pub(super) const PDF_PRINT_SCRIPT: &str = r"(function(){
+use crate::auth::TwigContext;
+use crate::config;
+use crate::git::bare::{PresentConfig, RepoHandle};
+use crate::http::auth::session::get_username_from_request;
+
+use super::context::{
+    PRESENT_TEXT_SIZE_KEY, RepoContext, TEXT_SIZES, can_view_namespace, render_empty,
+    render_for_request, render_git_error, render_repo_auth_error, text_size_restore,
+    text_size_step,
+};
+use super::markdown::render_slide_markdown;
+use super::{Params, SlideParams};
+
+const PDF_PRINT_SCRIPT: &str = r"(function(){
 var hint=document.getElementById('twig-pdf-hint');
 var ready=function(){
 if(hint){hint.setAttribute('data-twig-pdf-ready','true');}
@@ -25,13 +30,6 @@ window.addEventListener('load',resolve,{once:true});
 });
 Promise.all([fonts,images,page]).then(ready).catch(ready);
 })();";
-
-#[derive(Deserialize)]
-pub(super) struct SlideParams {
-    namespace: String,
-    repo: String,
-    index: usize,
-}
 
 /// A rendered slide for the presentation view
 pub(super) struct PresentSlide {
@@ -78,8 +76,32 @@ pub async fn slide_handler(
     };
 
     let twig_result = handle.load_config_with_raw();
-    if twig_result.config.private && username.is_none() {
-        return Ok(render_repo_auth_error(&req, &page_title));
+    if twig_result.config.private {
+        match can_view_namespace(&req, &server, &auth_state, namespace).await {
+            Ok(true) => {}
+            Ok(false) if username.is_none() => {
+                return Ok(render_repo_auth_error(&req, &page_title));
+            }
+            Ok(false) => {
+                return Ok(render_for_request(
+                    &req,
+                    crate::http::view::render_error(
+                        "You do not have permission to view this namespace.",
+                    ),
+                    username.as_deref(),
+                    &page_title,
+                ));
+            }
+            Err(error) => {
+                log::error!("Failed to authorize private slide read: {error}");
+                return Ok(render_for_request(
+                    &req,
+                    crate::http::view::render_error("Failed to verify namespace permissions."),
+                    username.as_deref(),
+                    &page_title,
+                ));
+            }
+        }
     }
 
     let present_slides = load_present_slides(&handle, &twig_result.config.present, namespace, repo);
@@ -109,6 +131,10 @@ pub async fn slide_handler(
     }
 }
 
+/// Converts markdown to HTML, fixing relative links to point to repo root
+/// A destination is external when it carries a URL scheme such as `https:` or
+/// `mailto:`. A bare relative path never does, because a scheme cannot contain
+/// a `/`.
 pub(super) fn load_present_slides(
     handle: &RepoHandle,
     present_config: &PresentConfig,
@@ -132,8 +158,8 @@ pub(super) fn load_present_slides(
         .collect()
 }
 
-/// The slide counter, zero-padded to the width of the total so the mono column
-/// never reflows as the deck advances (DESIGN.md 5.17).
+/// The configured paper pages, sorted for reading. Empty when `[paper]` is
+/// absent, unconfigured, or its directory is missing from HEAD.
 pub(super) fn slide_counter(current_index: usize, slide_count: usize) -> String {
     let width = slide_count.to_string().len();
     format!(
@@ -315,8 +341,32 @@ pub async fn present_print_handler(
     };
 
     let twig_result = handle.load_config_with_raw();
-    if twig_result.config.private && username.is_none() {
-        return Ok(render_repo_auth_error(&req, &page_title));
+    if twig_result.config.private {
+        match can_view_namespace(&req, &server, &auth_state, namespace).await {
+            Ok(true) => {}
+            Ok(false) if username.is_none() => {
+                return Ok(render_repo_auth_error(&req, &page_title));
+            }
+            Ok(false) => {
+                return Ok(render_for_request(
+                    &req,
+                    crate::http::view::render_error(
+                        "You do not have permission to view this namespace.",
+                    ),
+                    username.as_deref(),
+                    &page_title,
+                ));
+            }
+            Err(error) => {
+                log::error!("Failed to authorize private presentation read: {error}");
+                return Ok(render_for_request(
+                    &req,
+                    crate::http::view::render_error("Failed to verify namespace permissions."),
+                    username.as_deref(),
+                    &page_title,
+                ));
+            }
+        }
     }
 
     let slides = load_present_slides(&handle, &twig_result.config.present, namespace, repo);
@@ -350,6 +400,9 @@ pub(super) fn render_pdf_document(
                 title { (format!("{namespace}/{repo} slides")) " · Twig" }
                 link rel="icon" type="image/svg+xml" href=(crate::http::assets::url("twig.svg"));
                 script src=(crate::http::assets::url("theme.js")) {}
+                link rel="preconnect" href="https://fonts.googleapis.com";
+                link rel="preconnect" href="https://fonts.gstatic.com" crossorigin;
+                link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&display=swap";
                 link rel="stylesheet" href=(crate::http::assets::url("twig.css"));
             }
             body class="twig-pdf" {

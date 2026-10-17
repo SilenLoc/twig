@@ -1,32 +1,18 @@
-use super::tabs::respond_tab;
-use super::{
-    AwResult, Deserialize, HttpRequest, HttpResponse, Markup, RepoContext, RepoHandle, ScriptEntry,
-    ScriptGroupNode, TwigContext, config, get, get_username_from_request, header,
-    is_safe_repo_path, render_empty, web,
-};
+use actix_web::HttpRequest;
+use maud::Markup;
 
-#[derive(Deserialize)]
-pub(super) struct ScriptGroupParams {
-    namespace: String,
-    repo: String,
-    /// Slash-joined group key, e.g. `linux/maintenance`.
-    group: String,
-}
+use crate::db::binaries::BinaryRelease;
+use crate::git::bare::{ScriptEntry, ScriptGroupNode};
 
-#[derive(Deserialize)]
-pub(super) struct RawParams {
-    namespace: String,
-    repo: String,
-    path: String,
-}
+use super::context::{RepoContext, render_empty};
 
-/// The Scripts tab: the active group's scripts with their copyable `curl`
-/// commands. `group` selects a group by its slash-joined key; `None` and
-/// unknown keys fall back to the first configured group.
+/// Renders a tab by name. Only the requested tab's data is loaded, so a Commits
+/// request never reads markdown, slides, or paper pages. `group` selects a
+/// Scripts sub-group and is ignored by every other tab.
 pub(super) fn scripts_body(
     ctx: &RepoContext,
     group: Option<&str>,
-    releases: &[crate::db::binaries::BinaryRelease],
+    releases: &[BinaryRelease],
     binaries_unavailable: bool,
 ) -> Markup {
     let active = ctx
@@ -35,7 +21,9 @@ pub(super) fn scripts_body(
         .find(|node| Some(node.key.as_str()) == group)
         .or_else(|| ctx.script_groups.first());
     match active {
-        Some(node) => render_scripts_view(ctx, node, releases, binaries_unavailable),
+        Some(node) => {
+            super::scripts::render_scripts_view(ctx, node, releases, binaries_unavailable)
+        }
         None => render_empty(
             "NO SCRIPTS",
             "No scripts are configured. Add a [scripts.<group>] section with a scripts list to .twig.toml.",
@@ -43,64 +31,9 @@ pub(super) fn scripts_body(
     }
 }
 
-#[get("/{namespace}/{repo}/scripts/{group:.*}")]
-pub async fn scripts_group_handler(
-    req: HttpRequest,
-    server: web::Data<config::Server>,
-    auth_state: web::Data<TwigContext>,
-    params: web::Path<ScriptGroupParams>,
-) -> AwResult<Markup> {
-    respond_tab(
-        req,
-        server,
-        auth_state,
-        &params.namespace,
-        &params.repo,
-        "scripts",
-        Some(params.group.trim_matches('/')),
-    )
-    .await
-}
-
-/// Serves a repository file as raw bytes so the Scripts tab's `curl` command
-/// can fetch it. Paths ignored by `.twig.toml` stay unreachable here, and
-/// private repositories need a session like every other read.
-#[get("/{namespace}/{repo}/raw/{path:.*}")]
-pub async fn raw_handler(
-    req: HttpRequest,
-    server: web::Data<config::Server>,
-    auth_state: web::Data<TwigContext>,
-    params: web::Path<RawParams>,
-) -> HttpResponse {
-    let username = get_username_from_request(&req, &auth_state).await;
-
-    let Ok(handle) = RepoHandle::open(server.project_root(), &params.namespace, &params.repo)
-    else {
-        return HttpResponse::NotFound().finish();
-    };
-
-    let twig_result = handle.load_config_with_raw();
-    if twig_result.config.private && username.is_none() {
-        return HttpResponse::Unauthorized().finish();
-    }
-
-    let path = params.path.trim_matches('/');
-    if !is_safe_repo_path(path) || path.is_empty() || twig_result.config.should_ignore(path) {
-        return HttpResponse::NotFound().finish();
-    }
-
-    match handle.read_blob_bytes(path) {
-        Ok(Some(bytes)) => HttpResponse::Ok()
-            .insert_header((header::CONTENT_TYPE, raw_content_type(path)))
-            .insert_header(("X-Content-Type-Options", "nosniff"))
-            .body(bytes),
-        _ => HttpResponse::NotFound().finish(),
-    }
-}
-
-/// The Scripts tab: each configured group becomes a sub-tab labelled with the
-/// group name, and the active group lists its scripts with a copyable
-/// download-and-run command and its nested groups as links.
+/// Renders a tab by name. Only the requested tab's data is loaded, so a Commits
+/// request never reads markdown, slides, or paper pages. `group` selects a
+/// Scripts sub-group and is ignored by every other tab.
 pub(super) fn render_scripts_view(
     ctx: &RepoContext,
     node: &ScriptGroupNode,
@@ -293,6 +226,9 @@ navigator.clipboard.writeText(text).then(function(){done(true);},function(){done
 });
 })();";
 
+/// Each file-based Markdown view carries its own copy control and source. The
+/// script is emitted after the hidden source so it binds to exactly that page,
+/// including when htmx replaces the current document.
 /// The absolute origin a `curl` command should use: the request's own host,
 /// with the scheme a reverse proxy reported via `X-Forwarded-Proto` when
 /// present. Local hosts default to `http`, everything else to `https`, so a
@@ -314,16 +250,4 @@ pub(super) fn script_base_url(req: &HttpRequest) -> String {
         }
     });
     format!("{scheme}://{host}")
-}
-
-/// Content type for a raw file: text for the formats worth reading in a
-/// terminal, a neutral download type for everything else.
-pub(super) fn raw_content_type(path: &str) -> &'static str {
-    let extension = path.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
-    match extension.as_str() {
-        "sh" | "bash" | "zsh" | "py" | "rb" | "pl" | "js" | "ts" | "toml" | "yaml" | "yml"
-        | "json" | "md" | "txt" | "conf" | "cfg" | "ini" | "env" | "sql" | "rs" | "go" | "c"
-        | "h" => "text/plain; charset=utf-8",
-        _ => "application/octet-stream",
-    }
 }

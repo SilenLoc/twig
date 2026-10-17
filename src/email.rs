@@ -97,7 +97,7 @@ pub async fn send_invitation_if_configured(
     role: NamespaceRole,
     token: &str,
 ) -> InvitationDelivery {
-    send_invitation_to(
+    send_invitation_to(InvitationRequest {
         api_key,
         from,
         public_base_url,
@@ -105,21 +105,33 @@ pub async fn send_invitation_if_configured(
         namespace,
         role,
         token,
-        None,
-    )
+        resend_api_base_url: None,
+    })
     .await
 }
 
-async fn send_invitation_to(
-    api_key: Option<&str>,
-    from: &str,
-    public_base_url: Option<&str>,
-    recipient: &str,
-    namespace: &str,
+struct InvitationRequest<'a> {
+    api_key: Option<&'a str>,
+    from: &'a str,
+    public_base_url: Option<&'a str>,
+    recipient: &'a str,
+    namespace: &'a str,
     role: NamespaceRole,
-    token: &str,
-    resend_api_base_url: Option<&str>,
-) -> InvitationDelivery {
+    token: &'a str,
+    resend_api_base_url: Option<&'a str>,
+}
+
+async fn send_invitation_to(request: InvitationRequest<'_>) -> InvitationDelivery {
+    let InvitationRequest {
+        api_key,
+        from,
+        public_base_url,
+        recipient,
+        namespace,
+        role,
+        token,
+        resend_api_base_url,
+    } = request;
     let Some(api_key) = api_key.filter(|key| !key.trim().is_empty()) else {
         return InvitationDelivery::SkippedNoApiKey;
     };
@@ -300,16 +312,17 @@ mod tests {
             "Unprocessable Entity",
             r#"{"statusCode":422,"message":"invalid sender","name":"validation_error"}"#,
         );
-        let delivery = send_invitation_to(
-            Some("re_test_only"),
-            "invalid@example.com",
-            Some(&base_url),
-            "person@example.com",
-            "acme",
-            NamespaceRole::Contributor,
-            &"d".repeat(64),
-            Some(&base_url),
-        )
+        let token = "d".repeat(64);
+        let delivery = send_invitation_to(InvitationRequest {
+            api_key: Some("re_test_only"),
+            from: "invalid@example.com",
+            public_base_url: Some(&base_url),
+            recipient: "person@example.com",
+            namespace: "acme",
+            role: NamespaceRole::Contributor,
+            token: &token,
+            resend_api_base_url: Some(&base_url),
+        })
         .await;
 
         assert!(matches!(delivery, InvitationDelivery::Failed(_)));

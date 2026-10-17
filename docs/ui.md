@@ -62,7 +62,8 @@ configuration:
   the same A−/A+ zoom as presentations plus a Sans/Serif/Mono reading font.
   Every page and heading carries an anchor (`#paper-01.md`,
   `#paper-01.md--introduction`) so any position is directly linkable.
-- **Content** — browse files and folders; open file content.
+- **Content** — browse files and folders; open file content. Markdown files also
+  offer compact **Raw** and **Copy source** actions here.
 - **Commits** — recent commit history with short hash, author, date, and message.
 - **Config** — view `.twig.toml` when present.
 - **Present** — navigate configured Markdown slides when `[present].files` is

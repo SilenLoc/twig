@@ -1,3 +1,5 @@
+use crate::{db::data::TablePage, git};
+
 use super::*;
 
 #[test]
@@ -37,6 +39,7 @@ fn namespace_page_lists_repositories_with_confirmed_namespace_buttons() {
         )],
         &["acme".to_string(), "solo".to_string()],
         &["solo".to_string()],
+        &["solo".to_string()],
     )
     .into_string();
 
@@ -60,13 +63,13 @@ fn namespace_page_lists_repositories_with_confirmed_namespace_buttons() {
 
 #[test]
 fn namespace_page_explains_when_no_namespace_can_be_deleted() {
-    let html = render_namespaces_page(&[], &[], &[]).into_string();
+    let html = render_namespaces_page(&[], &[], &[], &[]).into_string();
 
     assert!(html.contains("Delete Namespace"));
     assert!(html.contains(">NO NAMESPACES<"));
     assert!(html.contains(
-            "No namespaces available for deletion. You can only delete namespaces you own that have no repositories."
-        ));
+        "No namespaces available for deletion. You can only delete namespaces you own that have no repositories."
+    ));
     assert!(!html.contains("hx-confirm"));
     assert!(!html.contains("twig-btn--danger"));
 }
@@ -88,8 +91,8 @@ fn namespace_page_lists_owned_namespaces_for_rename_with_the_htmx_contract() {
     assert!(html.contains("<span class=\"twig-row-id\">solo</span>"));
     assert!(html.contains("<input type=\"hidden\" name=\"namespace\" value=\"acme\">"));
     assert!(html.contains(
-            "<input class=\"twig-input twig-input--mono\" type=\"text\" name=\"new_name\" required minlength=\"2\" autocomplete=\"off\" spellcheck=\"false\" value=\"acme\">"
-        ));
+        "<input class=\"twig-input twig-input--mono\" type=\"text\" name=\"new_name\" required minlength=\"2\" autocomplete=\"off\" spellcheck=\"false\" value=\"acme\">"
+    ));
     assert!(
         html.contains(
             "<button class=\"twig-btn twig-btn--primary\" type=\"submit\">Rename</button>"

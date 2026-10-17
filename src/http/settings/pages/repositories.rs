@@ -1,31 +1,17 @@
-use super::{
-    HttpRequest, HttpResponse, Responder, TwigContext, config, git, info, post, render_error,
-    render_success, require_namespace_owner, web,
-};
-use serde::Deserialize;
 use std::path::Path;
 
-#[derive(Deserialize)]
-pub(super) struct DeleteRepoForm {
-    pub(super) namespace: String,
-    pub(super) repo_name: String,
-}
+use actix_web::{HttpRequest, HttpResponse, Responder, post, web};
+use log::info;
 
-#[derive(Deserialize)]
-pub(super) struct MoveRepoForm {
-    pub(super) source_namespace: String,
-    pub(super) repo_name: String,
-    pub(super) target_namespace: String,
-}
+use crate::auth::TwigContext;
+use crate::auth::permissions::NamespacePermission;
+use crate::config;
+use crate::git;
+use crate::http::view::{render_error, render_success};
 
-#[derive(Deserialize)]
-pub(super) struct RenameRepoForm {
-    pub(super) namespace: String,
-    pub(super) repo_name: String,
-    pub(super) new_name: String,
-}
+use super::shared::require_namespace_permission;
+use super::*;
 
-/// Repositories the user may delete, one technical form row each.
 pub(crate) fn render_repo_deletion_panel(
     repos_by_namespace: &[(String, Vec<git::bare::RepoInfo>)],
 ) -> maud::Markup {
@@ -153,7 +139,15 @@ pub async fn delete_repo(
 
     let db = auth_state.db();
 
-    if let Err(response) = require_namespace_owner(db, &user_id, &form.namespace).await {
+    if let Err(response) = require_namespace_permission(
+        db,
+        &server,
+        &user_id,
+        &form.namespace,
+        NamespacePermission::ManageRepositories,
+    )
+    .await
+    {
         return response;
     }
 
@@ -167,7 +161,7 @@ pub async fn delete_repo(
         return HttpResponse::NotFound().body(render_error("Repository not found").into_string());
     }
 
-    if !twig_git::is_repository(&repo_path) {
+    if git2::Repository::open(&repo_path).is_err() {
         return HttpResponse::BadRequest()
             .body(render_error("Path is not a valid git repository").into_string());
     }
@@ -181,7 +175,7 @@ pub async fn delete_repo(
     }
 
     // Delete the repository
-    match twig_git::delete_repository(&repo_path) {
+    match std::fs::remove_dir_all(&repo_path) {
         Ok(()) => {
             info!(
                 "Deleted repository '{}/{}' by user: {}",
@@ -191,13 +185,8 @@ pub async fn delete_repo(
                 .content_type("text/html")
                 .body(render_success("Repository deleted successfully.").into_string())
         }
-        Err(twig_git::RepositoryError::NotFound) => {
-            HttpResponse::NotFound().body(render_error("Repository not found").into_string())
-        }
-        Err(twig_git::RepositoryError::NotRepository) => HttpResponse::BadRequest()
-            .body(render_error("Path is not a valid git repository").into_string()),
-        Err(error) => {
-            log::error!("Failed to delete repository: {error}");
+        Err(e) => {
+            log::error!("Failed to delete repository: {e}");
             HttpResponse::InternalServerError()
                 .body(render_error("Failed to delete repository").into_string())
         }
@@ -239,8 +228,8 @@ pub async fn move_repo(
         (&form.source_namespace, "source"),
         (&form.target_namespace, "destination"),
     ] {
-        let _namespace = match db.get_namespace_by_name(name).await {
-            Ok(Some(namespace)) => namespace,
+        match db.get_namespace_by_name(name).await {
+            Ok(Some(_)) => {}
             Ok(None) => {
                 return HttpResponse::NotFound().body(
                     render_error(&format!("{description} namespace not found")).into_string(),
@@ -251,8 +240,16 @@ pub async fn move_repo(
                 return HttpResponse::InternalServerError()
                     .body(render_error("Database error").into_string());
             }
-        };
-        if let Err(response) = require_namespace_owner(db, &user_id, name).await {
+        }
+        if let Err(response) = require_namespace_permission(
+            db,
+            &server,
+            &user_id,
+            name,
+            NamespacePermission::ManageRepositories,
+        )
+        .await
+        {
             return response;
         }
     }
@@ -260,14 +257,13 @@ pub async fn move_repo(
     let source = Path::new(server.project_root())
         .join(&form.source_namespace)
         .join(&form.repo_name);
-    let destination = Path::new(server.project_root())
-        .join(&form.target_namespace)
-        .join(&form.repo_name);
+    let destination_namespace = Path::new(server.project_root()).join(&form.target_namespace);
+    let destination = destination_namespace.join(&form.repo_name);
 
     if !source.exists() {
         return HttpResponse::NotFound().body(render_error("Repository not found").into_string());
     }
-    if !twig_git::is_repository(&source) {
+    if git2::Repository::open(&source).is_err() {
         return HttpResponse::BadRequest()
             .body(render_error("Path is not a valid git repository").into_string());
     }
@@ -277,30 +273,15 @@ pub async fn move_repo(
                 .into_string(),
         );
     }
-    if let Err(error) = twig_git::move_repository(&source, &destination) {
-        match error {
-            twig_git::RepositoryError::NotFound => {
-                return HttpResponse::NotFound()
-                    .body(render_error("Repository not found").into_string());
-            }
-            twig_git::RepositoryError::NotRepository => {
-                return HttpResponse::BadRequest()
-                    .body(render_error("Path is not a valid git repository").into_string());
-            }
-            twig_git::RepositoryError::DestinationExists => {
-                return HttpResponse::Conflict().body(
-                    render_error(
-                        "A repository with that name already exists in the destination namespace",
-                    )
-                    .into_string(),
-                );
-            }
-            twig_git::RepositoryError::Io(error) => {
-                log::error!("Failed to move repository: {error}");
-                return HttpResponse::InternalServerError()
-                    .body(render_error("Failed to move repository").into_string());
-            }
-        }
+    if let Err(e) = std::fs::create_dir_all(&destination_namespace) {
+        log::error!("Failed to create destination namespace directory: {e}");
+        return HttpResponse::InternalServerError()
+            .body(render_error("Failed to prepare destination namespace").into_string());
+    }
+    if let Err(e) = std::fs::rename(&source, &destination) {
+        log::error!("Failed to move repository: {e}");
+        return HttpResponse::InternalServerError()
+            .body(render_error("Failed to move repository").into_string());
     }
 
     info!(
@@ -352,8 +333,8 @@ pub async fn rename_repo(
     };
 
     let db = auth_state.db();
-    let _namespace = match db.get_namespace_by_name(&form.namespace).await {
-        Ok(Some(namespace)) => namespace,
+    match db.get_namespace_by_name(&form.namespace).await {
+        Ok(Some(_)) => {}
         Ok(None) => {
             return HttpResponse::NotFound()
                 .body(render_error("Namespace not found").into_string());
@@ -363,8 +344,16 @@ pub async fn rename_repo(
             return HttpResponse::InternalServerError()
                 .body(render_error("Database error").into_string());
         }
-    };
-    if let Err(response) = require_namespace_owner(db, &user_id, &form.namespace).await {
+    }
+    if let Err(response) = require_namespace_permission(
+        db,
+        &server,
+        &user_id,
+        &form.namespace,
+        NamespacePermission::ManageRepositories,
+    )
+    .await
+    {
         return response;
     }
 
@@ -375,7 +364,7 @@ pub async fn rename_repo(
     if !source.exists() {
         return HttpResponse::NotFound().body(render_error("Repository not found").into_string());
     }
-    if !twig_git::is_repository(&source) {
+    if git2::Repository::open(&source).is_err() {
         return HttpResponse::BadRequest()
             .body(render_error("Path is not a valid git repository").into_string());
     }
@@ -385,28 +374,10 @@ pub async fn rename_repo(
                 .into_string(),
         );
     }
-    if let Err(error) = twig_git::move_repository(&source, &destination) {
-        match error {
-            twig_git::RepositoryError::NotFound => {
-                return HttpResponse::NotFound()
-                    .body(render_error("Repository not found").into_string());
-            }
-            twig_git::RepositoryError::NotRepository => {
-                return HttpResponse::BadRequest()
-                    .body(render_error("Path is not a valid git repository").into_string());
-            }
-            twig_git::RepositoryError::DestinationExists => {
-                return HttpResponse::Conflict().body(
-                    render_error("A repository with that name already exists in this namespace")
-                        .into_string(),
-                );
-            }
-            twig_git::RepositoryError::Io(error) => {
-                log::error!("Failed to rename repository: {error}");
-                return HttpResponse::InternalServerError()
-                    .body(render_error("Failed to rename repository").into_string());
-            }
-        }
+    if let Err(e) = std::fs::rename(&source, &destination) {
+        log::error!("Failed to rename repository: {e}");
+        return HttpResponse::InternalServerError()
+            .body(render_error("Failed to rename repository").into_string());
     }
 
     info!(

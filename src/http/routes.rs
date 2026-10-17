@@ -1,9 +1,10 @@
 use actix_web::{guard, web};
 
 use super::{
-    api, assets, auth, health, info, namespace, overview, repository, settings, test_page, tree,
+    api, assets, auth, health, info, namespace, overview, repo_edit, repository, settings,
+    test_page, tree,
 };
-use crate::git_http;
+use crate::git;
 
 /// Registers every route in the same order as the previous inline chain.
 /// Static/UI routes must remain before the dynamic namespace/repository paths
@@ -59,6 +60,20 @@ pub(crate) fn configure_routes(cfg: &mut web::ServiceConfig) {
         .service(namespace::pages::create_repo_handler)
         .service(repository::binaries::upload_binary)
         .service(repository::binaries::download_binary)
+        .service(repo_edit::workspace_page)
+        .service(repo_edit::tree_fragment)
+        .service(
+            web::resource("/{namespace}/{repo}/edit/operation")
+                .app_data(web::FormConfig::default().limit(1 << 29))
+                .route(web::post().to(repo_edit::apply_operation)),
+        )
+        .service(
+            web::resource("/{namespace}/{repo}/edit/commit")
+                .app_data(web::FormConfig::default().limit(1 << 29))
+                .route(web::post().to(repo_edit::commit_workspace)),
+        )
+        .service(repo_edit::file_fragment)
+        .service(repo_edit::legacy_file_entry)
         .service(repository::pages::handler)
         .service(repository::pages::tab_handler)
         .service(repository::pages::markdown_tab_handler)
@@ -70,8 +85,6 @@ pub(crate) fn configure_routes(cfg: &mut web::ServiceConfig) {
         .service(repository::pages::paper_tab_handler)
         .service(repository::pages::scripts_tab_handler)
         .service(repository::pages::scripts_group_handler)
-        .service(repository::editor::edit_file_page)
-        .service(repository::editor::commit_file_handler)
         .service(repository::pages::raw_handler)
         .service(repository::pages::license_tab_handler)
         .service(repository::pages::slide_handler)
@@ -79,14 +92,14 @@ pub(crate) fn configure_routes(cfg: &mut web::ServiceConfig) {
         .service(repository::pages::content_handler)
         .service(repository::pages::paper_handler)
         // Git endpoints with auth
-        .service(git_http::init_repo_handler)
+        .service(git::repo::init)
         .route(
             "/{namespace}/{repo}/{endpoint:.*}",
-            web::get().guard(is_git()).to(git_http::git_handler),
+            web::get().guard(is_git()).to(git::git_handler),
         )
         .route(
             "/{namespace}/{repo}/{endpoint:.*}",
-            web::post().guard(is_git()).to(git_http::git_handler),
+            web::post().guard(is_git()).to(git::git_handler),
         );
 }
 

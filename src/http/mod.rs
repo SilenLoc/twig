@@ -5,6 +5,7 @@ pub mod health;
 pub mod info;
 pub mod namespace;
 pub mod overview;
+pub mod repo_edit;
 pub mod repository;
 pub mod routes;
 pub mod settings;

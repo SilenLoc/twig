@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use crate::db::Database;
 
+pub mod permissions;
 pub mod session_store;
 
 #[derive(Debug, Clone)]
@@ -92,6 +93,7 @@ pub struct UserManagementEntry {
     pub username: String,
     pub email: Option<String>,
     pub memberships: Vec<(String, NamespaceRole)>,
+    pub is_site_admin: bool,
 }
 
 pub fn hash_password(password: &str) -> Result<String, String> {

@@ -1,15 +1,16 @@
-use super::{
-    HttpRequest, HttpResponse, NamespaceForm, Responder, TwigContext, config, git, info, post,
-    render_error, render_success, require_namespace_owner, web,
-};
-use serde::Deserialize;
 use std::path::Path;
 
-#[derive(Deserialize)]
-pub(super) struct RenameNamespaceForm {
-    pub(super) namespace: String,
-    pub(super) new_name: String,
-}
+use actix_web::{HttpRequest, HttpResponse, Responder, post, web};
+use log::info;
+
+use crate::auth::TwigContext;
+use crate::auth::permissions::NamespacePermission;
+use crate::config;
+use crate::git;
+use crate::http::view::{render_error, render_success};
+
+use super::shared::require_namespace_permission;
+use super::*;
 
 #[post("/settings/rename-namespace")]
 pub async fn rename_namespace(
@@ -61,7 +62,15 @@ pub async fn rename_namespace(
                 .body(render_error("Database error").into_string());
         }
     };
-    if let Err(response) = require_namespace_owner(db, &user_id, &form.namespace).await {
+    if let Err(response) = require_namespace_permission(
+        db,
+        &server,
+        &user_id,
+        &form.namespace,
+        NamespacePermission::ManageNamespace,
+    )
+    .await
+    {
         return response;
     }
 
@@ -140,7 +149,15 @@ pub async fn delete_namespace(
         }
     };
 
-    if let Err(response) = require_namespace_owner(db, &user_id, &form.namespace).await {
+    if let Err(response) = require_namespace_permission(
+        db,
+        &server,
+        &user_id,
+        &form.namespace,
+        NamespacePermission::ManageNamespace,
+    )
+    .await
+    {
         return response;
     }
 

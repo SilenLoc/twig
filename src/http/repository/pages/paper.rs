@@ -1,16 +1,22 @@
-use super::content::parent_path;
-use super::markdown::{markdown_options, render_paper_markdown};
-use super::{
-    AwResult, Deserialize, Event, HashMap, HashSet, HeadingLevel, HttpRequest, Markup,
-    PAPER_TEXT_SIZE_KEY, Parser, RepoContext, RepoHandle, TEXT_SIZES, Tag, TagEnd, TwigConfig,
-    TwigContext, config, get, is_safe_repo_path, open_repo, render_empty, render_for_request,
-    text_size_restore, text_size_step, web,
-};
+use std::collections::{HashMap, HashSet};
 
-/// Paper font choices. The active choice lives on `#paper-container` as
-/// `data-twig-paper-font`; the stylesheet swaps the reading family from it.
-pub(super) const PAPER_FONTS: [(&str, &str); 3] =
-    [("sans", "Sans"), ("serif", "Serif"), ("mono", "Mono")];
+use actix_web::Result as AwResult;
+use actix_web::{HttpRequest, get, web};
+use maud::Markup;
+use pulldown_cmark::{Event, HeadingLevel, Parser, Tag, TagEnd};
+
+use super::PaperParams;
+use super::content::parent_path;
+use super::context::{
+    PAPER_TEXT_SIZE_KEY, RepoContext, TEXT_SIZES, open_repo, render_empty, render_for_request,
+    text_size_restore, text_size_step,
+};
+use super::markdown::markdown_options;
+use crate::auth::TwigContext;
+use crate::config;
+use crate::git::bare::{RepoHandle, TwigConfig, is_safe_repo_path};
+
+const PAPER_FONTS: [(&str, &str); 3] = [("sans", "Sans"), ("serif", "Serif"), ("mono", "Mono")];
 
 /// Paper toolbar and reading-position wiring, scoped to `#paper-container`:
 /// restores the stored font, keeps the toggle buttons' pressed state in sync,
@@ -18,7 +24,7 @@ pub(super) const PAPER_FONTS: [(&str, &str); 3] =
 /// so the current page is always linkable. An `IntersectionObserver` is used
 /// instead of a scroll listener, matching the presentation contract of binding
 /// nothing at the document level.
-pub(super) const PAPER_SCRIPT: &str = r"(function(){
+const PAPER_SCRIPT: &str = r"(function(){
 var c=document.getElementById('paper-container');
 if(!c||c.dataset.twigPaper)return;
 c.dataset.twigPaper='1';
@@ -57,13 +63,10 @@ pages.forEach(function(p){observer.observe(p);});
 }
 })();";
 
-#[derive(Deserialize)]
-pub(super) struct PaperParams {
-    namespace: String,
-    repo: String,
-    page: String,
-}
-
+/// The export document's auto-print. Only once every webfont and image has
+/// loaded does the binder open the print dialog, and the hint banner flips to
+/// its "ready" state so the reader knows what to pick. The `load` event joins
+/// the wait so stylesheet-driven fonts cannot race the first pagination pass.
 pub(super) fn paper_body(ctx: &RepoContext) -> Markup {
     let dir = ctx
         .twig_result
@@ -71,10 +74,12 @@ pub(super) fn paper_body(ctx: &RepoContext) -> Markup {
         .paper
         .as_ref()
         .map_or("", |paper| paper.dir.as_str());
-    render_paper_view(&ctx.namespace, &ctx.repo, dir, &ctx.paper_pages)
+    super::paper::render_paper_view(&ctx.namespace, &ctx.repo, dir, &ctx.paper_pages)
 }
 
-/// Whether `page` sits inside `dir` (both repository-relative).
+/// The Scripts tab: the active group's scripts with their copyable `curl`
+/// commands. `group` selects a group by its slash-joined key; `None` and
+/// unknown keys fall back to the first configured group.
 pub(super) fn page_in_dir(page: &str, dir: &str) -> bool {
     !dir.is_empty()
         && page
@@ -148,8 +153,6 @@ pub async fn paper_handler(
     ))
 }
 
-/// The configured paper pages, sorted for reading. Empty when `[paper]` is
-/// absent, unconfigured, or its directory is missing from HEAD.
 pub(super) fn load_paper_pages(handle: &RepoHandle, config: &TwigConfig) -> Vec<String> {
     let Some(paper) = config.paper.as_ref().filter(|paper| paper.is_configured()) else {
         return Vec::new();
@@ -157,6 +160,8 @@ pub(super) fn load_paper_pages(handle: &RepoHandle, config: &TwigConfig) -> Vec<
     handle.list_paper_pages(&paper.dir).unwrap_or_default()
 }
 
+/// The slide counter, zero-padded to the width of the total so the mono column
+/// never reflows as the deck advances (DESIGN.md 5.17).
 /// One lazily loaded paper page. htmx swaps in the rendered Markdown when the
 /// article scrolls into view, so a long paper only pays for the pages read.
 /// `anchor` is the page's stable fragment id, so any page can be linked to.
@@ -177,7 +182,7 @@ pub(super) fn render_paper_page(namespace: &str, repo: &str, page: &str, anchor:
 }
 
 /// The path of `page` relative to the paper `dir`.
-pub(super) fn paper_relative_path<'a>(dir: &str, page: &'a str) -> &'a str {
+fn paper_relative_path<'a>(dir: &str, page: &'a str) -> &'a str {
     let dir = dir.trim_matches('/');
     if dir.is_empty() {
         page
@@ -407,8 +412,8 @@ pub(super) fn render_paper_content_only(
     headings: &[PaperHeading],
 ) -> Markup {
     let base_dir = parent_path(page);
-    let html_content =
-        content.map(|md| render_paper_markdown(md, namespace, repo, base_dir, headings));
+    let html_content = content
+        .map(|md| super::markdown::render_paper_markdown(md, namespace, repo, base_dir, headings));
 
     maud::html! {
         @if let Some(html) = html_content {

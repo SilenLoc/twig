@@ -13,7 +13,6 @@ fn test_markdown_to_html() {
         "{html}"
     );
 }
-
 #[test]
 fn test_markdown_link_fixing() {
     let md = "[Link](./other.md) and [External](https://example.com)";
@@ -23,7 +22,6 @@ fn test_markdown_link_fixing() {
     // External links should remain unchanged
     assert!(html.contains("https://example.com"));
 }
-
 #[test]
 fn test_markdown_links_resolve_against_containing_directory() {
     let md = "[Sibling](other.md) [Nested](sub/deep.md) [Up](../top.md)";
@@ -35,7 +33,6 @@ fn test_markdown_links_resolve_against_containing_directory() {
     );
     assert!(html.contains("/ns/repo/md/docs/top.md"), "{html}");
 }
-
 #[test]
 fn test_markdown_non_markdown_links_target_content_route() {
     let md = "[Image](logo.png) [Dir](sub/)";
@@ -43,7 +40,6 @@ fn test_markdown_non_markdown_links_target_content_route() {
     assert!(html.contains("/ns/repo/content/foo.bar/logo.png"), "{html}");
     assert!(html.contains("/ns/repo/content/foo.bar/sub"), "{html}");
 }
-
 #[test]
 fn test_markdown_link_preserves_fragment_and_query() {
     let md = "[Anchor](other.md#section) [Query](file.txt?raw=1)";
@@ -54,7 +50,6 @@ fn test_markdown_link_preserves_fragment_and_query() {
         "{html}"
     );
 }
-
 #[test]
 fn test_markdown_link_leaves_absolute_and_scheme_links_alone() {
     let md = "[Root](/other) [Mail](mailto:a@b.com) [Frag](#here)";
@@ -63,7 +58,6 @@ fn test_markdown_link_leaves_absolute_and_scheme_links_alone() {
     assert!(html.contains("href=\"mailto:a@b.com\""), "{html}");
     assert!(html.contains("href=\"#here\""), "{html}");
 }
-
 #[test]
 fn test_slide_markdown_anchors_relative_links_to_the_slide_directory() {
     let md = "See [next](second.md), [chart](img/chart.png) and [site](https://example.com).";
@@ -75,7 +69,6 @@ fn test_slide_markdown_anchors_relative_links_to_the_slide_directory() {
     );
     assert!(html.contains("href=\"https://example.com\""), "{html}");
 }
-
 #[test]
 fn test_slide_markdown_substitutes_template_variables() {
     let mut vars = HashMap::new();
@@ -89,7 +82,6 @@ fn test_slide_markdown_substitutes_template_variables() {
     );
     assert!(html.contains("Talk by Jane"), "{html}");
 }
-
 #[test]
 fn test_resolve_relative_path() {
     assert_eq!(resolve_relative_path("", "a.md"), "a.md");
@@ -99,7 +91,6 @@ fn test_resolve_relative_path() {
     assert_eq!(resolve_relative_path("docs", "sub/"), "docs/sub");
     assert_eq!(resolve_relative_path("docs", "."), "docs");
 }
-
 #[test]
 fn test_has_url_scheme() {
     assert!(has_url_scheme("https://example.com"));
@@ -109,26 +100,6 @@ fn test_has_url_scheme() {
     assert!(!has_url_scheme(":leading"));
     assert!(!has_url_scheme("./a.md"));
 }
-
-#[test]
-fn test_get_default_markdown_file() {
-    let files = vec![
-        "docs/guide.md".to_string(),
-        "README.md".to_string(),
-        "CHANGELOG.md".to_string(),
-    ];
-    assert_eq!(get_default_markdown_file(&files), Some("README.md"));
-
-    let files = vec!["docs/guide.md".to_string(), "readme.md".to_string()];
-    assert_eq!(get_default_markdown_file(&files), Some("readme.md"));
-
-    let files = vec!["guide.md".to_string(), "docs/help.md".to_string()];
-    assert_eq!(get_default_markdown_file(&files), Some("guide.md"));
-
-    let files: Vec<String> = vec![];
-    assert_eq!(get_default_markdown_file(&files), None);
-}
-
 #[test]
 fn test_markdown_tables_rendering() {
     let md = "| Header 1 | Header 2 |\n|----------|----------|\n| Cell 1   | Cell 2   |";
@@ -141,7 +112,6 @@ fn test_markdown_tables_rendering() {
     assert!(html.contains("<th>"), "Expected <th> tag in output: {html}");
     assert!(html.contains("<td>"), "Expected <td> tag in output: {html}");
 }
-
 #[test]
 fn test_markdown_rail_appears_only_for_multiple_files() {
     let one = vec!["README.md".to_string()];
@@ -164,23 +134,60 @@ fn test_markdown_rail_appears_only_for_multiple_files() {
         "{html}"
     );
     assert!(
-            html.contains(r##"aria-current="page" hx-get="/acme/my-project/md/README.md" hx-target="#markdown-view""##),
-            "the open file is the current rail item and keeps its htmx wiring: {html}"
-        );
+        html.contains(r##"aria-current="page" hx-get="/acme/my-project/md/README.md" hx-target="#markdown-view""##),
+        "the open file is the current rail item and keeps its htmx wiring: {html}"
+    );
     assert_eq!(count_of(&html, "aria-current=\"page\""), 1, "{html}");
     assert_eq!(count_of(&html, "hx-target=\"#markdown-view\""), 2, "{html}");
 }
-
 #[test]
 fn test_markdown_content_reports_a_missing_file() {
     let html = render_markdown_content_only("acme", "my-project", "README.md", None).into_string();
     assert!(html.contains("twig-empty"), "{html}");
     assert!(html.contains("File not found or empty."), "{html}");
+    assert!(!html.contains("data-twig-copy-markdown"), "{html}");
+    assert!(!html.contains("/raw/README.md"), "{html}");
 
     let html =
         render_markdown_content_only("acme", "my-project", "README.md", Some("# Hi")).into_string();
     assert!(
         html.contains(r#"<div class="twig-md twig-md--prose">"#),
         "{html}"
+    );
+}
+#[test]
+fn test_markdown_controls_use_the_raw_route_and_keep_the_original_source() {
+    let source = "# Guide\n\nCopy this *Markdown* & keep it.\n";
+    let html =
+        render_content_file("acme", "my-project", "docs/guide.md", source.as_bytes()).into_string();
+
+    assert!(
+        html.contains(r#"href="/acme/my-project/raw/docs/guide.md""#),
+        "the Raw link uses the existing raw-file path: {html}"
+    );
+    assert!(
+        html.contains(r#"data-twig-copy-markdown title="Copy this document as Markdown""#),
+        "the document has an accessible source-copy button: {html}"
+    );
+    assert!(
+        html.contains("data-twig-markdown-source><!-- --># Guide\n\nCopy this *Markdown* &amp; keep it.\n</pre>"),
+        "the hidden copy source is the original Markdown, not rendered HTML: {html}"
+    );
+    assert!(
+        html.contains("navigator.clipboard.writeText(text)")
+            && html.contains("range.selectNodeContents(src)"),
+        "copy uses the clipboard and leaves a manual-selection fallback: {html}"
+    );
+}
+#[test]
+fn test_markdown_copy_script_uses_clipboard_and_manual_fallback() {
+    assert!(
+        MARKDOWN_COPY_SCRIPT.contains("navigator.clipboard.writeText(text)"),
+        "copy uses the Clipboard API: {MARKDOWN_COPY_SCRIPT}"
+    );
+    assert!(
+        MARKDOWN_COPY_SCRIPT.contains("document.createRange()")
+            && MARKDOWN_COPY_SCRIPT.contains("range.selectNodeContents(src)"),
+        "a rejected copy selects the original source for manual copying: {MARKDOWN_COPY_SCRIPT}"
     );
 }

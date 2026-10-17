@@ -1,32 +1,63 @@
+use actix_web::Result as AwResult;
+use actix_web::http::header;
+use actix_web::{HttpRequest, HttpResponse, get, web};
+use maud::Markup;
+
+use crate::auth::TwigContext;
+use crate::config;
+use crate::git::bare::{RepoHandle, TreeEntry, is_safe_repo_path};
+use crate::http::auth::session::get_username_from_request;
+
+use super::context::{can_view_namespace, open_repo, render_empty, render_not_found_for_request};
 use super::markdown::markdown_to_html;
-use super::{
-    AwResult, Deserialize, HttpRequest, Markup, RepoContext, TreeEntry, TwigContext, config, get,
-    is_safe_repo_path, open_repo, render_empty, render_not_found_for_request, render_tab_response,
-    web,
-};
+use super::tabs::render_tab_response;
+use super::{ContentParams, ContentQuery, RawParams};
 
-#[derive(Deserialize)]
-pub(super) struct ContentParams {
-    namespace: String,
-    repo: String,
-    path: String,
+#[get("/{namespace}/{repo}/raw/{path:.*}")]
+pub async fn raw_handler(
+    req: HttpRequest,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<TwigContext>,
+    params: web::Path<RawParams>,
+) -> HttpResponse {
+    let username = get_username_from_request(&req, &auth_state).await;
+
+    let Ok(handle) = RepoHandle::open(server.project_root(), &params.namespace, &params.repo)
+    else {
+        return HttpResponse::NotFound().finish();
+    };
+
+    let twig_result = handle.load_config_with_raw();
+    if twig_result.config.private {
+        if username.is_none() {
+            return HttpResponse::Unauthorized().finish();
+        }
+        match can_view_namespace(&req, &server, &auth_state, &params.namespace).await {
+            Ok(true) => {}
+            Ok(false) => return HttpResponse::Forbidden().finish(),
+            Err(error) => {
+                log::error!("Failed to authorize private raw repository read: {error}");
+                return HttpResponse::InternalServerError().finish();
+            }
+        }
+    }
+
+    let path = params.path.trim_matches('/');
+    if !is_safe_repo_path(path) || path.is_empty() || twig_result.config.should_ignore(path) {
+        return HttpResponse::NotFound().finish();
+    }
+
+    match handle.read_blob_bytes(path) {
+        Ok(Some(bytes)) => HttpResponse::Ok()
+            .insert_header((header::CONTENT_TYPE, raw_content_type(path)))
+            .insert_header(("X-Content-Type-Options", "nosniff"))
+            .body(bytes),
+        _ => HttpResponse::NotFound().finish(),
+    }
 }
 
-#[derive(Deserialize)]
-pub(super) struct ContentQuery {
-    committed: Option<String>,
-    conflict_copy: Option<bool>,
-}
-
-/// The root of the Content tab.
-pub(super) fn content_body(ctx: &RepoContext) -> Markup {
-    let entries = ctx
-        .handle
-        .list_dir("", Some(&ctx.twig_result.config))
-        .unwrap_or_default();
-    render_content_view(&ctx.namespace, &ctx.repo, "", &entries, None)
-}
-
+/// The URL tabs used before each got its own route. A permanent redirect keeps
+/// old links and refreshes landing on the tab's current address.
 #[get("/{namespace}/{repo}/content/{path:.*}")]
 pub async fn content_handler(
     req: HttpRequest,
@@ -69,7 +100,7 @@ pub async fn content_handler(
     let saved_commit = query
         .committed
         .as_deref()
-        .and_then(|oid| twig_git::Oid::from_str(oid).ok());
+        .and_then(|oid| git2::Oid::from_str(oid).ok());
     let is_saved_commit =
         saved_commit.is_some_and(|oid| ctx.handle.head_oid().ok().flatten() == Some(oid));
     let body = if is_saved_commit {
@@ -90,7 +121,6 @@ pub async fn content_handler(
     Ok(render_tab_response(&req, &ctx.frame(), "content", &body))
 }
 
-/// Returns (href, push-url) pair for a path inside the content tab
 pub(super) fn content_urls(namespace: &str, repo: &str, path: &str) -> (String, String) {
     let href = if path.is_empty() {
         format!("/{namespace}/{repo}/content")
@@ -179,8 +209,8 @@ pub(super) fn render_content_view(
     }
 }
 
-/// One Technical Row per tree entry, with type and path exposed as separate
-/// columns for the compact repository listing.
+/// One Technical Row per tree entry. A directory is marked by its trailing
+/// slash and the primary-ink identifier; there is no icon (DESIGN.md 5.6).
 pub(super) fn render_content_row(href: &str, push: &str, entry: &TreeEntry) -> Markup {
     maud::html! {
         a
@@ -190,9 +220,6 @@ pub(super) fn render_content_row(href: &str, push: &str, entry: &TreeEntry) -> M
             hx-target="#tab-content"
             hx-push-url=(push)
         {
-            span class="twig-row-kind" {
-                @if entry.is_dir { "DIR" } @else { "FILE" }
-            }
             span class="twig-row-id" {
                 (entry.name)
                 @if entry.is_dir { "/" }
@@ -215,11 +242,7 @@ pub(super) fn render_content_dir(
                 (render_empty("NO FILES", "No files in this repository."))
             } @else {
                 div class="twig-panel twig-panel--flush" {
-                    div class="twig-colhead twig-colhead--content" {
-                        span { "TYPE" }
-                        span { "PATH" }
-                    }
-                    nav class="twig-list twig-list--content" aria-label="Repository entries" {
+                    div class="twig-list" {
                         @if !path.is_empty() {
                             @let (href, push) = content_urls(namespace, repo, parent_path(path));
                             a
@@ -229,7 +252,6 @@ pub(super) fn render_content_dir(
                                 hx-target="#tab-content"
                                 hx-push-url=(push)
                             {
-                                span class="twig-row-kind" { "UP" }
                                 span class="twig-row-id" { ".." }
                             }
                         }
@@ -258,18 +280,10 @@ pub(super) fn render_content_file(namespace: &str, repo: &str, path: &str, bytes
                 ))
             } @else {
                 @let text = String::from_utf8_lossy(bytes).into_owned();
-                @if std::str::from_utf8(bytes).is_ok() {
-                    div class="twig-editor-file-actions" {
-                        a
-                            class="twig-btn twig-btn--quiet"
-                            href=(format!(
-                                "/{namespace}/{repo}/edit/{}",
-                                crate::http::repository::editor::encode_file_path(path)
-                            ))
-                        { "Edit file" }
-                    }
-                }
                 @if crate::md::is_markdown(path) {
+                    @if let Ok(source) = std::str::from_utf8(bytes) {
+                        (super::markdown::render_markdown_controls(namespace, repo, path, source))
+                    }
                     div class="twig-md twig-md--boxed" {
                         (maud::PreEscaped(markdown_to_html(&text, namespace, repo, parent_path(path))))
                     }
@@ -284,5 +298,20 @@ pub(super) fn render_content_file(namespace: &str, repo: &str, path: &str, bytes
                 }
             }
         }
+    }
+}
+
+/// The Scripts tab: each configured group becomes a sub-tab labelled with the
+/// group name, and the active group lists its scripts with a copyable
+/// download-and-run command and its nested groups as links.
+/// Content type for a raw file: text for the formats worth reading in a
+/// terminal, a neutral download type for everything else.
+pub(super) fn raw_content_type(path: &str) -> &'static str {
+    let extension = path.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+    match extension.as_str() {
+        "sh" | "bash" | "zsh" | "py" | "rb" | "pl" | "js" | "ts" | "toml" | "yaml" | "yml"
+        | "json" | "md" | "markdown" | "txt" | "conf" | "cfg" | "ini" | "env" | "sql" | "rs"
+        | "go" | "c" | "h" => "text/plain; charset=utf-8",
+        _ => "application/octet-stream",
     }
 }

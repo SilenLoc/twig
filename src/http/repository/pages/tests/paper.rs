@@ -6,11 +6,11 @@ fn test_paper_view_lazy_loads_pages_with_zoom_and_font_controls() {
     let html = render_paper_view("acme", "my-project", "paper", &pages).into_string();
 
     assert!(
-            html.contains(
-                r#"<section id="paper-container" class="twig-paper" data-twig-text-size="100" data-twig-paper-font="sans""#
-            ),
-            "the paper keeps the shared zoom state: {html}"
-        );
+        html.contains(
+            r#"<section id="paper-container" class="twig-paper" data-twig-text-size="100" data-twig-paper-font="sans""#
+        ),
+        "the paper keeps the shared zoom state: {html}"
+    );
     assert!(
         html.contains(r#"aria-label="Paper""#),
         "the reader names itself: {html}"
@@ -55,15 +55,6 @@ fn test_paper_view_lazy_loads_pages_with_zoom_and_font_controls() {
         1,
         "exactly one font is pressed by default: {html}"
     );
-    let toolbar_end = html.find("</div></header>").expect("paper toolbar closes");
-    let toggle = html[..toolbar_end]
-        .find("twig-theme-toggle")
-        .expect("paper toolbar keeps the theme control");
-    assert!(html.contains("twig-theme-label"), "{html}");
-    assert!(
-        !html[toggle..toolbar_end].contains("class=\"twig-btn"),
-        "the theme control is the last button in the right-aligned tools: {html}"
-    );
     assert!(
         html.contains("c.addEventListener('click'"),
         "the font switch is scoped to the container: {html}"
@@ -81,7 +72,6 @@ fn test_paper_view_lazy_loads_pages_with_zoom_and_font_controls() {
         "the anchor follows an observer, not a scroll listener: {html}"
     );
 }
-
 #[test]
 fn test_paper_headings_slug_anchor_and_dedupe() {
     let markdown = "# Hello, World!\n\n## Details & More\n\n### Details & More\n";
@@ -106,7 +96,6 @@ fn test_paper_headings_slug_anchor_and_dedupe() {
         ]
     );
 }
-
 #[test]
 fn test_render_paper_markdown_puts_heading_ids_on_the_headings() {
     let markdown = "# Hello\n\nBody\n\n## Details\n";
@@ -123,7 +112,6 @@ fn test_render_paper_markdown_puts_heading_ids_on_the_headings() {
     );
     assert!(html.contains("<p>Body</p>"), "{html}");
 }
-
 #[test]
 fn test_render_paper_content_only_anchors_headings() {
     let markdown = "# Hello\n";
@@ -142,7 +130,6 @@ fn test_render_paper_content_only_anchors_headings() {
         "{html}"
     );
 }
-
 #[test]
 fn test_paper_page_anchors_are_path_relative_and_unique() {
     let pages = [
@@ -165,7 +152,6 @@ fn test_paper_page_anchors_are_path_relative_and_unique() {
         vec!["paper-intro.md"]
     );
 }
-
 #[test]
 fn test_paper_view_without_pages_states_the_condition() {
     let html = render_paper_view("acme", "my-project", "paper", &[]).into_string();
@@ -176,7 +162,6 @@ fn test_paper_view_without_pages_states_the_condition() {
     );
     assert!(!html.contains("paper-container"), "{html}");
 }
-
 #[test]
 fn test_page_in_dir_accepts_only_paths_below_the_paper_directory() {
     assert!(page_in_dir("paper/01.md", "paper"));

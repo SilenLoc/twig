@@ -116,6 +116,7 @@ impl Database {
         Ok(result)
     }
 
+    #[cfg(test)]
     pub async fn user_has_namespace_access(
         &self,
         user_id: &str,
@@ -165,6 +166,7 @@ impl Database {
             .ok_or_else(|| format!("Unknown namespace role: {role}"))
     }
 
+    #[cfg(test)]
     pub async fn user_owns_namespace(
         &self,
         user_id: &str,
@@ -173,6 +175,7 @@ impl Database {
         Ok(self.get_namespace_role(user_id, namespace_name).await? == Some(NamespaceRole::Owner))
     }
 
+    #[cfg(test)]
     pub async fn get_owned_namespaces_for_user(
         &self,
         user_id: &str,
@@ -245,6 +248,35 @@ impl Database {
             .map_err(|e| e.to_string())?;
 
         Ok(rows.next().await.map_err(|e| e.to_string())?.is_some())
+    }
+
+    /// Lists all member-visible namespaces; owner-only management panels use
+    /// `get_owned_namespaces_for_user` instead.
+    pub async fn get_namespaces_for_user(&self, user_id: &str) -> Result<Vec<Namespace>, String> {
+        let mut rows = self
+            .conn()
+            .await?
+            .query(
+                "SELECT DISTINCT n.id, n.name, n.owner_id, n.created_at
+                 FROM namespaces n
+                 LEFT JOIN namespace_members nm ON n.id = nm.namespace_id
+                 WHERE n.owner_id = ?1 OR nm.user_id = ?1
+                 ORDER BY n.name",
+                turso::params![user_id],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let mut result = Vec::new();
+        while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
+            result.push(Namespace {
+                id: row.get(0).map_err(|e| e.to_string())?,
+                name: row.get(1).map_err(|e| e.to_string())?,
+                owner_id: row.get(2).map_err(|e| e.to_string())?,
+                created_at: row.get(3).map_err(|e| e.to_string())?,
+            });
+        }
+        Ok(result)
     }
 
     pub async fn rename_namespace(&self, namespace_id: &str, new_name: &str) -> Result<(), String> {

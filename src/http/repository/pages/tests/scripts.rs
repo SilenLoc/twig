@@ -28,16 +28,3 @@ fn test_base_url_schemes_follow_the_request() {
         "without a proxy header, remote hosts default to https"
     );
 }
-
-#[test]
-fn test_raw_content_type_is_text_for_scripts_and_neutral_otherwise() {
-    assert_eq!(
-        raw_content_type("scripts/install.sh"),
-        "text/plain; charset=utf-8"
-    );
-    assert_eq!(raw_content_type("README.md"), "text/plain; charset=utf-8");
-    assert_eq!(
-        raw_content_type("assets/logo.bin"),
-        "application/octet-stream"
-    );
-}

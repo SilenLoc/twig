@@ -1,16 +1,15 @@
-use super::{
-    AwResult, Commit, Deserialize, HttpRequest, HttpResponse, MAX_COMMITS, Markup, Params,
-    RepoContext, TwigContext, config, get, header, open_repo, render_empty, render_for_request,
-    render_git_error, render_tab_response, web,
-};
-use super::{content, markdown, paper, presentation, scripts};
+use actix_web::Result as AwResult;
+use actix_web::{HttpRequest, get, web};
+use maud::Markup;
 
-#[derive(Deserialize)]
-pub(super) struct TabParams {
-    namespace: String,
-    repo: String,
-    tab: String,
-}
+use super::Params;
+use super::context::{
+    OptionalTab, RepoContext, TabFrame, open_repo, render_empty, render_for_request,
+    render_git_error,
+};
+use crate::auth::TwigContext;
+use crate::config;
+use crate::git::bare::{Commit, MAX_COMMITS};
 
 pub(super) fn markdown_files(ctx: &RepoContext) -> Vec<String> {
     ctx.handle
@@ -19,7 +18,33 @@ pub(super) fn markdown_files(ctx: &RepoContext) -> Vec<String> {
         .markdown_files
 }
 
-pub(super) fn commits_body(ctx: &RepoContext) -> Result<Markup, twig_git::GitError> {
+/// The Documentation tab: the default Markdown file, README preferred.
+pub(super) fn markdown_body(ctx: &RepoContext) -> Markup {
+    markdown_body_from(ctx, &markdown_files(ctx))
+}
+
+pub(super) fn markdown_body_from(ctx: &RepoContext, files: &[String]) -> Markup {
+    let file = get_default_markdown_file(files).unwrap_or("README.md");
+    let content = ctx.handle.read_file(file).ok().flatten();
+    super::markdown::render_markdown_view(
+        &ctx.namespace,
+        &ctx.repo,
+        file,
+        content.as_deref(),
+        files,
+    )
+}
+
+/// The root of the Content tab.
+pub(super) fn content_body(ctx: &RepoContext) -> Markup {
+    let entries = ctx
+        .handle
+        .list_dir("", Some(&ctx.twig_result.config))
+        .unwrap_or_default();
+    super::content::render_content_view(&ctx.namespace, &ctx.repo, "", &entries, None)
+}
+
+pub(super) fn commits_body(ctx: &RepoContext) -> Result<Markup, git2::Error> {
     let commits = ctx.handle.get_commits(MAX_COMMITS)?;
     Ok(render_commits_view(&commits))
 }
@@ -36,23 +61,20 @@ pub(super) fn license_body(ctx: &RepoContext) -> Markup {
     render_license_view(Some(&content))
 }
 
-/// Renders a tab by name. Only the requested tab's data is loaded, so a Commits
-/// request never reads markdown, slides, or paper pages. `group` selects a
-/// Scripts sub-group and is ignored by every other tab.
 pub(super) fn tab_body(
     ctx: &RepoContext,
     tab: &str,
     group: Option<&str>,
     releases: &[crate::db::binaries::BinaryRelease],
     binaries_unavailable: bool,
-) -> Result<Markup, twig_git::GitError> {
+) -> Result<Markup, git2::Error> {
     match tab {
-        "content" => Ok(content::content_body(ctx)),
+        "content" => Ok(content_body(ctx)),
         "config" => Ok(config_body(ctx)),
-        "present" => Ok(presentation::present_body(ctx)),
-        "paper" => Ok(paper::paper_body(ctx)),
+        "present" => Ok(super::presentation::present_body(ctx)),
+        "paper" => Ok(super::paper::paper_body(ctx)),
         "license" => Ok(license_body(ctx)),
-        "scripts" => Ok(scripts::scripts_body(
+        "scripts" => Ok(super::scripts::scripts_body(
             ctx,
             group,
             releases,
@@ -60,7 +82,7 @@ pub(super) fn tab_body(
         )),
         "commits" => commits_body(ctx),
         // Documentation, and the fallback for an unknown tab name.
-        _ => Ok(markdown::markdown_body(ctx)),
+        _ => Ok(markdown_body(ctx)),
     }
 }
 
@@ -105,6 +127,45 @@ pub(super) async fn respond_tab(
     Ok(render_tab_response(&req, &ctx.frame(), tab, &body))
 }
 
+pub(super) fn tab_nav(frame: &TabFrame<'_>, active: &str) -> Markup {
+    render_tabs(frame, active)
+}
+
+/// The full tab page body, without the document layout.
+pub(super) fn render_tab_shell(frame: &TabFrame<'_>, active: &str, body: &Markup) -> Markup {
+    maud::html! {
+        (render_repo_crumbs(frame.namespace, frame.repo))
+        (tab_nav(frame, active))
+        // A broken configuration is shown on every tab, outside #tab-content, so
+        // it survives htmx swaps until the file is fixed.
+        @if let Some(error) = frame.twig_error {
+            (render_config_error(frame.twig_filename.unwrap_or(".twig.toml"), error))
+        }
+        div id="tab-content" aria-live="polite" {
+            (body)
+        }
+    }
+}
+
+/// An htmx call gets the swapped tab bar plus the body; a direct navigation
+/// gets the full page. This is what keeps every tab URL refreshable.
+pub(super) fn render_tab_response(
+    req: &HttpRequest,
+    frame: &TabFrame<'_>,
+    active: &str,
+    body: &Markup,
+) -> Markup {
+    if req.headers().get("HX-Request").is_some() {
+        maud::html! {
+            (tab_nav(frame, active))
+            (body)
+        }
+    } else {
+        let content = render_tab_shell(frame, active, body);
+        crate::http::view::render_layout(&content, frame.username, Some(frame.page_title))
+    }
+}
+
 /// Every tab a repository can show.
 pub(super) const TAB_IDS: [&str; 8] = [
     "markdown", "paper", "content", "commits", "config", "present", "scripts", "license",
@@ -113,10 +174,7 @@ pub(super) const TAB_IDS: [&str; 8] = [
 /// The tab the repository home shows: the first configured tab, else Markdown
 /// when the repository has markdown, else Commits. A configured name that is
 /// not a real tab falls back the same way.
-pub(super) fn resolved_default_tab<'a>(
-    tabs_config: &'a [String],
-    markdown_files: &[String],
-) -> &'a str {
+fn resolved_default_tab<'a>(tabs_config: &'a [String], markdown_files: &[String]) -> &'a str {
     let tab = default_tab(tabs_config, markdown_files);
     if TAB_IDS.contains(&tab) {
         tab
@@ -144,7 +202,7 @@ pub async fn handler(
     let files = markdown_files(&ctx);
     let tab = resolved_default_tab(&ctx.twig_result.config.tabs, &files);
     let body = if tab == "markdown" {
-        markdown::markdown_body_from(&ctx, &files)
+        markdown_body_from(&ctx, &files)
     } else {
         let (releases, binaries_unavailable) = if tab == "scripts" {
             match auth_state
@@ -181,170 +239,99 @@ pub async fn handler(
     Ok(render_tab_response(&req, &ctx.frame(), tab, &body))
 }
 
-#[get("/{namespace}/{repo}/markdown")]
-pub async fn markdown_tab_handler(
-    req: HttpRequest,
-    server: web::Data<config::Server>,
-    auth_state: web::Data<TwigContext>,
-    params: web::Path<Params>,
-) -> AwResult<Markup> {
-    respond_tab(
-        req,
-        server,
-        auth_state,
-        &params.namespace,
-        &params.repo,
-        "markdown",
-        None,
-    )
-    .await
+/// The page head: the trail is the whole heading zone, with the repository
+/// name as its highlighted final segment, so the tabs follow it directly.
+pub(super) fn render_repo_crumbs(namespace: &str, repo: &str) -> Markup {
+    maud::html! {
+        div class="twig-pagehead" {
+            nav class="twig-crumbs twig-crumbs--page" aria-label="Breadcrumb" {
+                a href="/" { "Namespaces" }
+                span class="twig-crumb-sep" aria-hidden="true" { "/" }
+                a href=(format!("/{namespace}")) { (namespace) }
+                span class="twig-crumb-sep" aria-hidden="true" { "/" }
+                h1 class="twig-crumb-current" aria-current="page" { (repo) }
+            }
+            a class="twig-btn twig-btn--primary" href=(format!("/{namespace}/{repo}/edit")) {
+                "Open workspace"
+            }
+        }
+    }
 }
 
-#[get("/{namespace}/{repo}/content")]
-pub async fn content_tab_handler(
-    req: HttpRequest,
-    server: web::Data<config::Server>,
-    auth_state: web::Data<TwigContext>,
-    params: web::Path<Params>,
-) -> AwResult<Markup> {
-    respond_tab(
-        req,
-        server,
-        auth_state,
-        &params.namespace,
-        &params.repo,
-        "content",
-        None,
-    )
-    .await
-}
+/// Renders a tab navigation bar. `tabs_config` lists the only tabs to show
+/// when set; every tab additionally requires its content to exist.
+pub(super) const DEFAULT_TABS: [(&str, &str, Option<OptionalTab>); 8] = [
+    ("markdown", "Documentation", None),
+    ("paper", "Paper", Some(OptionalTab::Paper)),
+    ("content", "Content", None),
+    ("commits", "Commits", None),
+    ("config", "Config", Some(OptionalTab::Config)),
+    ("present", "Present", Some(OptionalTab::Present)),
+    ("scripts", "Scripts", Some(OptionalTab::Scripts)),
+    ("license", "License", None),
+];
 
-#[get("/{namespace}/{repo}/commits")]
-pub async fn commits_tab_handler(
-    req: HttpRequest,
-    server: web::Data<config::Server>,
-    auth_state: web::Data<TwigContext>,
-    params: web::Path<Params>,
-) -> AwResult<Markup> {
-    respond_tab(
-        req,
-        server,
-        auth_state,
-        &params.namespace,
-        &params.repo,
-        "commits",
-        None,
-    )
-    .await
-}
-
-#[get("/{namespace}/{repo}/config")]
-pub async fn config_tab_handler(
-    req: HttpRequest,
-    server: web::Data<config::Server>,
-    auth_state: web::Data<TwigContext>,
-    params: web::Path<Params>,
-) -> AwResult<Markup> {
-    respond_tab(
-        req,
-        server,
-        auth_state,
-        &params.namespace,
-        &params.repo,
-        "config",
-        None,
-    )
-    .await
-}
-
-#[get("/{namespace}/{repo}/present")]
-pub async fn present_tab_handler(
-    req: HttpRequest,
-    server: web::Data<config::Server>,
-    auth_state: web::Data<TwigContext>,
-    params: web::Path<Params>,
-) -> AwResult<Markup> {
-    respond_tab(
-        req,
-        server,
-        auth_state,
-        &params.namespace,
-        &params.repo,
-        "present",
-        None,
-    )
-    .await
-}
-
-#[get("/{namespace}/{repo}/paper")]
-pub async fn paper_tab_handler(
-    req: HttpRequest,
-    server: web::Data<config::Server>,
-    auth_state: web::Data<TwigContext>,
-    params: web::Path<Params>,
-) -> AwResult<Markup> {
-    respond_tab(
-        req,
-        server,
-        auth_state,
-        &params.namespace,
-        &params.repo,
-        "paper",
-        None,
-    )
-    .await
-}
-
-#[get("/{namespace}/{repo}/license")]
-pub async fn license_tab_handler(
-    req: HttpRequest,
-    server: web::Data<config::Server>,
-    auth_state: web::Data<TwigContext>,
-    params: web::Path<Params>,
-) -> AwResult<Markup> {
-    respond_tab(
-        req,
-        server,
-        auth_state,
-        &params.namespace,
-        &params.repo,
-        "license",
-        None,
-    )
-    .await
-}
-
-#[get("/{namespace}/{repo}/scripts")]
-pub async fn scripts_tab_handler(
-    req: HttpRequest,
-    server: web::Data<config::Server>,
-    auth_state: web::Data<TwigContext>,
-    params: web::Path<Params>,
-) -> AwResult<Markup> {
-    respond_tab(
-        req,
-        server,
-        auth_state,
-        &params.namespace,
-        &params.repo,
-        "scripts",
-        None,
-    )
-    .await
-}
-
-/// The URL tabs used before each got its own route. A permanent redirect keeps
-/// old links and refreshes landing on the tab's current address.
-#[get("/{namespace}/{repo}/tab/{tab}")]
-pub async fn tab_handler(params: web::Path<TabParams>) -> HttpResponse {
-    let target = if TAB_IDS.contains(&params.tab.as_str()) {
-        format!("/{}/{}/{}", params.namespace, params.repo, params.tab)
+pub(super) fn available_tabs(frame: &TabFrame<'_>) -> Vec<(&'static str, &'static str)> {
+    if frame.tabs_config.is_empty() {
+        DEFAULT_TABS
+            .into_iter()
+            .filter_map(|(id, label, requirement)| {
+                requirement
+                    .is_none_or(|tab| frame.has_optional_tab(tab))
+                    .then_some((id, label))
+            })
+            .collect()
     } else {
-        format!("/{}/{}", params.namespace, params.repo)
+        frame
+            .tabs_config
+            .iter()
+            .filter_map(|tab| configured_tab(tab, frame))
+            .collect()
+    }
+}
+
+pub(super) fn configured_tab(
+    tab: &str,
+    frame: &TabFrame<'_>,
+) -> Option<(&'static str, &'static str)> {
+    let (id, label, requirement) = match tab {
+        "markdown" => ("markdown", "Documentation", None),
+        "paper" => ("paper", "Paper", Some(OptionalTab::Paper)),
+        "content" => ("content", "Content", None),
+        "commits" => ("commits", "Commits", None),
+        "config" => ("config", "Config", Some(OptionalTab::Config)),
+        "present" => ("present", "Present", Some(OptionalTab::Present)),
+        "scripts" => ("scripts", "Scripts", Some(OptionalTab::Scripts)),
+        "license" => ("license", "License", None),
+        _ => return None,
     };
-    HttpResponse::PermanentRedirect()
-        .insert_header((header::LOCATION, target))
-        .finish()
+    requirement
+        .is_none_or(|tab| frame.has_optional_tab(tab))
+        .then_some((id, label))
+}
+
+pub(super) fn render_tabs(frame: &TabFrame<'_>, active_tab: &str) -> Markup {
+    let namespace = frame.namespace;
+    let repo = frame.repo;
+    let all_tabs = available_tabs(frame);
+
+    maud::html! {
+        nav id="tab-nav" class="twig-tabs" aria-label="Repository views" hx-swap-oob="true" {
+            @for (tab_id, tab_label) in all_tabs {
+                @let href = format!("/{namespace}/{repo}/{tab_id}");
+                a
+                    class="twig-tab"
+                    href=(href)
+                    aria-current=[(tab_id == active_tab).then_some("page")]
+                    hx-get=(href)
+                    hx-target="#tab-content"
+                    hx-push-url=(href)
+                {
+                    (tab_label)
+                }
+            }
+        }
+    }
 }
 
 /// The tab shown when no tab is named: the first configured one, else Markdown
@@ -357,6 +344,26 @@ pub(super) fn default_tab<'a>(tabs_config: &'a [String], markdown_files: &[Strin
     } else {
         "markdown"
     }
+}
+
+/// Get the default markdown file to show - prefers README.md if it exists
+pub(super) fn get_default_markdown_file(markdown_files: &[String]) -> Option<&str> {
+    // First try to find README.md (case-insensitive)
+    let readme = markdown_files
+        .iter()
+        .find(|f| f.eq_ignore_ascii_case("README.md"));
+    if readme.is_some() {
+        return readme.map(String::as_str);
+    }
+    // Then try any README variant
+    let readme = markdown_files
+        .iter()
+        .find(|f| f.to_lowercase().starts_with("readme"));
+    if readme.is_some() {
+        return readme.map(String::as_str);
+    }
+    // Fall back to first file
+    markdown_files.first().map(String::as_str)
 }
 
 pub(super) fn render_commits_view(commits: &[Commit]) -> Markup {
@@ -401,6 +408,29 @@ pub(super) fn render_config_view(
     }
 }
 
+/// A parse failure in `.twig.toml`, presented like a compiler diagnostic: the
+/// offending file, the TOML error with its line context, and a help hint.
+/// Reaching this is the exceptional path, so the extra formatting costs
+/// nothing on a healthy repository.
+pub(super) fn render_config_error(filename: &str, error: &str) -> Markup {
+    let diagnostic = format!(
+        "error: could not parse configuration\n --> {filename}\n\n{error}\n\nhelp: fix the syntax shown above; default settings apply until it is valid"
+    );
+
+    maud::html! {
+        div class="twig-notice twig-notice--danger" role="alert" {
+            p class="twig-eyebrow" { "CONFIG ERROR" }
+            p class="twig-notice-body" {
+                code class="twig-mono" { (filename) }
+                " could not be parsed. Continuing with default settings."
+            }
+            pre class="twig-code" tabindex="0" aria-label=(format!("{filename} parse error")) {
+                code { (diagnostic) }
+            }
+        }
+    }
+}
+
 pub(super) fn render_license_view(license_content: Option<&str>) -> Markup {
     maud::html! {
         div class="twig-stack" {
@@ -415,6 +445,7 @@ pub(super) fn render_license_view(license_content: Option<&str>) -> Markup {
     }
 }
 
+/// Returns (href, push-url) pair for a path inside the content tab
 pub(super) fn render_commit(commit: &Commit) -> Markup {
     let hash = commit.hash();
     let author = commit.author();

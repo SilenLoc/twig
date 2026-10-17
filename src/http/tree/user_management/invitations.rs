@@ -1,69 +1,13 @@
-use super::{
-    CreateInvitationForm, HttpRequest, HttpResponse, InvitationDelivery, Markup,
-    NamespaceInvitation, NamespaceRole, NewNamespaceInvitation, TwigContext, UserManagementScope,
-    config, html, invitation_url, post, render_error, send_invitation_if_configured,
-    user_management_scope, web,
-};
+use actix_web::{HttpRequest, HttpResponse, post, web};
 
-pub(super) fn render_invitation_list(invitations: &[NamespaceInvitation], oob: bool) -> Markup {
-    let now = chrono::Utc::now();
-    html! {
-        section
-            id="invitation-list"
-            hx-swap-oob=[oob.then_some("outerHTML")]
-            class="twig-panel"
-            aria-labelledby="invitation-list-heading"
-        {
-            header class="twig-panel-head" {
-                h2 class="twig-eyebrow" id="invitation-list-heading" { "Invitations" }
-            }
-            div class="twig-panel-body" {
-                @if invitations.is_empty() {
-                    p class="twig-empty-body" { "No invitations yet." }
-                } @else {
-                    div class="twig-list" {
-                        @for invitation in invitations {
-                            @let status = if invitation.accepted_at.is_some()
-                                || invitation.accepted_user_id.is_some() {
-                                "Accepted"
-                            } else if is_expired(invitation, now) {
-                                "Expired"
-                            } else {
-                                "Pending"
-                            };
-                            div class="twig-row" {
-                                span class="twig-row-id" { (&invitation.email) }
-                                span class="twig-row-meta" {
-                                    (&invitation.namespace_name) " · " (invitation.role.display_name()) " · " (status)
-                                    @if let Some(expires_at) = &invitation.expires_at {
-                                        " · expires " (format_expiry(expires_at))
-                                    } @else {
-                                        " · never expires"
-                                    }
-                                }
-                                @if status == "Pending" {
-                                    form
-                                        hx-post=(format!("/tree/invites/{}/resend", invitation.token))
-                                        hx-target="#invite-result"
-                                        hx-swap="innerHTML"
-                                        "hx-status:4xx"="swap:innerHTML target:#invite-result"
-                                        "hx-status:5xx"="swap:innerHTML target:#invite-result"
-                                    {
-                                        button
-                                            class="twig-btn twig-btn--ghost"
-                                            type="submit"
-                                            aria-label=(format!("Resend invitation to {}", invitation.email))
-                                        { "Resend email" }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
+use crate::auth::{NamespaceInvitation, NamespaceRole, NewNamespaceInvitation, TwigContext};
+use crate::config;
+use crate::email::{InvitationDelivery, invitation_url, send_invitation_if_configured};
+use crate::http::view::render_error;
+
+use super::access::{UserManagementScope, user_management_scope};
+use super::views::render_invitation_created;
+use super::*;
 
 pub(super) fn is_expired(
     invitation: &NamespaceInvitation,
@@ -75,9 +19,10 @@ pub(super) fn is_expired(
 }
 
 pub(super) fn format_expiry(expires_at: &str) -> String {
-    chrono::DateTime::parse_from_rfc3339(expires_at)
-        .map(|date| date.format("%Y-%m-%d %H:%M UTC").to_string())
-        .unwrap_or_else(|_| "unknown".to_string())
+    chrono::DateTime::parse_from_rfc3339(expires_at).map_or_else(
+        |_| "unknown".to_string(),
+        |date| date.format("%Y-%m-%d %H:%M UTC").to_string(),
+    )
 }
 
 pub(super) fn invitations_for_scope(scope: &UserManagementScope) -> Option<Vec<String>> {
@@ -104,57 +49,7 @@ pub(super) fn parse_expiry(
     Ok(Some((now + chrono::Duration::days(days)).to_rfc3339()))
 }
 
-pub(super) fn render_invitation_created(
-    invitation: &NamespaceInvitation,
-    invite_url: &str,
-    invitations: &[NamespaceInvitation],
-    delivery: &InvitationDelivery,
-) -> Markup {
-    let (eyebrow, message, class, role) = match delivery {
-        InvitationDelivery::Sent => (
-            "EMAIL SENT",
-            format!("Invitation email sent to {}.", invitation.email),
-            "twig-notice--success",
-            "status",
-        ),
-        InvitationDelivery::SkippedNoApiKey => (
-            "INVITATION CREATED",
-            format!(
-                "No email was sent because RESEND_API_KEY is not set. Copy and share the link with {}.",
-                invitation.email
-            ),
-            "twig-notice--warning",
-            "status",
-        ),
-        InvitationDelivery::Failed(reason) => (
-            "EMAIL NOT SENT",
-            if reason.contains("PUBLIC_BASE_URL") {
-                "Email was not sent: configure PUBLIC_BASE_URL before using Resend.".to_string()
-            } else {
-                "Email was not sent. Retry delivery or share this link directly.".to_string()
-            },
-            "twig-notice--warning",
-            "alert",
-        ),
-    };
-    html! {
-        div class=(format!("twig-notice {class}")) role=(role) {
-            p class="twig-eyebrow" { (eyebrow) }
-            p class="twig-notice-body" { (message) }
-            p class="twig-code" { (invite_url) }
-            a class="twig-btn twig-btn--primary" href=(format!("/auth/accept-invite/{}", invitation.token)) {
-                "Open account setup"
-            }
-        }
-        (render_invitation_list(invitations, true))
-    }
-}
-
-pub(super) fn display_invite_url(
-    req: &HttpRequest,
-    server: &config::Server,
-    token: &str,
-) -> String {
+fn display_invite_url(req: &HttpRequest, server: &config::Server, token: &str) -> String {
     if let Some(public_base_url) = server.public_base_url()
         && let Ok(url) = invitation_url(public_base_url, token)
     {
@@ -168,7 +63,7 @@ pub(super) fn display_invite_url(
     )
 }
 
-pub(super) async fn deliver_invitation(
+async fn deliver_invitation(
     server: &config::Server,
     invitation: &NamespaceInvitation,
 ) -> InvitationDelivery {
@@ -212,12 +107,9 @@ pub async fn create_namespace_invitation(
         return HttpResponse::BadRequest()
             .body(render_error("Choose a supported role").into_string());
     };
-    let expires_at = match parse_expiry(&form.expires, chrono::Utc::now()) {
-        Ok(expires_at) => expires_at,
-        Err(()) => {
-            return HttpResponse::BadRequest()
-                .body(render_error("Choose a supported invitation expiry").into_string());
-        }
+    let Ok(expires_at) = parse_expiry(&form.expires, chrono::Utc::now()) else {
+        return HttpResponse::BadRequest()
+            .body(render_error("Choose a supported invitation expiry").into_string());
     };
     let namespace = scope
         .namespaces

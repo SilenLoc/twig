@@ -92,8 +92,8 @@ fn handles_nested_comments_raw_strings_raw_identifiers_and_lifetimes() {
     assert!(html.contains("<span class=\"twig-syn-string\">r###&quot;&lt;tag&gt;&quot;###</span>"));
     assert!(html.contains("<span class=\"twig-syn-keyword\">let</span> r#type ="));
     assert!(html.contains(
-            "<span class=\"twig-syn-keyword\">let</span> x = <span class=\"twig-syn-lifetime\">&#39;static</span>;"
-        ));
+        "<span class=\"twig-syn-keyword\">let</span> x = <span class=\"twig-syn-lifetime\">&#39;static</span>;"
+    ));
     assert!(html.contains("<span class=\"twig-syn-string\">&#39;\\&#39;&#39;</span>"));
 }
 
