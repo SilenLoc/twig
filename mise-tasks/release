@@ -6,14 +6,13 @@ set -euo pipefail
 # would otherwise let mise cache-skip the task when Cargo.toml is older than
 # the last produced icon index. Releasing must always bump + build + push.
 
-# Cut a release:
-#   1. Bump the patch component of [package].version in-place.
-#   2. `docker buildx build --push` builds the image from the Dockerfile using
-#      the newly bumped version and streams it straight to the registry
-#      (expects `docker login` to be configured already). Building and pushing
-#      in one pass skips the local image-store round trip a separate
-#      `docker build` + `docker push` pays for.
-#   3. Commit the bumped Cargo.toml and push to the default branch.
+# Cut a release from a clean worktree:
+#   1. Bump the patch component of [package].version and update Cargo.lock.
+#   2. Verify the workspace, then commit and push only the two version files.
+#   3. `docker buildx build --push` builds the image from the Dockerfile using
+#      the new version and streams it straight to the registry (expects
+#      `docker login` to be configured already). Building and pushing in one
+#      pass skips the local image-store round trip.
 #
 # `--provenance=false` keeps the result a plain single-arch manifest: SLSA
 # attestations turn it into a manifest list and add extra blobs to export and
@@ -26,6 +25,11 @@ set -euo pipefail
 
 # 1. Read the current version from Cargo.toml's [package].version line
 #    (awk scoped to [package] so dependency `version = "..."` lines are ignored).
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "release requires a clean worktree; commit or stash existing changes first" >&2
+  exit 1
+fi
+
 v=$(awk '/^\[package\]/      { p=1; next }
          p && /^version = / { sub(/^version = /, ""); gsub(/"/, ""); print; exit }' Cargo.toml)
 
@@ -43,12 +47,16 @@ awk -v new="$nv" '
   { print }
 ' Cargo.toml > Cargo.toml.tmp && mv Cargo.toml.tmp Cargo.toml
 
-# 4. Build the release image and push it as silenloc/twig:<nv> in one pass.
-docker buildx build --provenance=false --push -t "silenloc/twig:$nv" -t "silenloc/twig:latest" .
+# 4. Resolve the new workspace version into Cargo.lock and verify the workspace.
+cargo check --workspace
 
-# 5. Commit the bumped Cargo.toml and push to the default branch.
-git add .
+# 5. Commit and push only the release version files. Do this before publishing
+#    the image so a failed Git push cannot leave an untracked image release.
+git add Cargo.toml Cargo.lock
 git commit -m "chore: release $nv"
 git push
+
+# 6. Build the release image and push it as silenloc/twig:<nv> in one pass.
+docker buildx build --provenance=false --push -t "silenloc/twig:$nv" -t "silenloc/twig:latest" .
 
 echo "bumped Cargo.toml to $nv; released silenloc/twig:$nv"

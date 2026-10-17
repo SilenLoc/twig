@@ -6,7 +6,7 @@
 - `Cargo.lock` — update the workspace dependency graph.
 - `crates/twig-git/Cargo.toml` — define the new `twig-git` library and its Git/repository dependencies.
 - `crates/twig-git/src/lib.rs` — export the crate API and the `GitError`/`Oid` types used by the app.
-- `src/git/backend.rs` → `crates/twig-git/src/backend.rs` — move Git request classification, CGI environment preparation, and `git http-backend` invocation.
+- The original design placed Git request classification, CGI environment preparation, and `git http-backend` invocation in `crates/twig-git/src/backend.rs`. The implemented smart-HTTP protocol handling is instead in `crates/twig-http` and does not invoke `git http-backend`.
 - `src/git/bare/mod.rs` → `crates/twig-git/src/bare/mod.rs` — move the repository-reading module and its namespace helper.
 - `src/git/bare/config.rs` and `src/git/bare/config/tests.rs` → `crates/twig-git/src/bare/config.rs` and `crates/twig-git/src/bare/config/tests.rs` — move repository config parsing and tests.
 - `src/git/bare/handle.rs` and `src/git/bare/handle/edit_tests.rs` → `crates/twig-git/src/bare/handle.rs` and `crates/twig-git/src/bare/handle/edit_tests.rs` — move repository reads, file commits, and tests.
@@ -17,8 +17,8 @@
 - `src/git/repo.rs` → `crates/twig-git/src/repo.rs` — move repository initialization and managed receive-hook operations; leave the authenticated Actix init route in the app adapter.
 - `src/git/repo/tests.rs` → `crates/twig-git/src/repo/tests.rs` — move repository creation and hook tests with their implementation.
 - `src/git/hooks/pre-receive` → `crates/twig-git/src/hooks/pre-receive` — keep the managed hook beside the crate code that installs it.
-- `src/git/mod.rs` → `src/git_http.rs` — retain only the app-owned Actix/auth/database adapter and its response tests; call `twig-git` for Git work.
-- `src/main.rs` — register the app adapter under its explicit name instead of declaring an in-app Git domain module.
+- `src/git/mod.rs` — retains the app-owned Actix/auth/database adapter and response tests; it delegates smart-HTTP handling to `twig-http` and repository work to `twig-git`.
+- `src/main.rs` — registers the app-owned `git` module.
 - `src/http/routes.rs` — route the existing init and smart-HTTP endpoints through the app adapter.
 - `src/http/namespace/pages.rs` — use the crate for repo validation/creation and reference `twig-git` for repo reads.
 - `src/http/settings/pages.rs`, `src/http/settings/pages/namespaces.rs`, and `src/http/settings/pages/repositories.rs` — switch to crate types/APIs and move repository validation/open/delete/move/rename filesystem operations behind the crate boundary.
@@ -98,7 +98,7 @@ The existing `RepoHandle`, `CommitFileOutcome`, `RepoInfo`, configuration, histo
 
 ## Call stack
 
-- Smart HTTP: `routes::configure_routes` → `git_http::git_handler` → app authentication/authorization → `twig_git::backend::run_with_config` in `web::block` → CGI response conversion in `git_http`.
+- Smart HTTP: `routes::configure_routes` → `git::git_handler` → app authentication/authorization → `twig_http::handle` in `web::block` → Actix response conversion in `src/git/mod.rs`.
 - UI repository creation: namespace or init Actix handler → existing app auth/database checks → `twig_git::reserved::validate_repo_name` → `twig_git::repo::bare_init` / `create_repo`.
 - UI repository management: settings Actix handler → existing app auth/database checks → `twig_git` repository validation and delete/move operations → app response rendering.
 - Repository browsing/editing: UI handler → `twig_git::bare::RepoHandle` / listing API → app rendering and response.
