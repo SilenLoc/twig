@@ -19,7 +19,7 @@ pub(super) fn markdown_files(ctx: &RepoContext) -> Vec<String> {
         .markdown_files
 }
 
-pub(super) fn commits_body(ctx: &RepoContext) -> Result<Markup, git2::Error> {
+pub(super) fn commits_body(ctx: &RepoContext) -> Result<Markup, twig_git::GitError> {
     let commits = ctx.handle.get_commits(MAX_COMMITS)?;
     Ok(render_commits_view(&commits))
 }
@@ -45,7 +45,7 @@ pub(super) fn tab_body(
     group: Option<&str>,
     releases: &[crate::db::binaries::BinaryRelease],
     binaries_unavailable: bool,
-) -> Result<Markup, git2::Error> {
+) -> Result<Markup, twig_git::GitError> {
     match tab {
         "content" => Ok(content::content_body(ctx)),
         "config" => Ok(config_body(ctx)),

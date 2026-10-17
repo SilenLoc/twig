@@ -190,7 +190,7 @@ pub fn is_repo_private(root: &str, namespace: &str, repo: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::git::bare::config::CONFIG_FILENAMES;
+    use crate::bare::config::CONFIG_FILENAMES;
 
     #[test]
     fn test_repo_info_has_name_and_date() {

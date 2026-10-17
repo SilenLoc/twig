@@ -9,7 +9,7 @@ async fn test_private_repository_ui_visibility_gated_on_login() {
 
     let pub_repo = std::path::Path::new(&root).join("privspace/pubrepo");
     std::fs::create_dir_all(&pub_repo).unwrap();
-    crate::git::repo::bare_init(&pub_repo, "main", "Test", "test@example.com").unwrap();
+    twig_git::repo::bare_init(&pub_repo, "main", "Test", "test@example.com").unwrap();
 
     let priv_repo = std::path::Path::new(&root).join("privspace/secretrepo");
     init_private_repo(&priv_repo);
@@ -95,7 +95,7 @@ async fn test_private_repository_git_read_gated_behind_auth() {
 
     let pub_repo = std::path::Path::new(&root).join("gitspace/pubrepo");
     std::fs::create_dir_all(&pub_repo).unwrap();
-    crate::git::repo::bare_init(&pub_repo, "main", "Test", "test@example.com").unwrap();
+    twig_git::repo::bare_init(&pub_repo, "main", "Test", "test@example.com").unwrap();
 
     let priv_repo = std::path::Path::new(&root).join("gitspace/privaterepo");
     init_private_repo(&priv_repo);

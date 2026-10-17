@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
 use crate::{
     auth::{TwigContext, User},
     config,
-    git::bare::{CommitFileOutcome, RepoHandle, is_safe_repo_path},
     http::auth::session::get_username_from_request,
 };
+use twig_git::bare::{CommitFileOutcome, RepoHandle, is_safe_repo_path};
 
 mod render;
 use render::render_editor_page;
@@ -55,9 +55,9 @@ fn conflict_copy_candidate(
     username: &str,
     timestamp: &str,
     collision: usize,
-) -> Result<String, git2::Error> {
+) -> Result<String, twig_git::GitError> {
     if !is_safe_repo_path(source_path) || source_path.is_empty() {
-        return Err(git2::Error::from_str("Invalid source file path"));
+        return Err(twig_git::GitError::from_str("Invalid source file path"));
     }
     let (directory, original_name) = source_path
         .rsplit_once('/')
@@ -77,7 +77,7 @@ fn conflict_copy_candidate(
         truncate_at -= 1;
     }
     if truncate_at == 0 {
-        return Err(git2::Error::from_str(
+        return Err(twig_git::GitError::from_str(
             "Could not make room for a conflict-copy filename prefix",
         ));
     }
@@ -94,14 +94,14 @@ fn conflict_copy_path(
     source_path: &str,
     username: &str,
     timestamp: &str,
-) -> Result<String, git2::Error> {
+) -> Result<String, twig_git::GitError> {
     for collision in 0..1000 {
         let candidate = conflict_copy_candidate(source_path, username, timestamp, collision)?;
         if handle.file_mode(&candidate)?.is_none() {
             return Ok(candidate);
         }
     }
-    Err(git2::Error::from_str(
+    Err(twig_git::GitError::from_str(
         "Could not find an unused conflict-copy filename",
     ))
 }
@@ -131,7 +131,7 @@ struct EditContext {
     handle: RepoHandle,
     user: User,
     content: String,
-    head: git2::Oid,
+    head: twig_git::Oid,
     markdown: bool,
 }
 
@@ -303,7 +303,7 @@ pub async fn commit_file_handler(
             .insert_header(("Location", "/settings"))
             .body("Set an email address in account settings before committing.");
     };
-    let Ok(expected_head) = git2::Oid::from_str(&input.expected_head) else {
+    let Ok(expected_head) = twig_git::Oid::from_str(&input.expected_head) else {
         return HttpResponse::BadRequest().body("Invalid editor base revision.");
     };
     if input.save_conflict_copy {
@@ -358,7 +358,7 @@ fn save_conflict_copy(
     ctx: &EditContext,
     params: &EditParams,
     input: &CommitFileInput,
-    stale_base: git2::Oid,
+    stale_base: twig_git::Oid,
     email: &str,
     message: &str,
 ) -> HttpResponse {

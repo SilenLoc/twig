@@ -254,3 +254,47 @@ fn receive_hook_installation_preserves_chains_and_is_idempotent() {
 
     let _ = std::fs::remove_dir_all(&temp_dir);
 }
+
+#[test]
+fn repository_operations_reject_non_repositories_and_preserve_destinations() {
+    let root =
+        std::env::temp_dir().join(format!("twig_repo_ops_conflict_{}", uuid::Uuid::new_v4()));
+    let source = root.join("source").join("invalid");
+    std::fs::create_dir_all(&source).unwrap();
+    assert!(matches!(
+        move_repository(&source, &root.join("target").join("repo")),
+        Err(RepositoryError::NotRepository)
+    ));
+    assert!(source.is_dir(), "invalid source must not be moved");
+
+    create_repo(&root, "source", "valid", "main").unwrap();
+    create_repo(&root, "target", "valid", "main").unwrap();
+    let source_repo = root.join("source").join("valid");
+    let destination_repo = root.join("target").join("valid");
+    assert!(matches!(
+        move_repository(&source_repo, &destination_repo),
+        Err(RepositoryError::DestinationExists)
+    ));
+    assert!(is_bare_repository(&source_repo));
+    assert!(is_bare_repository(&destination_repo));
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn repository_operations_move_and_delete_bare_repositories() {
+    let root = std::env::temp_dir().join(format!("twig_repo_ops_move_{}", uuid::Uuid::new_v4()));
+    create_repo(&root, "source", "original", "main").unwrap();
+
+    let source = root.join("source").join("original");
+    let destination = root.join("target").join("renamed");
+    move_repository(&source, &destination).unwrap();
+    assert!(!source.exists());
+    assert!(is_bare_repository(&destination));
+    assert!(destination.join("HEAD").is_file());
+
+    delete_repository(&destination).unwrap();
+    assert!(!destination.exists());
+
+    let _ = std::fs::remove_dir_all(root);
+}

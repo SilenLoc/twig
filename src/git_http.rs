@@ -1,14 +1,71 @@
 use std::path::Path;
 
-use actix_web::{HttpRequest, HttpResponse, web};
+use actix_web::{HttpRequest, HttpResponse, post, web};
+use serde::Deserialize;
 
 use crate::auth::{NamespaceRole, TwigContext, User, extract_basic_auth, verify_password};
 use crate::config;
-use crate::git::repo::bare_init;
-pub mod backend;
-pub mod bare;
-pub mod repo;
-pub mod reserved;
+
+#[derive(Deserialize)]
+struct InitRepo {
+    namespace: String,
+    repo: String,
+    #[serde(default = "twig_git::repo::default_branch")]
+    branch: String,
+}
+
+#[post("/init")]
+pub async fn init_repo_handler(
+    req: HttpRequest,
+    init_repo: web::Form<InitRepo>,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<TwigContext>,
+) -> HttpResponse {
+    let db = auth_state.db();
+    let Some((username, password)) = extract_basic_auth(&req) else {
+        return HttpResponse::Unauthorized()
+            .insert_header(("WWW-Authenticate", "Basic realm=\"twig\""))
+            .body("Missing credentials");
+    };
+    let user = match db.get_user_by_username(&username).await {
+        Ok(Some(user)) => user,
+        Ok(None) => return HttpResponse::Unauthorized().body("Invalid credentials"),
+        Err(error) => {
+            log::error!("Database error: {error}");
+            return HttpResponse::InternalServerError().body("Database error");
+        }
+    };
+    match verify_password(&password, &user.password_hash) {
+        Ok(true) => {}
+        Ok(false) => return HttpResponse::Unauthorized().body("Invalid credentials"),
+        Err(error) => {
+            log::error!("Password verification error: {error}");
+            return HttpResponse::InternalServerError().body("Authentication error");
+        }
+    }
+    match db.user_owns_namespace(&user.id, &init_repo.namespace).await {
+        Ok(true) => {}
+        Ok(false) => {
+            return HttpResponse::Forbidden().body("Only namespace owners can create repositories");
+        }
+        Err(error) => {
+            log::error!("Database error: {error}");
+            return HttpResponse::InternalServerError().body("Database error");
+        }
+    }
+    match twig_git::repo::create_repo(
+        server.project_root(),
+        init_repo.namespace.clone(),
+        init_repo.repo.clone(),
+        init_repo.branch.clone(),
+    ) {
+        Ok(()) => HttpResponse::Ok().body("Repository created"),
+        Err(error) => {
+            log::error!("Failed to create repository: {error}");
+            HttpResponse::InternalServerError().body("Failed to create repository")
+        }
+    }
+}
 
 pub async fn git_handler(
     req: HttpRequest,
@@ -39,7 +96,7 @@ pub async fn git_handler(
         repo.clone()
     };
 
-    let git_backend_config = crate::git::backend::Config::new(server.project_root());
+    let git_backend_config = twig_git::backend::Config::new(server.project_root());
 
     let method = req.method().as_str();
     let query = req.query_string();
@@ -55,7 +112,7 @@ pub async fn git_handler(
         .headers()
         .get("Git-Protocol")
         .and_then(|value| value.to_str().ok());
-    let git_req = crate::git::backend::GitRequest::new(method, path_info, query, content_type)
+    let git_req = twig_git::backend::GitRequest::new(method, path_info, query, content_type)
         .with_git_protocol(git_protocol);
 
     let kind = git_req.kind();
@@ -76,14 +133,16 @@ pub async fn git_handler(
     let username = authenticated_user
         .as_ref()
         .map(|authenticated_user| authenticated_user.username.clone());
-    let namespace_role = authenticated_user.map(|authenticated_user| authenticated_user.role);
+    let namespace_role = authenticated_user
+        .as_ref()
+        .map(|authenticated_user| authenticated_user.role.as_str());
 
     // Run in blocking thread — xshell/process::Command is blocking
     let req = git_req.clone();
     let body_bytes = body.to_vec();
     let namespace_clone = namespace.clone();
     let result = web::block(move || {
-        crate::git::backend::run_with_config(
+        twig_git::backend::run_with_config(
             &git_backend_config,
             &namespace_clone,
             &req,
@@ -142,13 +201,13 @@ async fn authenticate_git_request(
     auth_state: &web::Data<TwigContext>,
     namespace: &str,
     repo: &str,
-    kind: &crate::git::backend::GitRequestKind,
+    kind: &twig_git::backend::GitRequestKind,
 ) -> Result<Option<AuthenticatedGitUser>, HttpResponse> {
     let is_write = matches!(
         kind,
-        crate::git::backend::GitRequestKind::Push
-            | crate::git::backend::GitRequestKind::AdvertiseRefs(
-                crate::git::backend::GitService::WriteRef,
+        twig_git::backend::GitRequestKind::Push
+            | twig_git::backend::GitRequestKind::AdvertiseRefs(
+                twig_git::backend::GitService::WriteRef,
             )
     );
 
@@ -186,7 +245,7 @@ async fn authenticate_git_request(
             Ok(None) => Err(HttpResponse::Forbidden().body("Access denied to namespace")),
             Err(response) => Err(response),
         }
-    } else if bare::is_repo_private(server.project_root(), namespace, repo) {
+    } else if twig_git::bare::is_repo_private(server.project_root(), namespace, repo) {
         match is_authenticated(req, auth_state, namespace).await {
             Ok(Some(auth_result)) => {
                 if !auth_result.namespace_exists {
@@ -357,35 +416,7 @@ async fn ensure_namespace_exists(
 
 /// Ensures a bare repository exists on disk, creating it if necessary
 fn ensure_repo_exists(project_root: &str, namespace: &str, repo_name: &str) -> Result<(), String> {
-    // User-created repositories must not shadow namespace-level UI routes.
-    if crate::git::reserved::is_reserved_repo_name(repo_name) {
-        return Err(format!("'{repo_name}' is a reserved repository name"));
-    }
-
-    let repo_path = Path::new(project_root).join(namespace).join(repo_name);
-
-    if repo_path.exists() {
-        // Install/update policy hooks on repositories created by older Twig versions.
-        return repo::install_pre_receive_hook(&repo_path);
-    }
-
-    // Create namespace directory if needed
-    let ns_path = Path::new(project_root).join(namespace);
-    if !ns_path.exists() {
-        std::fs::create_dir_all(&ns_path)
-            .map_err(|e| format!("Failed to create namespace directory: {e}"))?;
-    }
-
-    // Create the bare repository
-    log::info!("Auto-creating repository '{namespace}/{repo_name}'");
-
-    std::fs::create_dir_all(&repo_path)
-        .map_err(|e| format!("Failed to create repo directory: {e}"))?;
-
-    bare_init(&repo_path, "main", "Twig", "twig@localhost")
-        .map_err(|e| format!("Failed to initialize bare repo: {e}"))?;
-
-    Ok(())
+    twig_git::repo::create_repo(project_root, namespace, repo_name, "main")
 }
 
 #[cfg(test)]

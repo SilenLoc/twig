@@ -62,7 +62,7 @@ async fn repository_editor_requires_access_and_commits_with_compare_and_swap() {
     let body = test::read_body(response).await;
     assert!(String::from_utf8_lossy(&body).contains("Changes committed successfully."));
 
-    let handle = crate::git::bare::RepoHandle::open(&root, "editspace", "repo").unwrap();
+    let handle = twig_git::bare::RepoHandle::open(&root, "editspace", "repo").unwrap();
     assert_eq!(
         handle.read_blob_bytes("README.md").unwrap().as_deref(),
         Some(&b"# After\n"[..])
@@ -142,7 +142,7 @@ async fn repository_editor_edits_non_markdown_files_as_exact_source_text() {
         .to_request();
     let response = test::call_service(&app, save).await;
     assert_eq!(response.status(), StatusCode::OK);
-    let handle = crate::git::bare::RepoHandle::open(&root, "editsourcespace", "repo").unwrap();
+    let handle = twig_git::bare::RepoHandle::open(&root, "editsourcespace", "repo").unwrap();
     assert_eq!(
         handle.read_blob_bytes("src/main.rs").unwrap().as_deref(),
         Some(&b"fn main() { println!(\"edited\"); }\n"[..])
@@ -162,7 +162,7 @@ async fn repository_editor_saves_conflicted_draft_as_prefixed_file_on_latest_hea
     create_namespace(&app, session.clone(), "editcopyspace").await;
     let repo_path = std::path::Path::new(&root).join("editcopyspace/repo");
     let original_head = init_text_repo(&repo_path, "README.md", b"# Original\n");
-    let handle = crate::git::bare::RepoHandle::open(&root, "editcopyspace", "repo").unwrap();
+    let handle = twig_git::bare::RepoHandle::open(&root, "editcopyspace", "repo").unwrap();
 
     let concurrent = handle
         .commit_file(
@@ -174,7 +174,7 @@ async fn repository_editor_saves_conflicted_draft_as_prefixed_file_on_latest_hea
             "Concurrent update",
         )
         .unwrap();
-    let crate::git::bare::CommitFileOutcome::Committed(concurrent_head) = concurrent else {
+    let twig_git::bare::CommitFileOutcome::Committed(concurrent_head) = concurrent else {
         panic!("the concurrent update should commit");
     };
 
@@ -232,14 +232,10 @@ async fn repository_editor_saves_conflicted_draft_as_prefixed_file_on_latest_hea
         handle.read_blob_bytes(copy_path).unwrap().as_deref(),
         Some(&b"# My preserved draft\n"[..])
     );
-    let repo = git2::Repository::open(&repo_path).unwrap();
-    let copy_commit = repo
-        .find_commit(handle.head_oid().unwrap().unwrap())
-        .unwrap();
-    assert_eq!(copy_commit.parent_id(0).unwrap(), concurrent_head);
-    assert_eq!(copy_commit.author().name().unwrap(), "editorcopyowner");
-    drop(copy_commit);
-    drop(repo);
+    let parents = git_repo_output(&repo_path, &["show", "-s", "--format=%P", "HEAD"]);
+    assert_eq!(parents, concurrent_head.to_string());
+    let author = git_repo_output(&repo_path, &["show", "-s", "--format=%an", "HEAD"]);
+    assert_eq!(author, "editorcopyowner");
 
     let saved_page = test::TestRequest::get()
         .uri(location)
@@ -252,38 +248,13 @@ async fn repository_editor_saves_conflicted_draft_as_prefixed_file_on_latest_hea
 
     // A later change may delete the file being edited entirely. The
     // already-open editor must still be able to persist its draft copy.
-    let repo = git2::Repository::open(&repo_path).unwrap();
-    let tip = repo.head().unwrap().peel_to_commit().unwrap();
-    let tip_id = tip.id();
-    let tree_id = {
-        let tree = tip.tree().unwrap();
-        let mut update = git2::build::TreeUpdateBuilder::new();
-        update.remove("README.md");
-        update.create_updated(&repo, &tree).unwrap()
-    };
-    let new_tree = repo.find_tree(tree_id).unwrap();
-    let signature = git2::Signature::now("Other editor", "other@example.com").unwrap();
-    let deleted_head = repo
-        .commit(
-            None,
-            &signature,
-            &signature,
-            "Delete README",
-            &new_tree,
-            &[&tip],
-        )
-        .unwrap();
-    repo.reference_matching(
-        "refs/heads/main",
-        deleted_head,
-        true,
-        tip_id,
+    commit_deleting_file(
+        &repo_path,
+        "README.md",
+        "Other editor",
+        "other@example.com",
         "Delete README",
-    )
-    .unwrap();
-    drop(new_tree);
-    drop(tip);
-    drop(repo);
+    );
 
     let after_delete = test::TestRequest::post()
         .uri("/editcopyspace/repo/edit/README.md")
@@ -407,7 +378,7 @@ async fn repository_editor_rejects_empty_or_unchanged_commits_without_history_ch
     let response = test::call_service(&app, oversized).await;
     assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
 
-    let handle = crate::git::bare::RepoHandle::open(&root, "editvalidspace", "repo").unwrap();
+    let handle = twig_git::bare::RepoHandle::open(&root, "editvalidspace", "repo").unwrap();
     assert_eq!(handle.head_oid().unwrap(), Some(head));
     assert_eq!(handle.get_commits(5).unwrap().len(), 1);
     let _ = std::fs::remove_dir_all(&root);

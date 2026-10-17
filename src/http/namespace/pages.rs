@@ -5,11 +5,8 @@ use serde::Deserialize;
 
 use crate::http::auth::session::get_username_from_request;
 use crate::http::view::{render_error, render_error_with_action, render_success};
-use crate::{
-    auth::TwigContext,
-    config,
-    git::{self, repo::bare_init},
-};
+use crate::{auth::TwigContext, config};
+use twig_git as git;
 
 async fn user_can_create_repositories(
     req: &HttpRequest,
@@ -39,7 +36,7 @@ struct Params {
 #[derive(Deserialize)]
 struct CreateRepoForm {
     repo_name: String,
-    #[serde(default = "crate::git::repo::default_branch")]
+    #[serde(default = "twig_git::repo::default_branch")]
     branch: String,
 }
 
@@ -320,7 +317,7 @@ pub async fn create_repo_handler(
         }
     }
 
-    if let Err(message) = crate::git::reserved::validate_repo_name(&form.repo_name) {
+    if let Err(message) = twig_git::reserved::validate_repo_name(&form.repo_name) {
         return HttpResponse::BadRequest().body(render_error(&message).into_string());
     }
 
@@ -333,12 +330,6 @@ pub async fn create_repo_handler(
             .body(render_error("Repository already exists").into_string());
     }
 
-    if let Err(e) = std::fs::create_dir_all(&repo_path) {
-        log::error!("Failed to create repository directory: {e}");
-        return HttpResponse::InternalServerError()
-            .body(render_error("Failed to create repository directory").into_string());
-    }
-
     let Ok(Some(user)) = db.get_user_by_id(&user_id).await else {
         return HttpResponse::InternalServerError()
             .body(render_error("Failed to load user").into_string());
@@ -346,13 +337,19 @@ pub async fn create_repo_handler(
 
     // Require user to have set an email before creating repositories
     let Some(email) = &user.email else {
-        let _ = std::fs::remove_dir_all(&repo_path);
         return missing_email_response();
     };
     let author_email = email.as_str();
 
     // Initialize bare repository with user info
-    match bare_init(&repo_path, &form.branch, &user.username, author_email) {
+    match twig_git::repo::create_repo_with_author(
+        server.project_root(),
+        namespace,
+        &form.repo_name,
+        &form.branch,
+        &user.username,
+        author_email,
+    ) {
         Ok(_) => {
             info!(
                 "Created repository '{}/{}' via UI for user: {}",
@@ -368,8 +365,6 @@ pub async fn create_repo_handler(
         }
         Err(e) => {
             log::error!("Failed to initialize bare repository: {e}");
-            // Clean up the created directory
-            let _ = std::fs::remove_dir_all(&repo_path);
             HttpResponse::InternalServerError()
                 .body(render_error("Failed to initialize repository").into_string())
         }

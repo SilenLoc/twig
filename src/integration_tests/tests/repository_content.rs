@@ -127,7 +127,7 @@ async fn test_content_cannot_reach_sibling_namespace_via_dots() {
     // A sibling namespace with its own repo inside the same root
     let sibling = fixture.root.join("other").join("vault");
     std::fs::create_dir_all(&sibling).unwrap();
-    crate::git::repo::bare_init(&sibling, "main", "Test", "t@example.com").unwrap();
+    twig_git::repo::bare_init(&sibling, "main", "Test", "t@example.com").unwrap();
 
     let app = create_traversal_service(&fixture).await;
 

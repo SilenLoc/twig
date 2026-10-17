@@ -2,13 +2,13 @@
 //! `.twig.toml` configuration, commit history, and namespace listings.
 //!
 //! Split into focused submodules; everything public is re-exported here so
-//! callers keep using the flat `crate::git::bare::…` paths.
+//! callers use the flat `twig_git::bare::…` paths.
 
 pub mod config;
 mod handle;
 mod history;
 mod listing;
-mod path;
+pub mod path;
 
 pub use config::{PresentConfig, ScriptEntry, ScriptGroupNode, TwigConfig, TwigConfigWithRaw};
 pub use handle::{CommitFileOutcome, RepoHandle, TreeEntry};

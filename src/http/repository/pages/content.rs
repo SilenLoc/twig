@@ -69,7 +69,7 @@ pub async fn content_handler(
     let saved_commit = query
         .committed
         .as_deref()
-        .and_then(|oid| git2::Oid::from_str(oid).ok());
+        .and_then(|oid| twig_git::Oid::from_str(oid).ok());
     let is_saved_commit =
         saved_commit.is_some_and(|oid| ctx.handle.head_oid().ok().flatten() == Some(oid));
     let body = if is_saved_commit {

@@ -1,7 +1,8 @@
 use actix_web::{Error, HttpRequest, HttpResponse, Responder, error, get, web};
 use serde::{Deserialize, Serialize};
 
-use crate::{auth::TwigContext, config, git};
+use crate::{auth::TwigContext, config};
+use twig_git as git;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct NamespaceTree {
@@ -106,8 +107,15 @@ mod tests {
         let project_root = std::env::temp_dir().join(format!("twig_api_root_{id}"));
         let db_path = std::env::temp_dir().join(format!("twig_api_db_{id}.db"));
         std::fs::create_dir_all(project_root.join("silen")).expect("create namespace");
-        git2::Repository::init_bare(project_root.join("silen").join("twig"))
-            .expect("create repository");
+        std::fs::create_dir_all(project_root.join("silen").join("twig"))
+            .expect("create repository directory");
+        twig_git::repo::bare_init(
+            &project_root.join("silen").join("twig"),
+            "main",
+            "Test",
+            "test@example.com",
+        )
+        .expect("create repository");
 
         let db = crate::db::Database::new(db_path.to_str().expect("db path"));
         db.init_tables().await.expect("init tables");
@@ -160,12 +168,19 @@ mod tests {
         let project_root = std::env::temp_dir().join(format!("twig_api_root_{id}"));
         let db_path = std::env::temp_dir().join(format!("twig_api_db_{id}.db"));
         std::fs::create_dir_all(project_root.join("silen")).expect("create namespace");
-        git2::Repository::init_bare(project_root.join("silen").join("public"))
-            .expect("create repository");
+        std::fs::create_dir_all(project_root.join("silen").join("public"))
+            .expect("create repository directory");
+        twig_git::repo::bare_init(
+            &project_root.join("silen").join("public"),
+            "main",
+            "Test",
+            "test@example.com",
+        )
+        .expect("create repository");
 
         let secret_repo = project_root.join("silen").join("secret");
         std::fs::create_dir_all(&secret_repo).expect("create secret repo dir");
-        crate::git::repo::bare_init(&secret_repo, "main", "Owner", "owner@example.com")
+        twig_git::repo::bare_init(&secret_repo, "main", "Owner", "owner@example.com")
             .expect("bare init");
         {
             let sh = xshell::Shell::new().unwrap();

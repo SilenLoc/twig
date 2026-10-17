@@ -4,7 +4,7 @@
 //! namespace-level UI route, because `/{namespace}/{repo}` is registered after
 //! those routes in `main.rs` and the repository would simply be unreachable.
 
-use crate::git::bare::is_safe_component;
+use crate::bare::is_safe_component;
 
 /// Names refused for user-created repositories.
 ///

@@ -7,14 +7,10 @@ use maud::{DOCTYPE, Markup};
 use pulldown_cmark::{CowStr, Event, HeadingLevel, Options, Parser, Tag, TagEnd, html};
 use serde::Deserialize;
 
-use crate::{
-    auth::TwigContext,
-    config,
-    git::bare::{
-        Commit, MAX_COMMITS, PresentConfig, RepoHandle, ScriptEntry, ScriptGroupNode, TreeEntry,
-        TwigConfig, TwigConfigWithRaw, is_safe_repo_path,
-    },
-    md,
+use crate::{auth::TwigContext, config, md};
+use twig_git::bare::{
+    Commit, MAX_COMMITS, PresentConfig, RepoHandle, ScriptEntry, ScriptGroupNode, TreeEntry,
+    TwigConfig, TwigConfigWithRaw, is_safe_repo_path,
 };
 
 use crate::http::auth::session::get_username_from_request;
@@ -285,7 +281,7 @@ fn render_empty(eyebrow: &str, body: &str) -> Markup {
     }
 }
 
-fn render_git_error(e: &git2::Error) -> Markup {
+fn render_git_error(e: &twig_git::GitError) -> Markup {
     let code = e.code();
     let code = format!("{code:?}");
     let klass = e.class();

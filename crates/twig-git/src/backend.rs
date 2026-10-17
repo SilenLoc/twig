@@ -3,8 +3,6 @@ use std::fmt::Display;
 use log::{debug, warn};
 use xshell::Shell;
 
-use crate::auth::NamespaceRole;
-
 pub struct Config {
     pub project_root: String,
 }
@@ -101,7 +99,7 @@ pub fn run_with_config(
     req: &GitRequest,
     body: Vec<u8>,
     authenticated_user: Option<&str>,
-    namespace_role: Option<NamespaceRole>,
+    namespace_role: Option<&str>,
 ) -> Result<(String, Vec<u8>), String> {
     let sh = sh()?;
 
@@ -181,7 +179,7 @@ pub fn prepare_cgi_env(
     sh: Shell,
     req: &GitRequest,
     authenticated_user: Option<&str>,
-    namespace_role: Option<NamespaceRole>,
+    namespace_role: Option<&str>,
 ) -> Shell {
     sh.set_var("REQUEST_METHOD", req.method.clone());
     sh.set_var("PATH_INFO", req.path_info.clone());
@@ -205,7 +203,7 @@ pub fn prepare_cgi_env(
     // missing role fails closed in the receive hook as Contributor.
     sh.set_var(
         "TWIG_NAMESPACE_ROLE",
-        namespace_role.map_or("contributor", NamespaceRole::as_str),
+        namespace_role.unwrap_or("contributor"),
     );
 
     debug!(
@@ -405,13 +403,7 @@ mod tests {
     fn test_prepare_cgi_env_sets_the_verified_namespace_role() {
         let sh = Shell::new().unwrap();
         let req = GitRequest::new("POST", "/repo/git-receive-pack", "", "");
-        let sh = prepare_cgi_env(
-            "/srv/git/ns",
-            sh,
-            &req,
-            Some("owner-user"),
-            Some(NamespaceRole::Owner),
-        );
+        let sh = prepare_cgi_env("/srv/git/ns", sh, &req, Some("owner-user"), Some("owner"));
         assert_eq!(sh.var("REMOTE_USER").unwrap(), "owner-user");
         assert_eq!(sh.var("TWIG_NAMESPACE_ROLE").unwrap(), "owner");
     }

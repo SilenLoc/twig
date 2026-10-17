@@ -2,100 +2,32 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use actix_web::{HttpRequest, HttpResponse, Responder, post, web};
 use log::info;
-use serde::Deserialize;
 use xshell::cmd;
-
-use crate::auth::{TwigContext, extract_basic_auth, verify_password};
-use crate::config;
-
-#[derive(Deserialize)]
-struct InitRepo {
-    namespace: String,
-    repo: String,
-    #[serde(default = "default_branch")]
-    branch: String,
-}
 
 pub fn default_branch() -> String {
     "main".to_string()
 }
 
-#[post("/init")]
-pub async fn init(
-    req: HttpRequest,
-    init_repo: web::Form<InitRepo>,
-    server: web::Data<config::Server>,
-    auth_state: web::Data<TwigContext>,
-) -> impl Responder {
-    let db = auth_state.db();
-
-    // Authenticate the request
-    let Some((username, password)) = extract_basic_auth(&req) else {
-        return HttpResponse::Unauthorized()
-            .insert_header(("WWW-Authenticate", "Basic realm=\"twig\""))
-            .body("Missing credentials");
-    };
-
-    // Get user from database
-    let user = match db.get_user_by_username(&username).await {
-        Ok(Some(user)) => user,
-        Ok(None) => {
-            return HttpResponse::Unauthorized().body("Invalid credentials");
-        }
-        Err(e) => {
-            log::error!("Database error: {e}");
-            return HttpResponse::InternalServerError().body("Database error");
-        }
-    };
-
-    // Verify password
-    match verify_password(&password, &user.password_hash) {
-        Ok(true) => {}
-        Ok(false) => {
-            return HttpResponse::Unauthorized().body("Invalid credentials");
-        }
-        Err(e) => {
-            log::error!("Password verification error: {e}");
-            return HttpResponse::InternalServerError().body("Authentication error");
-        }
-    }
-
-    // Check if user has access to namespace
-    match db.user_owns_namespace(&user.id, &init_repo.namespace).await {
-        Ok(true) => {}
-        Ok(false) => {
-            return HttpResponse::Forbidden().body("Only namespace owners can create repositories");
-        }
-        Err(e) => {
-            log::error!("Database error: {e}");
-            return HttpResponse::InternalServerError().body("Database error");
-        }
-    }
-
-    match create_repo(
-        server.project_root(),
-        init_repo.namespace.clone(),
-        init_repo.repo.clone(),
-        init_repo.branch.clone(),
-    ) {
-        Ok(()) => HttpResponse::Ok().body("Repository created"),
-        Err(e) => {
-            log::error!("Failed to create repository: {e}");
-            HttpResponse::InternalServerError().body("Failed to create repository")
-        }
-    }
-}
-
-fn create_repo(
-    root: impl Into<String>,
+pub fn create_repo(
+    root: impl AsRef<Path>,
     namespace: impl Into<String>,
     repo: impl Into<String>,
     branch: impl Into<String>,
 ) -> Result<(), String> {
-    let root: String = root.into();
-    let root: &Path = Path::new(&root);
+    create_repo_with_author(root, namespace, repo, branch, "Twig", "twig@localhost")
+}
+
+/// Creates a repository using the supplied identity for its initial commit.
+pub fn create_repo_with_author(
+    root: impl AsRef<Path>,
+    namespace: impl Into<String>,
+    repo: impl Into<String>,
+    branch: impl Into<String>,
+    author_name: &str,
+    author_email: &str,
+) -> Result<(), String> {
+    let root = root.as_ref();
     let branch: String = branch.into();
 
     info!("root path:{}", root.display());
@@ -114,7 +46,7 @@ fn create_repo(
     }
 
     let repo: String = repo.into();
-    crate::git::reserved::validate_repo_name(&repo)?;
+    crate::reserved::validate_repo_name(&repo)?;
     let repo = ns.join(repo);
 
     if repo.exists() {
@@ -122,12 +54,78 @@ fn create_repo(
     } else {
         std::fs::create_dir_all(&repo)
             .map_err(|e| format!("Failed to create repo directory: {e}"))?;
-        let output = bare_init(&repo, &branch, "Twig", "twig@localhost")?;
-        info!("{output}");
+        match bare_init(&repo, &branch, author_name, author_email) {
+            Ok(output) => info!("{output}"),
+            Err(error) => {
+                let _ = fs::remove_dir_all(&repo);
+                return Err(error);
+            }
+        }
     }
 
     Ok(())
 }
+
+/// Whether `path` can be opened as a Git repository.
+pub fn is_repository(path: &Path) -> bool {
+    git2::Repository::open(path).is_ok()
+}
+
+/// Whether `path` is a bare Git repository.
+pub fn is_bare_repository(path: &Path) -> bool {
+    git2::Repository::open(path).is_ok_and(|repository| repository.is_bare())
+}
+
+/// Deletes a valid repository directory and reports expected path failures
+/// separately so the application can preserve its HTTP status mapping.
+pub fn delete_repository(path: &Path) -> Result<(), RepositoryError> {
+    if !path.exists() {
+        return Err(RepositoryError::NotFound);
+    }
+    if !is_repository(path) {
+        return Err(RepositoryError::NotRepository);
+    }
+    fs::remove_dir_all(path).map_err(RepositoryError::Io)
+}
+
+/// Moves a valid repository to an unused destination, creating its parent
+/// directory when needed.
+pub fn move_repository(source: &Path, destination: &Path) -> Result<(), RepositoryError> {
+    if !source.exists() {
+        return Err(RepositoryError::NotFound);
+    }
+    if !is_repository(source) {
+        return Err(RepositoryError::NotRepository);
+    }
+    if destination.exists() {
+        return Err(RepositoryError::DestinationExists);
+    }
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).map_err(RepositoryError::Io)?;
+    }
+    fs::rename(source, destination).map_err(RepositoryError::Io)
+}
+
+#[derive(Debug)]
+pub enum RepositoryError {
+    NotFound,
+    NotRepository,
+    DestinationExists,
+    Io(std::io::Error),
+}
+
+impl std::fmt::Display for RepositoryError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotFound => formatter.write_str("repository not found"),
+            Self::NotRepository => formatter.write_str("path is not a valid Git repository"),
+            Self::DestinationExists => formatter.write_str("repository destination already exists"),
+            Self::Io(error) => write!(formatter, "{error}"),
+        }
+    }
+}
+
+impl std::error::Error for RepositoryError {}
 
 pub fn bare_init(
     repo_path: &Path,

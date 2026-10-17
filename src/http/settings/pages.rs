@@ -6,8 +6,8 @@ use serde::Deserialize;
 use crate::auth::TwigContext;
 use crate::config;
 use crate::db::Database;
-use crate::git;
 use crate::http::view::{render_error, render_error_with_action, render_success};
+use twig_git as git;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct NamespaceForm {

@@ -12,7 +12,7 @@ mod auth;
 mod config;
 mod db;
 mod email;
-mod git;
+mod git_http;
 mod http;
 mod info;
 mod integration_tests;

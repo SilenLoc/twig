@@ -4,45 +4,162 @@ pub(in crate::integration_tests::tests) fn init_text_repo(
     repo_path: &std::path::Path,
     path: &str,
     content: &[u8],
-) -> git2::Oid {
-    init_repo_files(repo_path, &[(path, content, git2::FileMode::Blob.into())])
+) -> twig_git::Oid {
+    init_repo_files(repo_path, &[(path, content, 0o100_644)])
 }
 
 pub(in crate::integration_tests::tests) fn init_repo_files(
     repo_path: &std::path::Path,
     files: &[(&str, &[u8], i32)],
-) -> git2::Oid {
-    std::fs::create_dir_all(repo_path).unwrap();
-    let repo = git2::Repository::init_bare(repo_path).unwrap();
-    let empty_builder = repo.treebuilder(None).unwrap();
-    let empty_tree_id = empty_builder.write().unwrap();
-    let empty_tree = repo.find_tree(empty_tree_id).unwrap();
-    let mut update = git2::build::TreeUpdateBuilder::new();
-    for (path, content, mode) in files {
-        let blob = repo.blob(content).unwrap();
-        let mode = match *mode {
-            0o100_644 => git2::FileMode::Blob,
-            0o100_755 => git2::FileMode::BlobExecutable,
-            0o120_000 => git2::FileMode::Link,
-            _ => panic!("unsupported test file mode: {mode:o}"),
-        };
-        update.upsert(path, blob, mode);
+) -> twig_git::Oid {
+    use std::fmt::Write as _;
+    use std::io::Write as _;
+    use std::process::{Command, Stdio};
+
+    fn git_pipe(repo_path: &std::path::Path, args: &[&str], input: &[u8]) -> String {
+        let mut child = Command::new("git")
+            .args(args)
+            .current_dir(repo_path)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child.stdin.as_mut().unwrap().write_all(input).unwrap();
+        let output = child.wait_with_output().unwrap();
+        assert!(output.status.success(), "{args:?}: {output:?}");
+        String::from_utf8_lossy(&output.stdout).trim().to_owned()
     }
-    let tree_oid = update.create_updated(&repo, &empty_tree).unwrap();
-    let tree = repo.find_tree(tree_oid).unwrap();
-    let signature = git2::Signature::now("Seed", "seed@example.com").unwrap();
-    let commit = repo
-        .commit(
-            Some("refs/heads/main"),
-            &signature,
-            &signature,
-            "seed file",
-            &tree,
-            &[],
-        )
+
+    fn build_tree(repo_path: &std::path::Path, files: &[(&str, &[u8], i32)]) -> String {
+        let mut entries = String::new();
+        let mut nested: Vec<(&str, Vec<(&str, &[u8], i32)>)> = Vec::new();
+        for (path, content, mode) in files {
+            match path.split_once('/') {
+                Some((directory, rest)) => match nested
+                    .iter_mut()
+                    .find(|(existing, _)| *existing == directory)
+                {
+                    Some((_, group)) => group.push((rest, content, *mode)),
+                    None => nested.push((directory, vec![(rest, content, *mode)])),
+                },
+                None => {
+                    let blob = git_pipe(repo_path, &["hash-object", "-w", "--stdin"], content);
+                    let mode = match mode {
+                        0o100_644 => "100644",
+                        0o100_755 => "100755",
+                        0o120_000 => "120000",
+                        _ => panic!("unsupported test file mode: {mode:o}"),
+                    };
+                    writeln!(entries, "{mode} blob {blob}\t{path}").unwrap();
+                }
+            }
+        }
+        for (directory, children) in &nested {
+            let subtree = build_tree(repo_path, children);
+            writeln!(entries, "040000 tree {subtree}\t{directory}").unwrap();
+        }
+        git_pipe(repo_path, &["mktree"], entries.as_bytes())
+    }
+
+    std::fs::create_dir_all(repo_path).unwrap();
+    let init = Command::new("git")
+        .args(["init", "--bare", "--initial-branch=main"])
+        .current_dir(repo_path)
+        .output()
         .unwrap();
-    repo.set_head("refs/heads/main").unwrap();
-    commit
+    assert!(init.status.success(), "{init:?}");
+    let tree = build_tree(repo_path, files);
+    let commit = Command::new("git")
+        .args(["commit-tree", &tree, "-m", "seed file"])
+        .current_dir(repo_path)
+        .env("GIT_AUTHOR_NAME", "Seed")
+        .env("GIT_AUTHOR_EMAIL", "seed@example.com")
+        .env("GIT_COMMITTER_NAME", "Seed")
+        .env("GIT_COMMITTER_EMAIL", "seed@example.com")
+        .output()
+        .unwrap();
+    assert!(commit.status.success(), "{commit:?}");
+    let commit = String::from_utf8_lossy(&commit.stdout).trim().to_owned();
+    let update = Command::new("git")
+        .args(["update-ref", "refs/heads/main", &commit])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+    assert!(update.status.success(), "{update:?}");
+    twig_git::Oid::from_str(&commit).unwrap()
+}
+
+pub(in crate::integration_tests::tests) fn git_repo_output(
+    repo_path: &std::path::Path,
+    args: &[&str],
+) -> String {
+    use std::process::Command;
+
+    let output = Command::new("git")
+        .arg(format!("--git-dir={}", repo_path.display()))
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    String::from_utf8_lossy(&output.stdout).trim().to_owned()
+}
+
+pub(in crate::integration_tests::tests) fn commit_deleting_file(
+    repo_path: &std::path::Path,
+    file_path: &str,
+    author_name: &str,
+    author_email: &str,
+    message: &str,
+) {
+    use std::io::Write as _;
+    use std::process::Command;
+
+    let index_path = repo_path.join(format!("twig-test-index-{}", uuid::Uuid::new_v4()));
+    let git = |arguments: &[&str]| {
+        let output = Command::new("git")
+            .arg(format!("--git-dir={}", repo_path.display()))
+            .args(arguments)
+            .env("GIT_INDEX_FILE", &index_path)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{arguments:?}: {output:?}");
+        String::from_utf8_lossy(&output.stdout).trim().to_owned()
+    };
+    git(&["read-tree", "HEAD"]);
+    let object_format = git(&["rev-parse", "--show-object-format"]);
+    let zero_oid = "0".repeat(if object_format == "sha256" { 64 } else { 40 });
+    let mut remove_file = Command::new("git")
+        .arg(format!("--git-dir={}", repo_path.display()))
+        .args(["update-index", "--index-info"])
+        .env("GIT_INDEX_FILE", &index_path)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    writeln!(
+        remove_file.stdin.as_mut().unwrap(),
+        "0 {zero_oid}\t{file_path}"
+    )
+    .unwrap();
+    let remove_file = remove_file.wait_with_output().unwrap();
+    assert!(remove_file.status.success(), "{remove_file:?}");
+    let tree = git(&["write-tree"]);
+    let parent = git(&["rev-parse", "HEAD"]);
+    let commit = Command::new("git")
+        .arg(format!("--git-dir={}", repo_path.display()))
+        .args(["commit-tree", &tree, "-p", &parent, "-m", message])
+        .env("GIT_AUTHOR_NAME", author_name)
+        .env("GIT_AUTHOR_EMAIL", author_email)
+        .env("GIT_COMMITTER_NAME", author_name)
+        .env("GIT_COMMITTER_EMAIL", author_email)
+        .output()
+        .unwrap();
+    assert!(commit.status.success(), "{commit:?}");
+    let commit = String::from_utf8_lossy(&commit.stdout).trim().to_owned();
+    git(&["update-ref", "refs/heads/main", &commit, &parent]);
+    let _ = std::fs::remove_file(index_path);
 }
 
 /// Marker embedded in a secret file placed OUTSIDE the project root.
@@ -74,7 +191,7 @@ pub(in crate::integration_tests::tests) fn setup_traversal_fixture() -> Traversa
     let repo_dir = root.join("public").join("repo");
     std::fs::create_dir_all(&repo_dir).unwrap();
 
-    crate::git::repo::bare_init(&repo_dir, "main", "Test", "t@example.com")
+    twig_git::repo::bare_init(&repo_dir, "main", "Test", "t@example.com")
         .expect("bare_init failed");
 
     // Secret file outside the project root, reachable only via traversal
@@ -144,7 +261,7 @@ pub(in crate::integration_tests::tests) async fn body_of(
 
 pub(in crate::integration_tests::tests) fn init_private_repo(repo_path: &std::path::Path) {
     std::fs::create_dir_all(repo_path).unwrap();
-    crate::git::repo::bare_init(repo_path, "main", "Test", "test@example.com").unwrap();
+    twig_git::repo::bare_init(repo_path, "main", "Test", "test@example.com").unwrap();
     let sh = xshell::Shell::new().unwrap();
     let _p = sh.push_dir(repo_path);
     let blob = xshell::cmd!(sh, "git hash-object -w --stdin")
@@ -173,7 +290,7 @@ pub(in crate::integration_tests::tests) fn init_repo_with_paper(
     use std::fmt::Write as _;
 
     std::fs::create_dir_all(repo_path).unwrap();
-    crate::git::repo::bare_init(repo_path, "main", "Test", "test@example.com").unwrap();
+    twig_git::repo::bare_init(repo_path, "main", "Test", "test@example.com").unwrap();
     let sh = xshell::Shell::new().unwrap();
     let _p = sh.push_dir(repo_path);
 
@@ -254,7 +371,7 @@ pub(in crate::integration_tests::tests) fn init_repo_with_files(
     }
 
     std::fs::create_dir_all(repo_path).unwrap();
-    crate::git::repo::bare_init(repo_path, "main", "Test", "test@example.com").unwrap();
+    twig_git::repo::bare_init(repo_path, "main", "Test", "test@example.com").unwrap();
     let sh = xshell::Shell::new().unwrap();
     let _p = sh.push_dir(repo_path);
 

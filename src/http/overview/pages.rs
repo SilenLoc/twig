@@ -6,8 +6,8 @@ use serde::Deserialize;
 
 use crate::auth::TwigContext;
 use crate::config;
-use crate::git;
 use crate::http::auth::session::get_username_from_request;
+use twig_git as git;
 
 #[derive(Deserialize)]
 struct SearchQuery {

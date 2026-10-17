@@ -5,7 +5,7 @@ async fn contributor_cannot_create_namespaces_or_repositories_but_can_access_exi
     let (app, _, _, contributor_session, _, project_root) = create_admin_test_service().await;
     let existing_repo = std::path::Path::new(&project_root).join("acme/existing");
     std::fs::create_dir_all(&existing_repo).unwrap();
-    crate::git::repo::bare_init(&existing_repo, "main", "Twig Test", "twig@example.com").unwrap();
+    twig_git::repo::bare_init(&existing_repo, "main", "Twig Test", "twig@example.com").unwrap();
 
     let req = test::TestRequest::get()
         .uri("/acme")
@@ -165,7 +165,7 @@ async fn test_move_repo_between_owned_namespaces() {
 
     let source = std::path::Path::new(&root).join("source/repo");
     std::fs::create_dir_all(&source).unwrap();
-    crate::git::repo::bare_init(&source, "main", "Test", "test@example.com").unwrap();
+    twig_git::repo::bare_init(&source, "main", "Test", "test@example.com").unwrap();
 
     let req = test::TestRequest::post()
         .uri("/settings/move-repo")
@@ -180,7 +180,7 @@ async fn test_move_repo_between_owned_namespaces() {
     assert_eq!(resp.status(), StatusCode::OK);
     assert!(!source.exists());
     let destination = std::path::Path::new(&root).join("target/repo");
-    assert!(git2::Repository::open(destination).is_ok());
+    assert!(twig_git::is_repository(&destination));
 
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -196,7 +196,7 @@ async fn test_move_repo_rejects_namespace_owned_by_another_user() {
 
     let source = std::path::Path::new(&root).join("ownedsource/repo");
     std::fs::create_dir_all(&source).unwrap();
-    crate::git::repo::bare_init(&source, "main", "Test", "test@example.com").unwrap();
+    twig_git::repo::bare_init(&source, "main", "Test", "test@example.com").unwrap();
 
     let req = test::TestRequest::post()
         .uri("/settings/move-repo")
@@ -228,7 +228,7 @@ async fn test_rename_repo_within_owned_namespace() {
 
     let source = std::path::Path::new(&root).join("acme/old-name");
     std::fs::create_dir_all(&source).unwrap();
-    crate::git::repo::bare_init(&source, "main", "Test", "test@example.com").unwrap();
+    twig_git::repo::bare_init(&source, "main", "Test", "test@example.com").unwrap();
 
     let req = test::TestRequest::post()
         .uri("/settings/rename-repo")
@@ -243,7 +243,7 @@ async fn test_rename_repo_within_owned_namespace() {
     assert_eq!(resp.status(), StatusCode::OK);
     assert!(!source.exists());
     let destination = std::path::Path::new(&root).join("acme/new-name");
-    assert!(git2::Repository::open(destination).is_ok());
+    assert!(twig_git::is_repository(&destination));
 
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -259,10 +259,10 @@ async fn test_rename_repo_rejects_foreign_namespace_and_existing_name() {
 
     let repo = std::path::Path::new(&root).join("owned/repo");
     std::fs::create_dir_all(&repo).unwrap();
-    crate::git::repo::bare_init(&repo, "main", "Test", "test@example.com").unwrap();
+    twig_git::repo::bare_init(&repo, "main", "Test", "test@example.com").unwrap();
     let taken = std::path::Path::new(&root).join("owned/taken");
     std::fs::create_dir_all(&taken).unwrap();
-    crate::git::repo::bare_init(&taken, "main", "Test", "test@example.com").unwrap();
+    twig_git::repo::bare_init(&taken, "main", "Test", "test@example.com").unwrap();
 
     // Another user's namespace is off limits.
     let req = test::TestRequest::post()
@@ -304,7 +304,7 @@ async fn test_rename_namespace_moves_directory_and_record() {
     let source = std::path::Path::new(&root).join("oldns");
     let repo = source.join("repo");
     std::fs::create_dir_all(&repo).unwrap();
-    crate::git::repo::bare_init(&repo, "main", "Test", "test@example.com").unwrap();
+    twig_git::repo::bare_init(&repo, "main", "Test", "test@example.com").unwrap();
 
     let req = test::TestRequest::post()
         .uri("/settings/rename-namespace")
@@ -314,7 +314,9 @@ async fn test_rename_namespace_moves_directory_and_record() {
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), StatusCode::OK);
     assert!(!source.exists());
-    assert!(git2::Repository::open(std::path::Path::new(&root).join("newns/repo")).is_ok());
+    assert!(twig_git::is_repository(
+        &std::path::Path::new(&root).join("newns/repo")
+    ));
 
     // The database record moved too: renaming again from the new name works.
     let req = test::TestRequest::post()

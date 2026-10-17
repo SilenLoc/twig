@@ -3,7 +3,7 @@ use actix_web::{guard, web};
 use super::{
     api, assets, auth, health, info, namespace, overview, repository, settings, test_page, tree,
 };
-use crate::git;
+use crate::git_http;
 
 /// Registers every route in the same order as the previous inline chain.
 /// Static/UI routes must remain before the dynamic namespace/repository paths
@@ -79,14 +79,14 @@ pub(crate) fn configure_routes(cfg: &mut web::ServiceConfig) {
         .service(repository::pages::content_handler)
         .service(repository::pages::paper_handler)
         // Git endpoints with auth
-        .service(git::repo::init)
+        .service(git_http::init_repo_handler)
         .route(
             "/{namespace}/{repo}/{endpoint:.*}",
-            web::get().guard(is_git()).to(git::git_handler),
+            web::get().guard(is_git()).to(git_http::git_handler),
         )
         .route(
             "/{namespace}/{repo}/{endpoint:.*}",
-            web::post().guard(is_git()).to(git::git_handler),
+            web::post().guard(is_git()).to(git_http::git_handler),
         );
 }
 

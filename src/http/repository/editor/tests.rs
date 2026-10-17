@@ -7,7 +7,7 @@ fn editor_page_includes_source_and_commit_precondition() {
         "twig",
         "docs/guide.md",
         "# Guide\n",
-        git2::Oid::ZERO_SHA1,
+        twig_git::Oid::ZERO_SHA1,
         true,
         true,
     )
@@ -40,7 +40,7 @@ fn source_page_does_not_offer_rich_controls() {
         "twig",
         "src/main.rs",
         "fn main() {}\n",
-        git2::Oid::ZERO_SHA1,
+        twig_git::Oid::ZERO_SHA1,
         false,
         true,
     )

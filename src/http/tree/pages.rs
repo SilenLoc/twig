@@ -1,7 +1,8 @@
 use actix_web::{HttpRequest, HttpResponse, get, web};
 use serde::Deserialize;
 
-use crate::{auth::TwigContext, config, git};
+use crate::{auth::TwigContext, config};
+use twig_git as git;
 
 mod data;
 #[cfg(test)]

@@ -1,10 +1,10 @@
 [package]
 name = "twig"
-version = "0.2.15"
+version = "0.2.16"
 edition = "2024"
 
 [workspace]
-members = ["crates/twig-highlight"]
+members = ["crates/twig-highlight", "crates/twig-git"]
 resolver = "3"
 
 [dependencies]
@@ -21,9 +21,7 @@ pulldown-cmark = "0.13"
 qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
 resend-rs = { version = "0.34.0", default-features = false, features = ["rustls-tls"] }
 semver = "1"
-toml = "1.1"
 turso = { version = "0.8.2", default-features = false }
-xshell = "0.2.7"
 
 [dependencies.actix-http]
 version = "3"
@@ -46,10 +44,6 @@ features = [
   "clock",
   "std",
 ]
-
-[dependencies.git2]
-version = "0.21"
-default-features = false
 
 [dependencies.maud]
 version = "0.27.0"
@@ -78,6 +72,9 @@ version = "1.0"
 version = "1"
 features = ["macros", "rt-multi-thread", "sync"]
 
+[dependencies.twig-git]
+path = "crates/twig-git"
+
 [dependencies.twig-highlight]
 path = "crates/twig-highlight"
 
@@ -87,6 +84,7 @@ features = ["v4"]
 
 [dev-dependencies]
 serde_urlencoded = "0.7"
+xshell = "0.2.7"
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }

@@ -144,7 +144,7 @@ fn representative_markup() -> Vec<(&'static str, String)> {
         ),
         (
             "git error",
-            render_git_error(&git2::Error::from_str("boom")).into_string(),
+            render_git_error(&twig_git::GitError::from_str("boom")).into_string(),
         ),
         (
             "repo auth error",
@@ -159,7 +159,7 @@ fn representative_markup() -> Vec<(&'static str, String)> {
 
 #[test]
 fn test_git_error_is_an_announced_danger_notice() {
-    let error = git2::Error::from_str("could not find repository");
+    let error = twig_git::GitError::from_str("could not find repository");
     let html = render_git_error(&error).into_string();
     assert!(html.contains("role=\"alert\""), "{html}");
     assert!(html.contains("twig-notice twig-notice--danger"), "{html}");

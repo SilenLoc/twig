@@ -6,7 +6,7 @@ pub(super) fn render_editor_page(
     repo: &str,
     path: &str,
     content: &str,
-    head: git2::Oid,
+    head: twig_git::Oid,
     markdown: bool,
     has_email: bool,
 ) -> Markup {

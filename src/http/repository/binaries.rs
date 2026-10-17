@@ -6,9 +6,9 @@ use crate::{
     auth::{TwigContext, extract_basic_auth, verify_password},
     config,
     db::binaries::{BinaryBlob, PutBinaryOutcome},
-    git::bare::RepoHandle,
     http::auth::session::get_username_from_request,
 };
+use twig_git::bare::RepoHandle;
 
 /// Match the Actix request payload ceiling configured in `main`.
 const MAX_BINARY_BYTES: usize = 1 << 29;

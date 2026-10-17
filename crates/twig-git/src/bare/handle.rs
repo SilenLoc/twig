@@ -422,13 +422,19 @@ fn collect_markdown_files(
                     collect_markdown_files(repo, &subtree, &path, markdown_files, config)?;
                 }
             }
-            Some(git2::ObjectType::Blob) if crate::md::is_markdown(name) => {
+            Some(git2::ObjectType::Blob) if is_markdown_file(name) => {
                 markdown_files.push(path);
             }
             _ => {}
         }
     }
     Ok(())
+}
+
+fn is_markdown_file(name: &str) -> bool {
+    Path::new(name).extension().is_some_and(|extension| {
+        extension.eq_ignore_ascii_case("md") || extension.eq_ignore_ascii_case("markdown")
+    })
 }
 
 #[cfg(test)]
