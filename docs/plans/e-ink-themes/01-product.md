@@ -14,9 +14,9 @@ Meet Twig’s new E-ink look, built for people who want the code to take center 
 
 ## Design intent
 
-The light and dark variants are the complete theme set and replace the previous themes. Both change the presentation as well as the palette: use a compact, structured repository listing, clear ruled divisions, restrained controls, and a wider focus on readable source content. Keep one theme control visible at the far right of the top bar for switching between the two variants.
+The light and dark variants are the complete theme set and replace the previous themes. Both change the presentation as well as the palette: use a compact, structured repository listing that foregrounds entry type and path, clear ruled divisions, restrained controls, and a wider focus on readable source content. Keep one theme control visible at the far right of the top bar for switching between the two variants. The theme does not add repository data or new preview behavior.
 
 ## Screens
 
-- `mockups/e-ink-light.html` — repository browser in the bright e-ink variant.
-- `mockups/e-ink-dark.html` — the same repository browser in the dark e-ink variant.
+- `mockups/e-ink-light.html` — repository directory listing in the bright e-ink variant, structured around entry type and path.
+- `mockups/e-ink-dark.html` — the same repository directory listing in the dark e-ink variant.

@@ -32,17 +32,13 @@
     .panel { background: #fff; border: 1px solid #999; }
     .panel-title { display: flex; align-items: center; justify-content: space-between; min-height: 42px; padding: 0 14px; border-bottom: 1px solid #999; font-size: 12px; font-weight: 700; }
     .muted { color: #666; font-weight: 400; }
-    .file-head, .file-row { display: grid; grid-template-columns: 22px minmax(130px, 1.1fr) minmax(130px, 1.6fr) 100px; align-items: center; min-height: 39px; padding: 0 14px; gap: 10px; border-bottom: 1px solid #ddd; font-size: 12px; }
+    .file-head, .file-row { display: grid; grid-template-columns: 90px minmax(0, 1fr); align-items: center; min-height: 39px; padding: 0 14px; gap: 12px; border-bottom: 1px solid #ddd; font-size: 12px; }
     .file-head { min-height: 32px; color: #666; background: #f1f1f1; font-size: 10px; font-weight: 700; letter-spacing: .06em; }
     .file-row:last-child { border: 0; }
     .file-row.active { background: #e8e8e8; box-shadow: inset 3px 0 #171717; font-weight: 700; }
-    .glyph { width: 14px; color: #555; text-align: center; }
-    .file-row small { color: #777; }
-    .readme { padding: 20px 22px 24px; font-family: system-ui, sans-serif; }
-    .readme h2 { font: 700 20px/1.3 ui-monospace, monospace; letter-spacing: -.06em; margin: 0 0 16px; padding-bottom: 10px; border-bottom: 1px solid #bbb; }
-    .readme p { margin: 0 0 14px; color: #333; }
-    pre { margin: 14px 0; padding: 13px 15px; overflow: auto; border: 1px solid #aaa; background: #f1f1f1; color: #171717; font: 12px/1.7 ui-monospace, monospace; }
-    @media (max-width: 700px) { .top { padding: 0 16px; gap: 18px; } .nav { gap: 12px; } .user { display: none; } .theme-button { margin-left: auto; } main { margin-top: 26px; padding: 0 16px 32px; } .repo-head { display: block; } .actions { margin-top: 16px; } .file-head, .file-row { grid-template-columns: 18px minmax(0, 1fr) minmax(90px, .8fr); gap: 7px; padding: 0 9px; font-size: 11px; } .file-head span:nth-child(3), .file-row small:first-of-type { display: none; } }
+    .kind { color: #666; font-size: 10px; font-weight: 700; letter-spacing: .08em; }
+    .file-name { font-weight: 600; }
+    @media (max-width: 700px) { .top { padding: 0 16px; gap: 18px; } .nav { gap: 12px; } .user { display: none; } .theme-button { margin-left: auto; } main { margin-top: 26px; padding: 0 16px 32px; } .repo-head { display: block; } .actions { margin-top: 16px; } .file-head, .file-row { grid-template-columns: 64px minmax(0, 1fr); gap: 8px; padding: 0 9px; font-size: 11px; } }
   </style>
 </head>
 <body>
@@ -66,26 +62,13 @@
     <div class="workspace">
       <section class="panel" aria-label="Repository files">
         <div class="panel-title"><span>REPOSITORY CONTENTS</span><span class="muted">BRANCH &nbsp; main ▾</span></div>
-        <div class="file-head"><span></span><span>PATH</span><span>LAST CHANGE</span><span>UPDATED</span></div>
-        <div class="file-row"><span class="glyph">▸</span><span>assets/</span><small>refine theme tokens</small><small>2 hours ago</small></div>
-        <div class="file-row"><span class="glyph">▸</span><span>docs/</span><small>add project notes</small><small>yesterday</small></div>
-        <div class="file-row"><span class="glyph">▸</span><span>src/</span><small>improve repository view</small><small>2 days ago</small></div>
-        <div class="file-row"><span class="glyph">□</span><span>.gitignore</span><small>update ignores</small><small>last week</small></div>
-        <div class="file-row active"><span class="glyph">□</span><span>README.md</span><small>project overview</small><small>last week</small></div>
-        <div class="file-row"><span class="glyph">□</span><span>Cargo.toml</span><small>update dependencies</small><small>last week</small></div>
-      </section>
-      <section class="panel" aria-label="README preview">
-        <div class="panel-title"><span>□ &nbsp; README.md</span><span class="muted">RAW &nbsp; HISTORY</span></div>
-        <article class="readme">
-          <h2>Twig</h2>
-          <p>A small, self-hosted Git forge built to keep your repositories close and your tools simple.</p>
-          <h2>Getting started</h2>
-          <p>Clone a repository and start reading. The important parts stay in view; the interface stays out of your way.</p>
-          <pre><code>$ git clone https://git.example/silen/twig.git
-$ cd twig
-$ cargo run</code></pre>
-          <p><strong>Plain text. Clear structure. Your code, uninterrupted.</strong></p>
-        </article>
+        <div class="file-head"><span>TYPE</span><span>PATH</span></div>
+        <div class="file-row"><span class="kind">DIR</span><span class="file-name">assets/</span></div>
+        <div class="file-row"><span class="kind">DIR</span><span class="file-name">docs/</span></div>
+        <div class="file-row"><span class="kind">DIR</span><span class="file-name">src/</span></div>
+        <div class="file-row"><span class="kind">FILE</span><span class="file-name">.gitignore</span></div>
+        <div class="file-row active"><span class="kind">FILE</span><span class="file-name">README.md</span></div>
+        <div class="file-row"><span class="kind">FILE</span><span class="file-name">Cargo.toml</span></div>
       </section>
     </div>
   </main>
