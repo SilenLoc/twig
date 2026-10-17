@@ -1,55 +1,70 @@
-/* Twig — warm minimal design system: autumn mulberry fields, blush-rose interaction.
+/* Twig — e-ink design system: restrained grayscale surfaces and ink.
    Raw colour values appear only in the :root token blocks below; every other
    rule references var(--twig-*). */
 
 /* ---- 1. Tokens ---------------------------------------------------------- */
 
+@font-face {
+    font-family: "IBM Plex Mono";
+    src: url("/assets/ibm-plex-mono-variable.woff2") format("woff2");
+    font-style: normal;
+    font-weight: 100 700;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "IBM Plex Sans";
+    src: url("/assets/ibm-plex-sans-variable.woff2") format("woff2");
+    font-style: normal;
+    font-weight: 100 700;
+    font-display: swap;
+}
+
 :root {
     color-scheme: dark;
 
-    /* Fields — warm mulberry, kept off pure black so the page reads autumnal */
-    --twig-void: #150d0f;
-    --twig-surface-0: #1f1418;
-    --twig-surface-1: #291a1f;
-    --twig-surface-2: #342228;
-    --twig-surface-3: #3f2a31;
+    /* Dark ink: black ground, raised grayscale surfaces. */
+    --twig-void: #000000;
+    --twig-surface-0: #101010;
+    --twig-surface-1: #191919;
+    --twig-surface-2: #252525;
+    --twig-surface-3: #333333;
 
-    /* Ink — blush cream rather than cool white */
-    --twig-ink-primary: #f8ece8;
-    --twig-ink-secondary: #d8bcb8;
-    --twig-ink-tertiary: #bfa19c;
+    /* Ink */
+    --twig-ink-primary: #f2f2f2;
+    --twig-ink-secondary: #c9c9c9;
+    --twig-ink-tertiary: #999999;
 
     /* Rules */
-    --twig-rule: #4a3239;
-    --twig-rule-strong: #a1787c;
+    --twig-rule: #414141;
+    --twig-rule-strong: #a5a5a5;
 
-    /* Accent — interaction only, unambiguously blush rose */
-    --twig-accent-700: #cf7f8b;
-    --twig-accent-500: #eeaab0;
-    --twig-accent-300: #f6c9cb;
-    --twig-accent-100: #fce9e6;
+    /* Interaction and feedback remain grayscale. */
+    --twig-accent-700: #b5b5b5;
+    --twig-accent-500: #d6d6d6;
+    --twig-accent-300: #ededed;
+    --twig-accent-100: #383838;
 
-    /* Signals — autumn harvest hues, held off the accent so status never
-       reads as interaction */
-    --twig-signal-danger: #e5806a;
-    --twig-signal-ok: #9cbd6e;
-    --twig-signal-warn: #dda15e;
+    /* Status roles use tone only; labels and structure carry meaning. */
+    --twig-signal-danger: #f0f0f0;
+    --twig-signal-ok: #c8c8c8;
+    --twig-signal-warn: #a0a0a0;
 
     /* Syntax roles are semantic so language grammars can share one palette. */
-    --twig-syntax-keyword: #e9a7bf;
-    --twig-syntax-type: #f2c879;
-    --twig-syntax-function: #a9c7f1;
-    --twig-syntax-macro: #c6a0e0;
-    --twig-syntax-string: #b8cf91;
-    --twig-syntax-lifetime: #d5b2e8;
-    --twig-syntax-number: #e6a976;
-    --twig-syntax-comment: #a9858b;
-    --twig-syntax-attribute: #d49cac;
+    --twig-syntax-keyword: #f0f0f0;
+    --twig-syntax-type: #dfdfdf;
+    --twig-syntax-function: #cccccc;
+    --twig-syntax-macro: #b8b8b8;
+    --twig-syntax-string: #a8a8a8;
+    --twig-syntax-lifetime: #d4d4d4;
+    --twig-syntax-number: #c0c0c0;
+    --twig-syntax-comment: #929292;
+    --twig-syntax-attribute: #e7e7e7;
 
     /* Families */
-    --twig-sans: "Space Grotesk", "Helvetica Neue", Arial, system-ui, sans-serif;
+    --twig-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
     --twig-mono:
-        ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas,
+        "IBM Plex Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas,
         "Liberation Mono", "DejaVu Sans Mono", monospace;
     --twig-serif: Georgia, Cambria, "Times New Roman", Times, serif;
 
@@ -95,8 +110,8 @@
     /* Responsive steps, overridden at the two authoritative breakpoints */
     --twig-gutter: var(--twig-space-4);
     --twig-masthead-h: 56px;
-    --twig-panel-pad: var(--twig-space-5);
-    --twig-row-h: 68px;
+    --twig-panel-pad: var(--twig-space-4);
+    --twig-row-h: 56px;
     --twig-nav-gap: var(--twig-space-3);
 
     /* Motion */
@@ -110,46 +125,46 @@
 :root[data-twig-theme="light"] {
     color-scheme: light;
 
-    /* Warm paper and dark mulberry ink stay legible on projected displays. */
+    /* Light ink on a soft-gray field. */
     --twig-void: #ffffff;
-    --twig-surface-0: #faf7f4;
+    --twig-surface-0: #f0f0f0;
     --twig-surface-1: #ffffff;
-    --twig-surface-2: #f3eae7;
-    --twig-surface-3: #ece0dc;
+    --twig-surface-2: #e7e7e7;
+    --twig-surface-3: #dcdcdc;
 
-    --twig-ink-primary: #29191f;
-    --twig-ink-secondary: #49383e;
-    --twig-ink-tertiary: #66545b;
+    --twig-ink-primary: #171717;
+    --twig-ink-secondary: #414141;
+    --twig-ink-tertiary: #686868;
 
-    --twig-rule: #d6c6c5;
-    --twig-rule-strong: #8d7078;
+    --twig-rule: #c4c4c4;
+    --twig-rule-strong: #666666;
 
-    --twig-accent-700: #70283e;
-    --twig-accent-500: #973b55;
-    --twig-accent-300: #ac4b63;
-    --twig-accent-100: #f9e9e8;
+    --twig-accent-700: #252525;
+    --twig-accent-500: #444444;
+    --twig-accent-300: #666666;
+    --twig-accent-100: #e5e5e5;
 
-    --twig-signal-danger: #a33930;
-    --twig-signal-ok: #346538;
-    --twig-signal-warn: #845013;
+    --twig-signal-danger: #202020;
+    --twig-signal-ok: #484848;
+    --twig-signal-warn: #707070;
 
-    --twig-syntax-keyword: #70283e;
-    --twig-syntax-type: #75520e;
-    --twig-syntax-function: #1d4e89;
-    --twig-syntax-macro: #69418a;
-    --twig-syntax-string: #326225;
-    --twig-syntax-lifetime: #69418a;
-    --twig-syntax-number: #8a4813;
-    --twig-syntax-comment: #755d64;
-    --twig-syntax-attribute: #8a4560;
+    --twig-syntax-keyword: #202020;
+    --twig-syntax-type: #343434;
+    --twig-syntax-function: #484848;
+    --twig-syntax-macro: #5b5b5b;
+    --twig-syntax-string: #676767;
+    --twig-syntax-lifetime: #555555;
+    --twig-syntax-number: #414141;
+    --twig-syntax-comment: #777777;
+    --twig-syntax-attribute: #2d2d2d;
 }
 
 @media (min-width: 48rem) {
     :root {
         --twig-gutter: var(--twig-space-6);
         --twig-masthead-h: 64px;
-        --twig-panel-pad: var(--twig-space-6);
-        --twig-row-h: 56px;
+        --twig-panel-pad: var(--twig-space-5);
+        --twig-row-h: 44px;
         --twig-nav-gap: var(--twig-space-6);
     }
 }
@@ -181,10 +196,10 @@ body.twig-shell {
     min-block-size: 100dvh;
     background-color: var(--twig-surface-0);
     color: var(--twig-ink-primary);
-    font-family: var(--twig-sans);
+    font-family: var(--twig-mono);
     font-size: var(--twig-t-body);
     font-weight: 400;
-    line-height: 1.7;
+    line-height: 1.55;
     -webkit-font-smoothing: antialiased;
 }
 
@@ -313,27 +328,40 @@ body.twig-shell {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    flex: 0 0 var(--twig-control-h);
-    inline-size: var(--twig-control-h);
-    padding-inline: 0;
-    letter-spacing: 0;
+    flex: 0 0 auto;
+    gap: var(--twig-space-2);
+    padding-inline: var(--twig-space-3);
+    border-color: var(--twig-rule-strong);
+    color: var(--twig-ink-primary);
+    letter-spacing: 0.08em;
+}
+
+.twig-masthead .twig-theme-toggle {
+    margin-inline-start: auto;
+}
+
+.twig-theme-toggle:hover {
+    background-color: var(--twig-surface-2);
+    border-color: var(--twig-ink-primary);
 }
 
 .twig-theme-icon {
-    display: none;
-    inline-size: 1.25rem;
-    block-size: 1.25rem;
-    flex: 0 0 auto;
+    font-size: 1.05rem;
+    line-height: 1;
 }
 
-.twig-theme-toggle .twig-theme-dark,
-:root[data-twig-theme="light"] .twig-theme-toggle .twig-theme-light {
-    display: block;
+.twig-theme-label {
+    font-size: var(--twig-t-eyebrow);
+    font-weight: 600;
+    letter-spacing: 0.1em;
 }
 
-:root[data-twig-theme="light"] .twig-theme-toggle .twig-theme-dark,
-.twig-theme-toggle .twig-theme-light {
-    display: none;
+.twig-theme-label::after {
+    content: "E-INK DARK";
+}
+
+:root[data-twig-theme="light"] .twig-theme-label::after {
+    content: "E-INK LIGHT";
 }
 
 .twig-nav-user {
@@ -391,7 +419,7 @@ body.twig-shell {
 .twig-stack {
     display: flex;
     flex-direction: column;
-    gap: var(--twig-space-6);
+    gap: var(--twig-space-5);
     min-inline-size: 0;
 }
 
@@ -455,23 +483,23 @@ body.twig-shell {
 
 .twig-title {
     font-size: var(--twig-t-h1);
-    font-weight: 500;
+    font-weight: 650;
     line-height: 1.08;
-    letter-spacing: -0.03em;
+    letter-spacing: 0;
 }
 
 .twig-section {
     font-size: var(--twig-t-h2);
-    font-weight: 500;
+    font-weight: 650;
     line-height: 1.2;
-    letter-spacing: -0.02em;
+    letter-spacing: 0;
 }
 
 .twig-subsection {
     font-size: var(--twig-t-h3);
     font-weight: 600;
     line-height: 1.35;
-    letter-spacing: -0.01em;
+    letter-spacing: 0;
 }
 
 .twig-eyebrow {
@@ -499,6 +527,7 @@ body.twig-shell {
 .twig-body-sm {
     margin: 0;
     color: var(--twig-ink-primary);
+    font-family: var(--twig-sans);
     font-weight: 400;
 }
 
@@ -591,7 +620,7 @@ body.twig-shell {
 /* ---- 7. Panel, column header, technical row ------------------------------ */
 
 .twig-panel {
-    background-color: var(--twig-surface-1);
+    background-color: var(--twig-surface-0);
     border: 1px solid var(--twig-rule);
     min-inline-size: 0;
 }
@@ -608,6 +637,7 @@ body.twig-shell {
     gap: var(--twig-space-4);
     padding: var(--twig-panel-pad);
     padding-block-end: var(--twig-space-4);
+    border-block-end: 1px solid var(--twig-rule);
 }
 
 .twig-panel-action {
@@ -635,7 +665,7 @@ body.twig-shell {
     gap: var(--twig-space-4);
     min-block-size: 36px;
     padding-inline: var(--twig-space-4);
-    background-color: var(--twig-surface-3);
+    background-color: var(--twig-surface-2);
     border-block-end: 1px solid var(--twig-rule-strong);
     border-inline-start: 2px solid transparent;
     color: var(--twig-ink-tertiary);
@@ -666,7 +696,7 @@ body.twig-shell {
     justify-content: center;
     gap: var(--twig-space-1);
     min-block-size: var(--twig-row-h);
-    padding-block: var(--twig-space-3);
+    padding-block: var(--twig-space-2);
     padding-inline: var(--twig-space-4);
     border-block-end: 1px solid var(--twig-rule);
     border-inline-start: 2px solid transparent;
@@ -763,6 +793,36 @@ body.twig-shell {
     .twig-row--form .twig-row-meta {
         flex: 0 0 auto;
     }
+}
+
+.twig-colhead.twig-colhead--content {
+    display: grid;
+    grid-template-columns: 4.5rem minmax(0, 1fr);
+    gap: var(--twig-space-3);
+}
+
+.twig-colhead--content > :first-child,
+.twig-colhead--content > :not(:first-child) {
+    flex: initial;
+    min-inline-size: 0;
+    text-align: start;
+}
+
+.twig-list--content .twig-row {
+    display: grid;
+    grid-template-columns: 4.5rem minmax(0, 1fr);
+    align-items: center;
+    gap: var(--twig-space-3);
+    min-block-size: 44px;
+    flex-direction: initial;
+}
+
+.twig-row-kind {
+    color: var(--twig-ink-tertiary);
+    font-family: var(--twig-mono);
+    font-size: var(--twig-t-eyebrow);
+    font-weight: 600;
+    letter-spacing: 0.08em;
 }
 
 /* ---- 8. Tabs ------------------------------------------------------------- */
@@ -892,7 +952,7 @@ body.twig-shell {
     background-color: transparent;
     border: 1px solid transparent;
     color: var(--twig-ink-primary);
-    font-family: var(--twig-sans);
+    font-family: var(--twig-mono);
     font-size: var(--twig-t-label);
     font-weight: 500;
     line-height: 1.2;
@@ -1028,7 +1088,7 @@ body.twig-shell {
     background-color: var(--twig-surface-0);
     border: 1px solid var(--twig-rule-strong);
     color: var(--twig-ink-primary);
-    font-family: var(--twig-sans);
+    font-family: var(--twig-mono);
     font-size: var(--twig-t-body);
     line-height: 1.2;
     transition: border-color var(--twig-dur-micro) linear;
@@ -1113,6 +1173,7 @@ body.twig-shell {
     min-block-size: 26rem;
     color: var(--twig-ink-primary);
     line-height: 1.65;
+    font-family: var(--twig-sans);
 }
 
 .twig-editor-rich .ql-editor.ql-blank::before {
@@ -1441,6 +1502,10 @@ body.twig-shell {
     border-inline-start: 2px solid var(--twig-accent-500);
 }
 
+.twig-notice > .twig-eyebrow {
+    font-weight: 700;
+}
+
 .twig-notice-body {
     margin: 0;
     color: var(--twig-ink-primary);
@@ -1464,6 +1529,7 @@ body.twig-shell {
 
 .twig-notice--danger {
     border-inline-start-color: var(--twig-signal-danger);
+    border-inline-start-style: double;
 }
 
 .twig-notice--danger > .twig-eyebrow {
@@ -1480,6 +1546,7 @@ body.twig-shell {
 
 .twig-notice--warning {
     border-inline-start-color: var(--twig-signal-warn);
+    border-inline-start-style: dashed;
 }
 
 .twig-notice--warning > .twig-eyebrow {
@@ -1488,6 +1555,7 @@ body.twig-shell {
 
 .twig-notice--info {
     border-inline-start-color: var(--twig-accent-500);
+    border-inline-start-style: dotted;
 }
 
 .twig-notice--info > .twig-eyebrow {
@@ -1548,10 +1616,13 @@ body.twig-shell {
    couple tokenization to either the dark or light palette. */
 .twig-syn-keyword {
     color: var(--twig-syntax-keyword);
+    font-weight: 700;
 }
 
 .twig-syn-type {
     color: var(--twig-syntax-type);
+    text-decoration: underline dotted;
+    text-underline-offset: 0.15em;
 }
 
 .twig-syn-function {
@@ -1560,10 +1631,12 @@ body.twig-shell {
 
 .twig-syn-macro {
     color: var(--twig-syntax-macro);
+    font-weight: 700;
 }
 
 .twig-syn-string {
     color: var(--twig-syntax-string);
+    font-style: italic;
 }
 
 .twig-syn-lifetime {
@@ -1576,16 +1649,20 @@ body.twig-shell {
 
 .twig-syn-comment {
     color: var(--twig-syntax-comment);
+    font-style: italic;
 }
 
 .twig-syn-attribute {
     color: var(--twig-syntax-attribute);
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
 }
 
 /* ---- 16. Markdown surface ------------------------------------------------ */
 
 .twig-md {
     color: var(--twig-ink-primary);
+    font-family: var(--twig-sans);
     font-size: var(--twig-t-body);
     line-height: 1.7;
     min-inline-size: 0;
@@ -1944,6 +2021,7 @@ body.twig-shell {
     margin-inline: auto;
     padding-block: var(--twig-space-8);
     min-inline-size: 0;
+    font-family: var(--twig-sans);
 }
 
 .twig-paper-page {

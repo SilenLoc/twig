@@ -55,6 +55,15 @@ fn test_paper_view_lazy_loads_pages_with_zoom_and_font_controls() {
         1,
         "exactly one font is pressed by default: {html}"
     );
+    let toolbar_end = html.find("</div></header>").expect("paper toolbar closes");
+    let toggle = html[..toolbar_end]
+        .find("twig-theme-toggle")
+        .expect("paper toolbar keeps the theme control");
+    assert!(html.contains("twig-theme-label"), "{html}");
+    assert!(
+        !html[toggle..toolbar_end].contains("class=\"twig-btn"),
+        "the theme control is the last button in the right-aligned tools: {html}"
+    );
     assert!(
         html.contains("c.addEventListener('click'"),
         "the font switch is scoped to the container: {html}"

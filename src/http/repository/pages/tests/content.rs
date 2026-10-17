@@ -34,7 +34,11 @@ fn test_content_rows_mark_directories_with_a_trailing_slash() {
     );
     assert!(
         html.contains(r#"<span class="twig-row-id">src/</span>"#),
-        "the trailing slash is the whole directory affordance: {html}"
+        "the directory path keeps its trailing slash: {html}"
+    );
+    assert!(
+        html.contains(r#"<span class="twig-row-kind">DIR</span>"#),
+        "directory type is visible in its own column: {html}"
     );
     assert!(
         html.contains(
@@ -42,13 +46,26 @@ fn test_content_rows_mark_directories_with_a_trailing_slash() {
         ),
         "files drop to the secondary identifier treatment: {html}"
     );
+    assert!(
+        html.contains(r#"<span class="twig-row-kind">FILE</span>"#),
+        "file type is visible in its own column: {html}"
+    );
     assert_eq!(
         count_of(&html, "hx-target=\"#tab-content\""),
         2,
         "one htmx row per entry; the root trail is the current page, not a link: {html}"
     );
     assert!(html.contains("twig-panel twig-panel--flush"), "{html}");
-    assert!(html.contains("class=\"twig-list\""), "{html}");
+    assert!(
+        html.contains(r#"<div class="twig-colhead twig-colhead--content"><span>TYPE</span><span>PATH</span></div>"#),
+        "the repository list labels both columns: {html}"
+    );
+    assert!(
+        html.contains(
+            r#"<nav class="twig-list twig-list--content" aria-label="Repository entries">"#
+        ),
+        "repository entries remain a labelled navigation list: {html}"
+    );
 }
 
 #[test]
@@ -62,6 +79,10 @@ fn test_content_dir_offers_a_parent_row_below_the_root() {
     assert!(
         html.contains(r#"<span class="twig-row-id">..</span>"#),
         "{html}"
+    );
+    assert!(
+        html.contains(r#"<span class="twig-row-kind">UP</span>"#),
+        "the parent row is named in the Type column: {html}"
     );
 }
 

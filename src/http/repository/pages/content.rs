@@ -179,8 +179,8 @@ pub(super) fn render_content_view(
     }
 }
 
-/// One Technical Row per tree entry. A directory is marked by its trailing
-/// slash and the primary-ink identifier; there is no icon (DESIGN.md 5.6).
+/// One Technical Row per tree entry, with type and path exposed as separate
+/// columns for the compact repository listing.
 pub(super) fn render_content_row(href: &str, push: &str, entry: &TreeEntry) -> Markup {
     maud::html! {
         a
@@ -190,6 +190,9 @@ pub(super) fn render_content_row(href: &str, push: &str, entry: &TreeEntry) -> M
             hx-target="#tab-content"
             hx-push-url=(push)
         {
+            span class="twig-row-kind" {
+                @if entry.is_dir { "DIR" } @else { "FILE" }
+            }
             span class="twig-row-id" {
                 (entry.name)
                 @if entry.is_dir { "/" }
@@ -212,7 +215,11 @@ pub(super) fn render_content_dir(
                 (render_empty("NO FILES", "No files in this repository."))
             } @else {
                 div class="twig-panel twig-panel--flush" {
-                    div class="twig-list" {
+                    div class="twig-colhead twig-colhead--content" {
+                        span { "TYPE" }
+                        span { "PATH" }
+                    }
+                    nav class="twig-list twig-list--content" aria-label="Repository entries" {
                         @if !path.is_empty() {
                             @let (href, push) = content_urls(namespace, repo, parent_path(path));
                             a
@@ -222,6 +229,7 @@ pub(super) fn render_content_dir(
                                 hx-target="#tab-content"
                                 hx-push-url=(push)
                             {
+                                span class="twig-row-kind" { "UP" }
                                 span class="twig-row-id" { ".." }
                             }
                         }

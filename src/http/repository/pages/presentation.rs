@@ -350,9 +350,6 @@ pub(super) fn render_pdf_document(
                 title { (format!("{namespace}/{repo} slides")) " · Twig" }
                 link rel="icon" type="image/svg+xml" href=(crate::http::assets::url("twig.svg"));
                 script src=(crate::http::assets::url("theme.js")) {}
-                link rel="preconnect" href="https://fonts.googleapis.com";
-                link rel="preconnect" href="https://fonts.gstatic.com" crossorigin;
-                link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&display=swap";
                 link rel="stylesheet" href=(crate::http::assets::url("twig.css"));
             }
             body class="twig-pdf" {

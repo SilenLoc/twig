@@ -10,7 +10,9 @@
         }
 
         document.querySelectorAll(".twig-theme-toggle").forEach(function (button) {
-            var label = theme === "light" ? "Switch to dark mode" : "Switch to light mode";
+            var label = theme === "light"
+                ? "Switch to E-ink Dark"
+                : "Switch to E-ink Light";
             button.setAttribute("aria-label", label);
             button.setAttribute("title", label);
         });

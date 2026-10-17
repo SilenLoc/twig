@@ -116,6 +116,19 @@ fn test_print_export_is_a_chrome_free_document() {
 }
 
 #[test]
+fn test_print_document_uses_local_font_assets() {
+    let html = render_pdf_document("acme", "my-project", &slides(1), None).into_string();
+    assert!(
+        html.contains(&crate::http::assets::url("twig.css")),
+        "{html}"
+    );
+    assert!(
+        !html.contains("fonts.googleapis.com") && !html.contains("fonts.gstatic.com"),
+        "the print view must not fetch remote fonts: {html}"
+    );
+}
+
+#[test]
 fn test_presentation_targets_its_container_and_scopes_the_keyboard() {
     let deck = slides(3);
     let html = render_present_view("acme", "my-project", &deck).into_string();
@@ -173,6 +186,17 @@ fn test_presentation_controls_are_labelled_and_bounded() {
     assert!(
         html.contains("twig-theme-toggle"),
         "the theme switch must remain accessible in fullscreen and after slide swaps: {html}"
+    );
+    let toolbar_end = html
+        .find("</div></header>")
+        .expect("presentation toolbar closes");
+    let toggle = html[..toolbar_end]
+        .find("twig-theme-toggle")
+        .expect("presentation toolbar keeps the theme control");
+    assert!(html.contains("twig-theme-label"), "{html}");
+    assert!(
+        !html[toggle..toolbar_end].contains("class=\"twig-btn"),
+        "the theme control is the last button in the presentation tools: {html}"
     );
     for control in [
         r#"id="decrease-text-size" class="twig-btn twig-btn--quiet" type="button" aria-label="Decrease presentation font size" title="Decrease font size""#,

@@ -23,9 +23,6 @@ pub fn render_layout(
                 }
                 link rel="icon" type="image/svg+xml" href=(crate::http::assets::url("twig.svg"));
                 script src=(crate::http::assets::url("theme.js")) {}
-                link rel="preconnect" href="https://fonts.googleapis.com";
-                link rel="preconnect" href="https://fonts.gstatic.com" crossorigin;
-                link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&display=swap";
                 link rel="stylesheet" href=(crate::http::assets::url("t.css"));
                 link rel="stylesheet" href=(crate::http::assets::url("twig.css"));
                 meta name="htmx-config" content=(r#"{"implicitInheritance":true,"noSwap":[204,304]}"#);
@@ -74,8 +71,8 @@ pub fn render_layout(
                                     a class="twig-btn twig-btn--quiet" href="/auth/signup" { "Signup" }
                                 }
                             }
-                            (render_theme_toggle())
                         }
+                        (render_theme_toggle())
                     }
                 }
                 div class="twig-optic-rule" aria-hidden="true" {}
@@ -92,17 +89,10 @@ pub fn render_layout(
 pub fn render_theme_toggle() -> maud::Markup {
     maud::html! {
         button class="twig-btn twig-btn--quiet twig-theme-toggle" type="button"
-            aria-label="Toggle light and dark mode" title="Toggle light and dark mode" {
-            svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-                stroke-width="1.5" stroke="currentColor" class="twig-theme-icon twig-theme-dark" aria-hidden="true" {
-                path stroke-linecap="round" stroke-linejoin="round"
-                    d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z";
-            }
-            svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-                stroke-width="1.5" stroke="currentColor" class="twig-theme-icon twig-theme-light" aria-hidden="true" {
-                path stroke-linecap="round" stroke-linejoin="round"
-                    d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z";
-            }
+            aria-label="Switch between E-ink Light and E-ink Dark"
+            title="Switch between E-ink Light and E-ink Dark" {
+            span class="twig-theme-icon" aria-hidden="true" { "◐" }
+            span class="twig-theme-label" aria-hidden="true" {}
         }
     }
 }
@@ -204,13 +194,13 @@ mod tests {
     }
 
     #[test]
-    fn test_layout_loads_space_grotesk_and_tachyons_before_twig_css() {
+    fn test_layout_avoids_remote_fonts_and_loads_tachyons_before_twig_css() {
         let html = layout_html(None);
         assert!(
-            html.contains("family=Space+Grotesk"),
-            "Space Grotesk is the sole grotesque: {html}"
+            !html.contains("fonts.googleapis.com") && !html.contains("fonts.gstatic.com"),
+            "the shared page must not fetch remote fonts: {html}"
         );
-        for outgoing in ["Anton", "Bricolage"] {
+        for outgoing in ["Space Grotesk", "Anton", "Bricolage"] {
             assert!(
                 !html.contains(outgoing),
                 "outgoing face {outgoing} must be removed: {html}"
@@ -227,8 +217,16 @@ mod tests {
     fn test_layout_offers_theme_switch_before_rendering_styles() {
         for username in [Some("testuser"), None] {
             let html = layout_html(username);
-            assert!(html.contains("Toggle light and dark mode"), "{html}");
+            assert!(
+                html.contains("Switch between E-ink Light and E-ink Dark"),
+                "{html}"
+            );
             assert!(html.contains("twig-theme-toggle"), "{html}");
+            assert!(html.contains("twig-theme-label"), "{html}");
+            assert!(
+                index_of(&html, "</nav>") < index_of(&html, "twig-theme-toggle"),
+                "the theme control sits outside and after the primary nav: {html}"
+            );
             assert!(
                 index_of(&html, &crate::http::assets::url("theme.js"))
                     < index_of(&html, &crate::http::assets::url("twig.css")),

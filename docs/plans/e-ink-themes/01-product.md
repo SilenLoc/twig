@@ -6,7 +6,7 @@ Twig’s current theme choices are expressive and warm, but people who prefer a 
 
 ## Success metric
 
-Within 30 days of release, at least 20% of active users select one of the e-ink variants at least once, measured by theme-selection events among active users.
+No quantitative success target for the initial release. The user will assess the themes through direct feedback after trying them; revisit measurement only if needed.
 
 ## Announcement — the blog post before the feature
 
