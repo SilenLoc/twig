@@ -52,7 +52,13 @@ pub async fn git_handler(
 
     let path_info = format!("/{clean_repo}/{endpoint}");
 
-    let kind = twig_http::classify_request(method, &path_info, query);
+    let git_protocol = req
+        .headers()
+        .get("Git-Protocol")
+        .and_then(|value| value.to_str().ok());
+    let git_req = twig_git::backend::GitRequest::new(method, path_info, query, content_type)
+        .with_git_protocol(git_protocol);
+    let kind = git_req.kind();
 
     let authenticated_user =
         match authenticate_git_request(&req, &server, &auth_state, &namespace, &clean_repo, &kind)
@@ -64,56 +70,61 @@ pub async fn git_handler(
     let username = authenticated_user
         .as_ref()
         .map(|authenticated_user| authenticated_user.username.clone());
-    let may_rewrite_protected_branches = authenticated_user
-        .is_some_and(|authenticated_user| authenticated_user.may_rewrite_protected_branches);
+    let namespace_role = authenticated_user
+        .as_ref()
+        .map(|authenticated_user| authenticated_user.namespace_role);
 
-    let project_root = server.project_root().to_owned();
+    let git_backend_config = twig_git::backend::Config::new(server.project_root());
     let namespace = namespace.clone();
-    let method = method.to_owned();
-    let path_info = path_info.clone();
-    let query_string = query.to_owned();
-    let content_type = content_type.to_owned();
     let body_bytes = body.to_vec();
-    let username = username.clone();
-    let receive_hooks = server.git_receive_hooks();
+    let git_req = git_req.clone();
     let result = web::block(move || {
-        let config = twig_http::Config::new(project_root);
-        let request = twig_http::Request {
-            method: &method,
-            path_info: &path_info,
-            query_string: &query_string,
-            content_type: (!content_type.is_empty()).then_some(content_type.as_str()),
-            body: &body_bytes,
-            authenticated_user: username.as_deref(),
-            may_rewrite_protected_branches,
-            receive_hooks: &receive_hooks,
-        };
-        twig_http::handle(&config, &namespace, request)
+        twig_git::backend::run_with_config(
+            &git_backend_config,
+            &namespace,
+            &git_req,
+            body_bytes,
+            username.as_deref(),
+            namespace_role.map(|role| role.as_str()),
+        )
     })
     .await;
 
     match result {
-        Ok(Ok(response)) => build_library_response(response),
-        Ok(Err(twig_http::Error::UnsupportedRequest)) => HttpResponse::NotFound().finish(),
+        Ok(Ok((headers, response_body))) => build_cgi_response(&headers, response_body),
         Ok(Err(e)) => {
-            log::error!("Git HTTP library failed: {e}");
+            log::error!("Git HTTP backend failed: {e}");
             HttpResponse::InternalServerError().body(e.to_string())
         }
         Err(e) => {
-            log::error!("Git HTTP library blocking task failed: {e}");
+            log::error!("Git HTTP backend blocking task failed: {e}");
             HttpResponse::InternalServerError().body("blocking task failed")
         }
     }
 }
 
-fn build_library_response(response: twig_http::Response) -> HttpResponse {
-    let status = actix_web::http::StatusCode::from_u16(response.status)
-        .unwrap_or(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR);
-    let mut builder = HttpResponse::build(status);
-    for (key, value) in response.headers {
-        builder.insert_header((key, value));
+fn build_cgi_response(headers: &str, body: Vec<u8>) -> HttpResponse {
+    let mut response = HttpResponse::Ok();
+    for line in headers.lines() {
+        if let Some((key, value)) = line.split_once(':') {
+            let key = key.trim();
+            let value = value.trim();
+            if key.eq_ignore_ascii_case("Status") {
+                let status = value
+                    .split_whitespace()
+                    .next()
+                    .and_then(|code| code.parse::<u16>().ok())
+                    .unwrap_or(200);
+                response.status(
+                    actix_web::http::StatusCode::from_u16(status)
+                        .unwrap_or(actix_web::http::StatusCode::OK),
+                );
+            } else {
+                response.insert_header((key.to_owned(), value.to_owned()));
+            }
+        }
     }
-    builder.body(response.body)
+    response.body(body)
 }
 
 async fn authenticate_git_request(
@@ -122,12 +133,14 @@ async fn authenticate_git_request(
     auth_state: &web::Data<TwigContext>,
     namespace: &str,
     repo: &str,
-    kind: &twig_http::RequestKind,
+    kind: &twig_git::backend::GitRequestKind,
 ) -> Result<Option<AuthenticatedGitUser>, HttpResponse> {
     let is_write = matches!(
         kind,
-        twig_http::RequestKind::ReceivePack
-            | twig_http::RequestKind::AdvertiseRefs(twig_http::Service::ReceivePack)
+        twig_git::backend::GitRequestKind::Push
+            | twig_git::backend::GitRequestKind::AdvertiseRefs(
+                twig_git::backend::GitService::WriteRef
+            )
     );
 
     if is_write {
@@ -168,9 +181,14 @@ async fn authenticate_git_request(
                 }
                 Ok(Some(AuthenticatedGitUser {
                     username: auth_result.user.username,
-                    may_rewrite_protected_branches: auth_result
+                    namespace_role: if auth_result
                         .permissions
-                        .contains(NamespacePermission::RewriteProtectedBranches),
+                        .contains(NamespacePermission::RewriteProtectedBranches)
+                    {
+                        crate::auth::NamespaceRole::Owner
+                    } else {
+                        crate::auth::NamespaceRole::Contributor
+                    },
                 }))
             }
             Ok(None) => Err(HttpResponse::Forbidden().body("Access denied to namespace")),
@@ -190,9 +208,14 @@ async fn authenticate_git_request(
                 }
                 Ok(Some(AuthenticatedGitUser {
                     username: auth_result.user.username,
-                    may_rewrite_protected_branches: auth_result
+                    namespace_role: if auth_result
                         .permissions
-                        .contains(NamespacePermission::RewriteProtectedBranches),
+                        .contains(NamespacePermission::RewriteProtectedBranches)
+                    {
+                        crate::auth::NamespaceRole::Owner
+                    } else {
+                        crate::auth::NamespaceRole::Contributor
+                    },
                 }))
             }
             Ok(None) => Err(HttpResponse::Forbidden().body("Access denied to namespace")),
@@ -205,7 +228,7 @@ async fn authenticate_git_request(
 
 struct AuthenticatedGitUser {
     username: String,
-    may_rewrite_protected_branches: bool,
+    namespace_role: crate::auth::NamespaceRole,
 }
 
 struct AuthResult {
@@ -375,7 +398,7 @@ fn ensure_repo_exists(project_root: &str, namespace: &str, repo_name: &str) -> R
     let repo_path = Path::new(project_root).join(namespace).join(repo_name);
 
     if repo_path.exists() {
-        return Ok(());
+        return twig_git::repo::install_pre_receive_hook(&repo_path);
     }
 
     // Create namespace directory if needed
@@ -394,7 +417,7 @@ fn ensure_repo_exists(project_root: &str, namespace: &str, repo_name: &str) -> R
     bare_init(&repo_path, "main", "Twig", "twig@localhost")
         .map_err(|e| format!("Failed to initialize bare repo: {e}"))?;
 
-    Ok(())
+    twig_git::repo::install_pre_receive_hook(&repo_path)
 }
 
 #[cfg(test)]
@@ -402,12 +425,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn library_response_keeps_status_and_headers() {
-        let response = build_library_response(twig_http::Response {
-            status: 401,
-            headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
-            body: b"Unauthorized".to_vec(),
-        });
+    fn cgi_response_keeps_status_and_headers() {
+        let response = build_cgi_response(
+            "Status: 401 Unauthorized\r\nContent-Type: text/plain",
+            b"Unauthorized".to_vec(),
+        );
         assert_eq!(response.status(), actix_web::http::StatusCode::UNAUTHORIZED);
         assert_eq!(
             response.headers().get("content-type").unwrap(),

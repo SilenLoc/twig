@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use actix_web::http::header::HeaderValue;
 
 pub const DEFAULT_CACHE_CONTROL: &str = "public, max-age=31536000, immutable";
@@ -20,7 +18,6 @@ pub struct Server {
     public_base_url: Option<String>,
     cache_control: HeaderValue,
     session_key: actix_web::cookie::Key,
-    pub(crate) git_receive_hooks: Arc<[Arc<dyn twig_http::ReceiveHook>]>,
 }
 
 impl Server {
@@ -46,7 +43,6 @@ impl Server {
             public_base_url: None,
             cache_control: HeaderValue::from_static(DEFAULT_CACHE_CONTROL),
             session_key: actix_web::cookie::Key::generate(),
-            git_receive_hooks: Vec::new().into(),
         }
     }
 
@@ -63,10 +59,6 @@ impl Server {
     pub fn with_admin_user(mut self, admin_user: Option<String>) -> Self {
         self.admin_user = admin_user;
         self
-    }
-
-    pub fn git_receive_hooks(&self) -> Arc<[Arc<dyn twig_http::ReceiveHook>]> {
-        Arc::clone(&self.git_receive_hooks)
     }
 
     pub fn with_resend_settings(

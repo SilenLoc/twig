@@ -1,6 +1,6 @@
 [package]
 name = "twig"
-version = "0.3.5"
+version = "0.3.6"
 edition = "2024"
 
 [workspace]
@@ -82,9 +82,6 @@ path = "crates/twig-git"
 
 [dependencies.twig-highlight]
 path = "crates/twig-highlight"
-
-[dependencies.twig-http]
-path = "crates/twig-http"
 
 [dependencies.uuid]
 version = "1.23.0"

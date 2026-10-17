@@ -2,10 +2,9 @@ use super::*;
 
 use super::repo_content::init_repo_with_files;
 use super::support::create_test_service_in;
-use std::sync::{Arc, Mutex};
 
 #[actix_web::test]
-async fn test_git_http_head_is_served_by_twig_http() {
+async fn test_git_http_head_is_served_by_git_http_backend() {
     let root = format!("/tmp/test_twig_git_http_head_{}", uuid::Uuid::new_v4());
     let app = create_test_service_in(&root).await;
     init_repo_with_files(
@@ -37,7 +36,7 @@ async fn test_git_http_head_is_served_by_twig_http() {
 }
 
 #[actix_web::test]
-async fn test_git_client_clones_and_fetches_through_twig_http() {
+async fn test_git_client_clones_and_fetches_through_git_http_backend() {
     use std::process::Command;
 
     let root =
@@ -45,8 +44,7 @@ async fn test_git_client_clones_and_fetches_through_twig_http() {
     let repository = root.join("public/example");
     std::fs::create_dir_all(&repository).unwrap();
     crate::git::repo::bare_init(&repository, "main", "Test", "test@example.com").unwrap();
-    let (address, server_handle, _db, database_path) =
-        start_network_git_server(&root, Vec::new()).await;
+    let (address, server_handle, _db, database_path) = start_network_git_server(&root).await;
 
     let clone_dir = root.with_extension("clone");
     let seed_dir = root.with_extension("seed");
@@ -143,7 +141,6 @@ async fn test_git_client_clones_and_fetches_through_twig_http() {
 
 async fn start_network_git_server(
     project_root: &std::path::Path,
-    receive_hooks: Vec<Arc<dyn twig_http::ReceiveHook>>,
 ) -> (
     std::net::SocketAddr,
     actix_web::dev::ServerHandle,
@@ -151,7 +148,7 @@ async fn start_network_git_server(
     std::path::PathBuf,
 ) {
     let database_path = project_root.with_extension("db");
-    let mut config = config::Server::new(
+    let config = config::Server::new(
         ("127.0.0.1".to_string(), 0),
         "debug".to_string(),
         project_root.to_string_lossy().into_owned(),
@@ -159,7 +156,6 @@ async fn start_network_git_server(
         "test-key".to_string(),
         true,
     );
-    config.git_receive_hooks = receive_hooks.into();
     let db = crate::db::Database::new(config.db_path());
     db.init_tables().await.expect("initialize test database");
     let auth_state = web::Data::new(crate::auth::TwigContext::new(
@@ -191,83 +187,8 @@ async fn start_network_git_server(
     (address, server_handle, db, database_path)
 }
 
-struct ReceiveHookRecorder(Arc<Mutex<Vec<String>>>);
-
-impl twig_http::ReceiveHook for ReceiveHookRecorder {
-    fn pre_receive(
-        &self,
-        _repository: &std::path::Path,
-        updates: &[twig_http::RefUpdate],
-        context: &twig_http::HookContext<'_>,
-    ) -> Result<(), twig_http::HookError> {
-        let refs = updates
-            .iter()
-            .map(|update| update.refname.as_str())
-            .collect::<Vec<_>>()
-            .join(",");
-        self.0.lock().unwrap().push(format!(
-            "pre:{}:{}:{refs}",
-            context.authenticated_user.unwrap_or("anonymous"),
-            context.may_rewrite_protected_branches
-        ));
-        Ok(())
-    }
-
-    fn update(
-        &self,
-        _repository: &std::path::Path,
-        update: &twig_http::RefUpdate,
-        context: &twig_http::HookContext<'_>,
-    ) -> Result<(), twig_http::HookError> {
-        self.0.lock().unwrap().push(format!(
-            "update:{}:{}:{}",
-            context.authenticated_user.unwrap_or("anonymous"),
-            context.may_rewrite_protected_branches,
-            update.refname
-        ));
-        if update.refname == "refs/heads/reject-me" {
-            return Err(twig_http::HookError::reject(
-                "test update callback rejection",
-            ));
-        }
-        Ok(())
-    }
-
-    fn post_receive(
-        &self,
-        _repository: &std::path::Path,
-        updates: &[twig_http::RefUpdate],
-        context: &twig_http::HookContext<'_>,
-    ) {
-        let refs = updates
-            .iter()
-            .map(|update| update.refname.as_str())
-            .collect::<Vec<_>>()
-            .join(",");
-        self.0.lock().unwrap().push(format!(
-            "post:{}:{}:{refs}",
-            context.authenticated_user.unwrap_or("anonymous"),
-            context.may_rewrite_protected_branches
-        ));
-    }
-
-    fn post_update(
-        &self,
-        _repository: &std::path::Path,
-        refnames: &[String],
-        context: &twig_http::HookContext<'_>,
-    ) {
-        self.0.lock().unwrap().push(format!(
-            "post-update:{}:{}:{}",
-            context.authenticated_user.unwrap_or("anonymous"),
-            context.may_rewrite_protected_branches,
-            refnames.join(",")
-        ));
-    }
-}
-
 #[actix_web::test]
-async fn test_git_client_push_uses_rust_callbacks_and_ignores_legacy_shell_hooks() {
+async fn test_git_client_push_uses_managed_and_custom_shell_hooks() {
     use std::os::unix::fs::PermissionsExt;
     use std::process::Command;
 
@@ -279,21 +200,18 @@ async fn test_git_client_push_uses_rust_callbacks_and_ignores_legacy_shell_hooks
     std::fs::create_dir_all(&repository).unwrap();
     crate::git::repo::bare_init(&repository, "main", "Test", "test@example.com").unwrap();
 
-    let legacy_marker = root.join("legacy-shell-hook-ran");
+    let custom_marker = root.join("custom-shell-hook-ran");
     let hooks_dir = repository.join("hooks");
     std::fs::create_dir_all(&hooks_dir).unwrap();
-    let legacy_hook = format!("#!/bin/sh\ntouch '{}'\n", legacy_marker.display());
-    for name in ["pre-receive", "pre-receive.twig-user"] {
-        let path = hooks_dir.join(name);
-        std::fs::write(&path, &legacy_hook).unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
+    let custom_hook = hooks_dir.join("pre-receive.twig-user");
+    let hook_script = format!(
+        "#!/bin/sh\nprintf '%s\\n' called > '{}'\nwhile read old_oid new_oid ref_name; do\n  if [ \"$ref_name\" = refs/heads/reject-me ]; then\n    echo 'Twig test hook rejected refs/heads/reject-me' >&2\n    exit 1\n  fi\ndone\n",
+        custom_marker.display()
+    );
+    std::fs::write(&custom_hook, hook_script).unwrap();
+    std::fs::set_permissions(&custom_hook, std::fs::Permissions::from_mode(0o755)).unwrap();
 
-    let hook_events = Arc::new(Mutex::new(Vec::new()));
-    let hook: Arc<dyn twig_http::ReceiveHook> =
-        Arc::new(ReceiveHookRecorder(Arc::clone(&hook_events)));
-    let (address, server_handle, db, database_path) =
-        start_network_git_server(&root, vec![hook]).await;
+    let (address, server_handle, db, database_path) = start_network_git_server(&root).await;
     let owner = crate::auth::create_user(
         "push-owner".to_string(),
         "push-owner@example.com".to_string(),
@@ -393,10 +311,7 @@ async fn test_git_client_push_uses_rust_callbacks_and_ignores_legacy_shell_hooks
             .args(["-C", &working_copy_for_git, "push", "origin", "reject-me"])
             .output()
             .unwrap();
-        assert!(
-            !rejected_update.status.success(),
-            "update callback should reject"
-        );
+        assert!(!rejected_update.status.success(), "{rejected_update:?}");
         let rejected_update = String::from_utf8_lossy(&rejected_update.stderr).into_owned();
 
         run(&["-C", &working_copy_for_git, "checkout", "main"]);
@@ -440,58 +355,20 @@ async fn test_git_client_push_uses_rust_callbacks_and_ignores_legacy_shell_hooks
         (rejected_update, rejected_push, pushed_head)
     })
     .await
-    .expect("join native callback push test");
+    .expect("join Git HTTP backend push test");
 
     assert!(
-        rejected_update.contains("test update callback rejection"),
+        rejected_update.contains("Twig test hook rejected refs/heads/reject-me"),
         "{rejected_update}"
     );
     assert!(
-        rejected_push.contains("This permission set cannot rewrite history on main"),
+        rejected_push.contains("Twig: Contributors cannot rewrite history on main."),
         "{rejected_push}"
     );
     assert!(
-        !legacy_marker.exists(),
-        "legacy shell hooks must remain inactive"
+        custom_marker.exists(),
+        "custom shell hook should run for a successful push"
     );
-    {
-        let events = hook_events.lock().unwrap();
-        assert!(
-            events
-                .iter()
-                .any(|event| event == "pre:push-owner:true:refs/heads/main")
-        );
-        assert!(
-            events
-                .iter()
-                .any(|event| event == "update:push-owner:true:refs/heads/main")
-        );
-        assert!(
-            events
-                .iter()
-                .any(|event| event == "post:push-owner:true:refs/heads/main")
-        );
-        assert!(
-            events
-                .iter()
-                .any(|event| event == "post-update:push-owner:true:refs/heads/main")
-        );
-        assert!(
-            events
-                .iter()
-                .any(|event| event == "update:push-owner:true:refs/heads/reject-me")
-        );
-        assert!(
-            !events
-                .iter()
-                .any(|event| event.contains("post:push-owner:true:refs/heads/reject-me"))
-        );
-        assert!(
-            !events
-                .iter()
-                .any(|event| event.contains("push-contributor"))
-        );
-    }
 
     let source_head = Command::new("git")
         .args([
@@ -516,7 +393,7 @@ async fn test_git_client_push_uses_rust_callbacks_and_ignores_legacy_shell_hooks
 
 #[cfg(unix)]
 #[actix_web::test]
-async fn test_twig_runtime_works_with_an_empty_path() {
+async fn test_twig_runtime_works_with_git_on_a_restricted_path() {
     use std::process::{Command, Stdio};
     use std::time::{Duration, Instant};
 
@@ -528,7 +405,7 @@ async fn test_twig_runtime_works_with_an_empty_path() {
     }
 
     let root = std::env::temp_dir().join(format!(
-        "test_twig_empty_server_path_{}",
+        "test_twig_restricted_server_path_{}",
         uuid::Uuid::new_v4()
     ));
     std::fs::create_dir_all(&root).unwrap();
@@ -537,15 +414,27 @@ async fn test_twig_runtime_works_with_an_empty_path() {
         .map(|directory| directory.join("git"))
         .find(|candidate| candidate.is_file())
         .expect("find Git test client");
-    let server_path = root.join("empty-path");
+    let server_path = root.join("restricted-path");
     std::fs::create_dir_all(&server_path).unwrap();
+    let git_directory = git.parent().expect("Git executable directory");
+    for tool in ["git", "mktemp", "rm", "cat", "dirname"] {
+        let executable = if tool == "git" {
+            git.clone()
+        } else {
+            std::env::split_paths(&client_path)
+                .map(|directory| directory.join(tool))
+                .find(|candidate| candidate.is_file())
+                .unwrap_or_else(|| git_directory.join(tool))
+        };
+        std::os::unix::fs::symlink(executable, server_path.join(tool)).unwrap();
+    }
     let executable = std::env::current_exe().unwrap();
     let child_root = root.clone();
     let child_path = server_path.clone();
     let mut server = Command::new(executable)
         .args([
             "--exact",
-            "integration_tests::tests::repo_git_http::test_twig_runtime_works_with_an_empty_path",
+            "integration_tests::tests::repo_git_http::test_twig_runtime_works_with_git_on_a_restricted_path",
             "--nocapture",
         ])
         .env("TWIG_NATIVE_PACK_TEST_CHILD", "1")
@@ -603,7 +492,7 @@ async fn test_twig_runtime_works_with_an_empty_path() {
     ]);
     std::fs::write(
         std::path::Path::new(&clone_path).join("native.txt"),
-        "served with no server executables\n",
+        "served with only Git and receive-hook tools on the server PATH\n",
     )
     .unwrap();
     run_git(&["-C", &clone_path, "add", "native.txt"]);
@@ -622,11 +511,6 @@ async fn test_twig_runtime_works_with_an_empty_path() {
     let head = run_git(&["-C", &clone_path, "rev-parse", "HEAD"]);
     let remote_head = run_git(&["-C", &clone_path, "rev-parse", "refs/remotes/origin/main"]);
     assert_eq!(head, remote_head);
-    assert!(
-        !root.join("legacy-shell-hook-ran").exists(),
-        "legacy executable hooks must remain inactive"
-    );
-
     std::fs::write(root.join("shutdown"), "stop").unwrap();
     let output = tokio::task::spawn_blocking(move || server.wait_with_output().unwrap())
         .await
@@ -648,31 +532,12 @@ impl Drop for ServerShutdown {
 
 #[cfg(unix)]
 async fn run_native_pack_server_child(root: &std::path::Path) {
-    use std::os::unix::fs::PermissionsExt;
-
     let repository = root.join("public/example");
     std::fs::create_dir_all(&repository).unwrap();
     crate::git::repo::bare_init(&repository, "main", "Test", "test@example.com")
-        .expect("create repository with empty PATH");
+        .expect("create repository with git on PATH");
 
-    let legacy_marker = root.join("legacy-shell-hook-ran");
-    let hooks_dir = repository.join("hooks");
-    std::fs::create_dir_all(&hooks_dir).unwrap();
-    for hook_name in ["pre-receive", "pre-receive.twig-user"] {
-        let path = hooks_dir.join(hook_name);
-        std::fs::write(
-            &path,
-            format!(
-                "#!/bin/sh\nprintf 'ran\\n' > '{}'\n",
-                legacy_marker.display()
-            ),
-        )
-        .unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
-
-    let (address, server_handle, db, database_path) =
-        start_network_git_server(root, Vec::new()).await;
+    let (address, server_handle, db, database_path) = start_network_git_server(root).await;
     let owner = crate::auth::create_user(
         "native-owner".to_string(),
         "native-owner@example.com".to_string(),
