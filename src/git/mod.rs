@@ -51,7 +51,12 @@ pub async fn git_handler(
 
     let path_info = format!("/{clean_repo}/{endpoint}");
 
-    let git_req = crate::git::backend::GitRequest::new(method, path_info, query, content_type);
+    let git_protocol = req
+        .headers()
+        .get("Git-Protocol")
+        .and_then(|value| value.to_str().ok());
+    let git_req = crate::git::backend::GitRequest::new(method, path_info, query, content_type)
+        .with_git_protocol(git_protocol);
 
     let kind = git_req.kind();
 

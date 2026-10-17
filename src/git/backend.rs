@@ -50,6 +50,7 @@ pub struct GitRequest {
     path_info: String,
     query_string: String,
     content_type: String,
+    git_protocol: Option<String>,
 }
 
 impl GitRequest {
@@ -84,7 +85,13 @@ impl GitRequest {
             path_info: path_info.into(),
             query_string: query_string.into(),
             content_type: content_type.into(),
+            git_protocol: None,
         }
+    }
+
+    pub fn with_git_protocol(mut self, git_protocol: Option<&str>) -> Self {
+        self.git_protocol = git_protocol.map(str::to_owned);
+        self
     }
 }
 
@@ -182,6 +189,13 @@ pub fn prepare_cgi_env(
     sh.set_var("GIT_PROJECT_ROOT", project_root);
     sh.set_var("GIT_HTTP_EXPORT_ALL", "1");
     sh.set_var("GIT_HTTP_RECEIVE_PACK", "true"); // enables push operations
+    // Git's CGI backend only enables protocol v2 when the HTTP Git-Protocol
+    // header is forwarded through this environment variable. Set it even when
+    // absent so an inherited server environment cannot affect negotiation.
+    sh.set_var(
+        "GIT_PROTOCOL",
+        req.git_protocol.as_deref().unwrap_or_default(),
+    );
 
     // Always set explicitly — empty when nobody is authenticated. The child
     // process inherits this server's environment, so an inherited REMOTE_USER
@@ -321,6 +335,7 @@ mod tests {
         assert_eq!(req.path_info, "/path");
         assert_eq!(req.query_string, "q=1");
         assert_eq!(req.content_type, "text/plain");
+        assert_eq!(req.git_protocol, None);
     }
 
     #[test]
@@ -372,7 +387,18 @@ mod tests {
         assert_eq!(sh.var("QUERY_STRING").unwrap(), "service=git-upload-pack");
         assert_eq!(sh.var("GIT_PROJECT_ROOT").unwrap(), "/srv/git/ns/repo");
         assert_eq!(sh.var("GIT_HTTP_EXPORT_ALL").unwrap(), "1");
+        assert_eq!(sh.var("GIT_PROTOCOL").unwrap(), "");
         assert_eq!(sh.var("TWIG_NAMESPACE_ROLE").unwrap(), "contributor");
+    }
+
+    #[test]
+    fn test_prepare_cgi_env_forwards_git_protocol_version() {
+        let sh = Shell::new().unwrap();
+        let req = GitRequest::new("GET", "/repo/info/refs", "service=git-upload-pack", "")
+            .with_git_protocol(Some("version=2"));
+        let sh = prepare_cgi_env("/srv/git/ns", sh, &req, None, None);
+
+        assert_eq!(sh.var("GIT_PROTOCOL").unwrap(), "version=2");
     }
 
     #[test]

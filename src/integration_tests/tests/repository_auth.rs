@@ -104,9 +104,15 @@ async fn test_private_repository_git_read_gated_behind_auth() {
     let req = test::TestRequest::get()
         .uri("/gitspace/pubrepo/info/refs?service=git-upload-pack")
         .insert_header(("User-Agent", "git/2.43.0"))
+        .insert_header(("Git-Protocol", "version=2"))
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), StatusCode::OK);
+    let body = test::read_body(resp).await;
+    assert!(
+        body.starts_with(b"000eversion 2\n"),
+        "Git protocol v2 negotiation header must reach git-http-backend"
+    );
 
     // The regular Git smart-push handshake remains available and still
     // requires credentials, independently of the binary HTTP endpoints.
