@@ -3,7 +3,7 @@ use crate::config;
 use crate::db::data::TablePage;
 use actix_web::{HttpRequest, HttpResponse, get, web};
 
-use super::*;
+use super::{DataQuery, RowsQuery, render_tree_hub};
 
 pub(super) const DATA_PAGE_SIZE: usize = 50;
 

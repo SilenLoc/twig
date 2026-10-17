@@ -10,7 +10,7 @@ use crate::git;
 use crate::http::view::{render_error, render_success};
 
 use super::shared::require_namespace_permission;
-use super::*;
+use super::{NamespaceForm, RenameNamespaceForm};
 
 #[post("/settings/rename-namespace")]
 pub async fn rename_namespace(

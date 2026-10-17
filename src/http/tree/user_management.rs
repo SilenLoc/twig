@@ -22,10 +22,13 @@ mod access;
 mod invitations;
 mod views;
 
+#[cfg(test)]
 use access::UserManagementScope;
 pub use access::user_management_page;
+#[cfg(test)]
 use invitations::parse_expiry;
 pub use invitations::{create_namespace_invitation, resend_namespace_invitation};
+#[cfg(test)]
 use views::{
     render_invitation_created, render_invitation_list, render_user_management,
     render_user_management_content,

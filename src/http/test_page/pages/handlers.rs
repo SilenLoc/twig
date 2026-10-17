@@ -6,7 +6,7 @@ use crate::config;
 use crate::http::auth::session::get_username_from_request;
 
 use super::views::{render_stopped_content, render_test_page};
-use super::*;
+use super::{CallerRole, TestPageQuery, generate_qr_svg, generate_random_pin};
 use super::{render_pin_entry_page, render_pin_panel, render_runner_content};
 
 fn get_base_url(req: &HttpRequest, server: &config::Server) -> String {

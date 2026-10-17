@@ -10,7 +10,7 @@ use crate::git;
 use crate::http::view::{render_error, render_success};
 
 use super::shared::require_namespace_permission;
-use super::*;
+use super::{DeleteRepoForm, MoveRepoForm, RenameRepoForm};
 
 pub(crate) fn render_repo_deletion_panel(
     repos_by_namespace: &[(String, Vec<git::bare::RepoInfo>)],

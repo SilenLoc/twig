@@ -1,7 +1,9 @@
 use super::validation::{
     parent_path, read_text_file, validate_existing_text_path, validate_new_path,
 };
-use super::*;
+use super::{
+    PendingFileChange, PendingFileState, WorkspaceContext, WorkspaceDraft, WorkspaceOperationInput,
+};
 use crate::git::bare::is_safe_repo_path;
 
 pub(super) fn apply_file_operation(

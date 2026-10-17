@@ -5,7 +5,12 @@ use super::commit::{
 };
 use super::operations::apply_file_operation;
 use super::validation::validate_draft;
-use super::*;
+use super::{
+    CommitWorkspaceInput, FileParams, HttpRequest, HttpResponse, NamespacePermission, RepoParams,
+    TreeParams, TwigContext, WorkspaceDraft, WorkspaceOperationInput, WorkspaceQuery, ZERO_OID,
+    config, editor_file_fragment, html_response, open_workspace_context, pages, web,
+    workspace_file_url,
+};
 use crate::git::bare::is_safe_repo_path;
 
 #[get("/{namespace}/{repo}/edit")]

@@ -7,8 +7,8 @@ use crate::auth::permissions::{self, NamespacePermission};
 use crate::config;
 use crate::http::view::{render_error, render_success};
 
+use super::UpdateEmailForm;
 use super::shared::render_settings_auth_error;
-use super::*;
 
 /// Renders the settings page body shared by the full-page and HTMX responses.
 pub(super) fn render_settings(user: &crate::auth::User) -> maud::Markup {

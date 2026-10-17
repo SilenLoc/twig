@@ -198,7 +198,7 @@ pub fn bare_init(
         .treebuilder(None)
         .map_err(|e| format!("Failed to create initial tree: {e}"))?;
     tree_builder
-        .insert(".twig.toml", blob_id, 0o100644)
+        .insert(".twig.toml", blob_id, 0o100_644)
         .map_err(|e| format!("Failed to add .twig.toml to initial tree: {e}"))?;
     let tree_id = tree_builder
         .write()

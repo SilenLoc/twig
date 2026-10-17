@@ -4,9 +4,9 @@ use crate::auth::{Namespace, TwigContext, User, permissions::NamespacePermission
 use crate::config;
 use crate::http::view::render_layout;
 
+use super::UserManagementQuery;
 use super::invitations::invitations_for_scope;
 use super::views::{render_user_management, render_user_management_content};
-use super::*;
 
 pub(super) struct UserManagementScope {
     pub(super) user: User,

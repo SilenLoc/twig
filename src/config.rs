@@ -20,7 +20,7 @@ pub struct Server {
     public_base_url: Option<String>,
     cache_control: HeaderValue,
     session_key: actix_web::cookie::Key,
-    git_receive_hooks: Arc<[Arc<dyn twig_http::ReceiveHook>]>,
+    pub(crate) git_receive_hooks: Arc<[Arc<dyn twig_http::ReceiveHook>]>,
 }
 
 impl Server {
@@ -62,11 +62,6 @@ impl Server {
 
     pub fn with_admin_user(mut self, admin_user: Option<String>) -> Self {
         self.admin_user = admin_user;
-        self
-    }
-
-    pub fn with_git_receive_hooks(mut self, hooks: Vec<Arc<dyn twig_http::ReceiveHook>>) -> Self {
-        self.git_receive_hooks = hooks.into();
         self
     }
 

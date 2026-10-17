@@ -151,15 +151,15 @@ async fn start_network_git_server(
     std::path::PathBuf,
 ) {
     let database_path = project_root.with_extension("db");
-    let config = config::Server::new(
+    let mut config = config::Server::new(
         ("127.0.0.1".to_string(), 0),
         "debug".to_string(),
         project_root.to_string_lossy().into_owned(),
         database_path.to_string_lossy().into_owned(),
         "test-key".to_string(),
         true,
-    )
-    .with_git_receive_hooks(receive_hooks);
+    );
+    config.git_receive_hooks = receive_hooks.into();
     let db = crate::db::Database::new(config.db_path());
     db.init_tables().await.expect("initialize test database");
     let auth_state = web::Data::new(crate::auth::TwigContext::new(
@@ -454,43 +454,44 @@ async fn test_git_client_push_uses_rust_callbacks_and_ignores_legacy_shell_hooks
         !legacy_marker.exists(),
         "legacy shell hooks must remain inactive"
     );
-    let events = hook_events.lock().unwrap();
-    assert!(
-        events
-            .iter()
-            .any(|event| event == "pre:push-owner:true:refs/heads/main")
-    );
-    assert!(
-        events
-            .iter()
-            .any(|event| event == "update:push-owner:true:refs/heads/main")
-    );
-    assert!(
-        events
-            .iter()
-            .any(|event| event == "post:push-owner:true:refs/heads/main")
-    );
-    assert!(
-        events
-            .iter()
-            .any(|event| event == "post-update:push-owner:true:refs/heads/main")
-    );
-    assert!(
-        events
-            .iter()
-            .any(|event| event == "update:push-owner:true:refs/heads/reject-me")
-    );
-    assert!(
-        !events
-            .iter()
-            .any(|event| event.contains("post:push-owner:true:refs/heads/reject-me"))
-    );
-    assert!(
-        !events
-            .iter()
-            .any(|event| event.contains("push-contributor"))
-    );
-    drop(events);
+    {
+        let events = hook_events.lock().unwrap();
+        assert!(
+            events
+                .iter()
+                .any(|event| event == "pre:push-owner:true:refs/heads/main")
+        );
+        assert!(
+            events
+                .iter()
+                .any(|event| event == "update:push-owner:true:refs/heads/main")
+        );
+        assert!(
+            events
+                .iter()
+                .any(|event| event == "post:push-owner:true:refs/heads/main")
+        );
+        assert!(
+            events
+                .iter()
+                .any(|event| event == "post-update:push-owner:true:refs/heads/main")
+        );
+        assert!(
+            events
+                .iter()
+                .any(|event| event == "update:push-owner:true:refs/heads/reject-me")
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|event| event.contains("post:push-owner:true:refs/heads/reject-me"))
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|event| event.contains("push-contributor"))
+        );
+    }
 
     let source_head = Command::new("git")
         .args([

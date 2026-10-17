@@ -42,6 +42,7 @@ mod repositories;
 mod shared;
 
 pub use namespaces::{delete_namespace, rename_namespace};
+#[cfg(test)]
 use profile::render_settings;
 pub use profile::{settings_page, update_email};
 pub use repositories::{delete_repo, move_repo, rename_repo};

@@ -7,8 +7,8 @@ use crate::auth::{
 use crate::config;
 use crate::git;
 
+use super::NamespacePageData;
 use super::hub::render_tree_hub;
-use super::*;
 
 pub(super) async fn load_namespace_page_data(
     db: &crate::db::Database,

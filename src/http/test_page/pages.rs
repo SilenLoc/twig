@@ -78,8 +78,9 @@ pub use handlers::{
 };
 pub use views::{
     render_idle_content, render_pin_entry_page, render_pin_panel, render_runner_content,
-    render_stopped_content, render_test_page,
 };
+#[cfg(test)]
+use views::{render_stopped_content, render_test_page};
 
 #[cfg(test)]
 #[path = "pages/tests.rs"]

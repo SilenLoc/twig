@@ -1,4 +1,6 @@
-use super::*;
+use super::{
+    MAX_EDIT_BYTES, PendingFileChange, PendingFileState, WorkspaceContext, WorkspaceDraft,
+};
 use crate::git::bare::is_safe_repo_path;
 
 pub(super) fn validate_new_path(context: &WorkspaceContext, path: &str) -> Result<(), String> {

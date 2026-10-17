@@ -5,9 +5,9 @@ use crate::config;
 use crate::email::{InvitationDelivery, invitation_url, send_invitation_if_configured};
 use crate::http::view::render_error;
 
+use super::CreateInvitationForm;
 use super::access::{UserManagementScope, user_management_scope};
 use super::views::render_invitation_created;
-use super::*;
 
 pub(super) fn is_expired(
     invitation: &NamespaceInvitation,
