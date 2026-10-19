@@ -8,7 +8,7 @@ use super::repo_access_and_routes::{basic_auth, init_private_repo};
 async fn namespace_owner_can_invite_only_to_owned_namespace() {
     let (app, _, owner_session, _, _, _) = create_admin_test_service().await;
     let req = test::TestRequest::post()
-        .uri("/tree/invites")
+        .uri("/manage/invites")
         .cookie(actix_web::cookie::Cookie::new(
             "session",
             owner_session.clone(),
@@ -30,7 +30,7 @@ async fn namespace_owner_can_invite_only_to_owned_namespace() {
     );
 
     let req = test::TestRequest::post()
-        .uri("/tree/invites")
+        .uri("/manage/invites")
         .cookie(actix_web::cookie::Cookie::new("session", owner_session))
         .set_form([
             ("email", "other@example.com"),
@@ -185,7 +185,7 @@ async fn contributor_cannot_create_namespaces_or_repositories_but_can_access_exi
     );
 
     let req = test::TestRequest::get()
-        .uri("/tree/users")
+        .uri("/manage/users")
         .cookie(actix_web::cookie::Cookie::new(
             "session",
             contributor_session,
@@ -242,7 +242,7 @@ async fn configured_admin_has_all_git_permissions_without_namespace_membership()
     assert!(!String::from_utf8_lossy(&body).contains("private"));
 
     let req = test::TestRequest::get()
-        .uri("/tree/users?tab=users")
+        .uri("/manage/users?tab=users")
         .cookie(actix_web::cookie::Cookie::new(
             "session",
             admin_session.clone(),
@@ -277,7 +277,7 @@ async fn configured_admin_has_all_git_permissions_without_namespace_membership()
     );
 
     let req = test::TestRequest::post()
-        .uri("/tree/invites")
+        .uri("/manage/invites")
         .cookie(actix_web::cookie::Cookie::new(
             "session",
             admin_session.clone(),

@@ -15,6 +15,8 @@
                 : "Switch to E-ink Light";
             button.setAttribute("aria-label", label);
             button.setAttribute("title", label);
+            var icon = button.querySelector(".twig-theme-icon");
+            if (icon) icon.textContent = theme === "light" ? "☾" : "☼";
         });
     }
 
@@ -24,6 +26,10 @@
         // Storage can be unavailable (for example, in a restricted browser).
         applyTheme("dark");
     }
+
+    document.addEventListener("DOMContentLoaded", function () {
+        applyTheme(root.dataset.twigTheme === "light" ? "light" : "dark");
+    });
 
     document.addEventListener("click", function (event) {
         var target = event.target;

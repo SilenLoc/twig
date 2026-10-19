@@ -38,7 +38,7 @@ async fn test_signup_page_loads() {
 async fn test_created_invitation_completes_account_and_membership_setup() {
     let (app, session, _, _, db, _) = create_admin_test_service().await;
     let req = test::TestRequest::post()
-        .uri("/tree/invites")
+        .uri("/manage/invites")
         .cookie(actix_web::cookie::Cookie::new("session", session.clone()))
         .set_form([
             ("email", "sam@example.com"),
@@ -64,7 +64,7 @@ async fn test_created_invitation_completes_account_and_membership_setup() {
     let token = invite_path.rsplit('/').next().unwrap();
 
     let req = test::TestRequest::post()
-        .uri(&format!("/tree/invites/{token}/resend"))
+        .uri(&format!("/manage/invites/{token}/resend"))
         .cookie(actix_web::cookie::Cookie::new("session", session))
         .to_request();
     let resp = test::call_service(&app, req).await;
@@ -169,7 +169,7 @@ async fn test_created_invitation_completes_account_and_membership_setup() {
 async fn namespace_owner_can_invite_only_to_owned_namespace() {
     let (app, _, owner_session, _, _, _) = create_admin_test_service().await;
     let req = test::TestRequest::post()
-        .uri("/tree/invites")
+        .uri("/manage/invites")
         .cookie(actix_web::cookie::Cookie::new(
             "session",
             owner_session.clone(),
@@ -191,7 +191,7 @@ async fn namespace_owner_can_invite_only_to_owned_namespace() {
     );
 
     let req = test::TestRequest::post()
-        .uri("/tree/invites")
+        .uri("/manage/invites")
         .cookie(actix_web::cookie::Cookie::new("session", owner_session))
         .set_form([
             ("email", "other@example.com"),

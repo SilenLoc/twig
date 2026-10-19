@@ -37,42 +37,35 @@ pub fn render_layout(
                 a class="twig-skip" href="#main" { "Skip to content" }
                 header class="twig-masthead" {
                     div class="twig-page" {
-                        a class="twig-wordmark" href="/" aria-label="Twig" title="Twig" {
-                            svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"
-                                width="28" height="28" fill="currentColor"
-                                aria-hidden="true" focusable="false" {
-                                path d="M277.854 21.719c-42.24 50.44-30.12 165.073-10.278 229.41-8.823-8.305-17.446-16.118-25.812-23.387-5.581-55.64-117.363-188.328-202.098-190.19 2.771 78.685 124.137 172.463 180.691 195.653 14.428 12.115 29.969 26.308 46.149 42.027-59.03-33.653-178.97-59.817-234.844-23.816 59.766 44.872 233.049 63.704 265.484 54.621a1693.737 1693.737 0 0 1 36.25 38.797c-55.853-23.885-157.472-36.098-202.011-1.172 54.464 40.555 188.82 44.708 229.54 32.21 3.934 4.535 7.853 9.094 11.753 13.675 2.996.302 6.094.98 9.295 2.123 12.626 4.507 20.422 15.172 22.92 26.547.833 3.796 1.186 7.685 1.152 11.605 14.986 18.605 29.373 37.188 42.752 55.297l14.476-10.697c-16.839-22.792-35.148-46.257-54.228-69.565 31.873-41.549 67.814-172.887 55.117-219.543-52.034 31.759-73.942 139.617-73.437 197.495a1941.033 1941.033 0 0 0-27.368-31.727c31.31-41.627 43.085-205.433 6.63-265.377-50.245 49.897-44.597 179.608-27.876 241.664-14.942-16.378-29.879-32.145-44.525-46.933 22.143-51.978 26.677-206.07-19.732-258.717zm61.59 376.996c-12.783 1.613-26.198 3.251-39.692 4.355-12.109 18.294-16.618 46.407-3.14 50.87 3.905 1.292 9.837.202 16.66-4.172 3.934-2.523 7.937-6.049 11.605-10.125 2.34-13.053 7.71-25.83 15.504-35.243-.079-2.09-.362-3.974-.938-5.685zm-77.397 5.52c-29.695 7.102-56.292 19.962-70.83 39.75 21.218 1.826 49.561 2.081 78.683.898-1.865-12.53 1.392-27.381 7.995-40.604-5.354.134-10.655.142-15.848-.045zm107.88 3.185c-28.637-1.056-37.024 69.093-14.624 71.232 4.095.391 9.635-1.993 15.312-7.777 5.678-5.784 10.93-14.503 14.076-23.566 3.146-9.063 4.114-18.425 2.62-25.233-1.495-6.807-4.378-10.953-11.39-13.455-2.085-.744-4.084-1.13-5.993-1.201z";
+                        div class="twig-masthead-start" {
+                            a class="twig-wordmark" href="/" aria-label="Twig" title="Twig" {
+                                svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"
+                                    width="28" height="28" fill="currentColor"
+                                    aria-hidden="true" focusable="false" {
+                                    path d="M277.854 21.719c-42.24 50.44-30.12 165.073-10.278 229.41-8.823-8.305-17.446-16.118-25.812-23.387-5.581-55.64-117.363-188.328-202.098-190.19 2.771 78.685 124.137 172.463 180.691 195.653 14.428 12.115 29.969 26.308 46.149 42.027-59.03-33.653-178.97-59.817-234.844-23.816 59.766 44.872 233.049 63.704 265.484 54.621a1693.737 1693.737 0 0 1 36.25 38.797c-55.853-23.885-157.472-36.098-202.011-1.172 54.464 40.555 188.82 44.708 229.54 32.21 3.934 4.535 7.853 9.094 11.753 13.675 2.996.302 6.094.98 9.295 2.123 12.626 4.507 20.422 15.172 22.92 26.547.833 3.796 1.186 7.685 1.152 11.605 14.986 18.605 29.373 37.188 42.752 55.297l14.476-10.697c-16.839-22.792-35.148-46.257-54.228-69.565 31.873-41.549 67.814-172.887 55.117-219.543-52.034 31.759-73.942 139.617-73.437 197.495a1941.033 1941.033 0 0 0-27.368-31.727c31.31-41.627 43.085-205.433 6.63-265.377-50.245 49.897-44.597 179.608-27.876 241.664-14.942-16.378-29.879-32.145-44.525-46.933 22.143-51.978 26.677-206.07-19.732-258.717zm61.59 376.996c-12.783 1.613-26.198 3.251-39.692 4.355-12.109 18.294-16.618 46.407-3.14 50.87 3.905 1.292 9.837.202 16.66-4.172 3.934-2.523 7.937-6.049 11.605-10.125 2.34-13.053 7.71-25.83 15.504-35.243-.079-2.09-.362-3.974-.938-5.685zm-77.397 5.52c-29.695 7.102-56.292 19.962-70.83 39.75 21.218 1.826 49.561 2.081 78.683.898-1.865-12.53 1.392-27.381 7.995-40.604-5.354.134-10.655.142-15.848-.045zm107.88 3.185c-28.637-1.056-37.024 69.093-14.624 71.232 4.095.391 9.635-1.993 15.312-7.777 5.678-5.784 10.93-14.503 14.076-23.566 3.146-9.063 4.114-18.425 2.62-25.233-1.495-6.807-4.378-10.953-11.39-13.455-2.085-.744-4.084-1.13-5.993-1.201z";
+                                }
+                            }
+                            nav aria-label="Primary" class="twig-nav twig-nav--primary" {
+                                a class="twig-btn twig-btn--quiet" href="/" { "Home" }
+                                a class="twig-btn twig-btn--quiet" href="/settings" { "Manage" }
+                                a class="twig-btn twig-btn--quiet" href="/_info" { "Docs" }
                             }
                         }
-                        nav aria-label="Primary" class="twig-nav" {
+                        div class="twig-masthead-end" {
+                            nav aria-label="Account" class="twig-nav twig-nav--account" {
                             @match username {
-                                Some(name) => {
-                                    span class="twig-nav-user" { (name) }
-                                    a class="twig-btn twig-btn--quiet" href="/_info" { "Docs" }
-                                    a class="twig-btn twig-btn--quiet" href="/tree" aria-label="Tree" title="Tree" {
-                                        svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" {
-                                            path d="M5 3v18";
-                                            path d="M5 6h8a3 3 0 0 1 3 3v0";
-                                            path d="M5 12h5a3 3 0 0 1 3 3v0";
-                                            circle cx="5" cy="3" r="2";
-                                            circle cx="16" cy="9" r="2";
-                                            circle cx="13" cy="15" r="2";
-                                            circle cx="5" cy="21" r="2";
-                                        }
-                                        "Tree"
-                                    }
+                                Some(_) => {
                                     form method="POST" action="/auth/logout" {
                                         button class="twig-btn twig-btn--quiet" type="submit" { "Logout" }
                                     }
                                 }
                                 None => {
-                                    a class="twig-btn twig-btn--quiet" href="/_info" { "Docs" }
                                     a class="twig-btn twig-btn--quiet" href="/auth/login" { "Login" }
-                                    a class="twig-btn twig-btn--quiet" href="/auth/signup" { "Signup" }
                                 }
                             }
+                            }
+                            (render_theme_toggle())
                         }
-                        (render_theme_toggle())
                     }
                 }
                 div class="twig-optic-rule" aria-hidden="true" {}
@@ -133,8 +126,7 @@ pub fn render_theme_toggle() -> maud::Markup {
         button class="twig-btn twig-btn--quiet twig-theme-toggle" type="button"
             aria-label="Switch between E-ink Light and E-ink Dark"
             title="Switch between E-ink Light and E-ink Dark" {
-            span class="twig-theme-icon" aria-hidden="true" { "◐" }
-            span class="twig-theme-label" aria-hidden="true" {}
+            span class="twig-theme-icon" aria-hidden="true" { "☼" }
         }
     }
 }
@@ -303,10 +295,11 @@ mod tests {
                 "{html}"
             );
             assert!(html.contains("twig-theme-toggle"), "{html}");
-            assert!(html.contains("twig-theme-label"), "{html}");
+            assert!(!html.contains("twig-theme-label"), "{html}");
             assert!(
-                index_of(&html, "</nav>") < index_of(&html, "twig-theme-toggle"),
-                "the theme control sits outside and after the primary nav: {html}"
+                index_of(&html, "class=\"twig-masthead-end\"")
+                    < index_of(&html, "twig-theme-toggle"),
+                "the theme control sits in the right masthead group: {html}"
             );
             assert!(
                 index_of(&html, &crate::http::assets::url("theme.js"))
@@ -394,33 +387,54 @@ mod tests {
     #[test]
     fn test_layout_authenticated_nav_exposes_user_actions() {
         let html = layout_html(Some("testuser"));
-        assert!(html.contains("testuser"), "{html}");
-        for target in ["/_info", "/tree"] {
+        for target in ["/", "/settings", "/_info", "/auth/logout"] {
             assert!(html.contains(target), "missing nav target {target}: {html}");
         }
+        for label in [">Home</a>", ">Manage</a>", ">Docs</a>", ">Logout</button>"] {
+            assert!(html.contains(label), "missing nav item {label}: {html}");
+        }
         assert!(
-            !html.contains("href=\"/settings\""),
-            "settings should live under Tree: {html}"
+            !html.contains("testuser") && !html.contains("twig-nav-user"),
+            "authenticated nav does not display the account name: {html}"
+        );
+        assert!(
+            !html.contains("/manage/namespaces"),
+            "Namespaces is not a separate primary nav item: {html}"
+        );
+        assert!(
+            !html.contains("/auth/login"),
+            "authenticated nav has no login link: {html}"
         );
         assert!(
             html.contains("method=\"POST\" action=\"/auth/logout\""),
             "logout stays a real POST form: {html}"
         );
         assert!(
-            !html.contains("/auth/login"),
-            "authenticated nav has no login link: {html}"
+            index_of(&html, ">Home</a>") < index_of(&html, ">Manage</a>")
+                && index_of(&html, ">Manage</a>") < index_of(&html, ">Docs</a>")
+                && index_of(&html, "twig-masthead-start") < index_of(&html, "twig-masthead-end")
+                && index_of(&html, "twig-masthead-end") < index_of(&html, ">Logout</button>")
+                && index_of(&html, ">Logout</button>") < index_of(&html, "twig-theme-toggle"),
+            "primary and account navigation are ordered in their left/right groups: {html}"
         );
     }
 
     #[test]
-    fn test_layout_anonymous_nav_offers_login_and_signup() {
+    fn test_layout_anonymous_nav_offers_login() {
         let html = layout_html(None);
-        for target in ["/_info", "/auth/login", "/auth/signup"] {
+        for target in ["/", "/settings", "/_info", "/auth/login"] {
             assert!(html.contains(target), "missing nav target {target}: {html}");
+        }
+        for label in [">Home</a>", ">Manage</a>", ">Docs</a>", ">Login</a>"] {
+            assert!(html.contains(label), "missing nav item {label}: {html}");
         }
         assert!(
             !html.contains("/auth/logout"),
             "anonymous nav has no logout: {html}"
+        );
+        assert!(
+            !html.contains("/auth/signup"),
+            "signup stays off the nav: {html}"
         );
     }
 

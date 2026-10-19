@@ -70,7 +70,7 @@ async fn test_tree_hub_and_admin_data_view_are_gated_and_paginated() {
     let response = test::call_service(
         &app,
         test::TestRequest::get()
-            .uri("/tree")
+            .uri("/manage")
             .cookie(actix_web::cookie::Cookie::new("session", &admin_token))
             .to_request(),
     )
@@ -94,7 +94,7 @@ async fn test_tree_hub_and_admin_data_view_are_gated_and_paginated() {
     let response = test::call_service(
         &app,
         test::TestRequest::get()
-            .uri("/tree/repositories")
+            .uri("/manage/repositories")
             .cookie(actix_web::cookie::Cookie::new("session", &admin_token))
             .to_request(),
     )
@@ -102,13 +102,13 @@ async fn test_tree_hub_and_admin_data_view_are_gated_and_paginated() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = test::read_body(response).await;
     let html = String::from_utf8(body.to_vec()).unwrap();
-    assert!(html.contains("aria-current=\"page\" href=\"/tree/repositories\">Repository</a>"));
+    assert!(html.contains("aria-current=\"page\" href=\"/manage/repositories\">Repository</a>"));
     assert!(html.contains("You don't have any repositories to delete."));
 
     let response = test::call_service(
         &app,
         test::TestRequest::get()
-            .uri("/tree/data?table=scroll_fixture")
+            .uri("/manage/data?table=scroll_fixture")
             .cookie(actix_web::cookie::Cookie::new("session", &other_token))
             .to_request(),
     )
@@ -118,7 +118,7 @@ async fn test_tree_hub_and_admin_data_view_are_gated_and_paginated() {
     let response = test::call_service(
         &app,
         test::TestRequest::get()
-            .uri("/tree/data?table=scroll_fixture")
+            .uri("/manage/data?table=scroll_fixture")
             .cookie(actix_web::cookie::Cookie::new("session", &admin_token))
             .to_request(),
     )
@@ -134,7 +134,7 @@ async fn test_tree_hub_and_admin_data_view_are_gated_and_paginated() {
     let response = test::call_service(
         &app,
         test::TestRequest::get()
-            .uri("/tree/data/rows?table=scroll_fixture&offset=50")
+            .uri("/manage/data/rows?table=scroll_fixture&offset=50")
             .cookie(actix_web::cookie::Cookie::new("session", &admin_token))
             .to_request(),
     )
@@ -148,7 +148,7 @@ async fn test_tree_hub_and_admin_data_view_are_gated_and_paginated() {
     let response = test::call_service(
         &app,
         test::TestRequest::get()
-            .uri("/tree/data/rows?table=scroll_fixture&offset=100")
+            .uri("/manage/data/rows?table=scroll_fixture&offset=100")
             .cookie(actix_web::cookie::Cookie::new("session", &admin_token))
             .to_request(),
     )
@@ -162,7 +162,7 @@ async fn test_tree_hub_and_admin_data_view_are_gated_and_paginated() {
     let response = test::call_service(
         &app,
         test::TestRequest::get()
-            .uri("/tree/data/rows?table=scroll_fixture&offset=99999999999")
+            .uri("/manage/data/rows?table=scroll_fixture&offset=99999999999")
             .cookie(actix_web::cookie::Cookie::new("session", &admin_token))
             .to_request(),
     )

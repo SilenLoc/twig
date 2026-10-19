@@ -5,24 +5,27 @@ use super::*;
 #[test]
 fn tree_hub_only_renders_enabled_sections() {
     let minimal = render_tree_hub(false, false, false, None).into_string();
+    assert!(minimal.contains("aria-label=\"Manage sections\""));
     assert!(minimal.contains(">Account</a>"));
-    assert!(minimal.contains("href=\"/tree/repositories\">Repository</a>"));
-    assert!(minimal.contains("href=\"/tree/namespaces\""));
+    assert!(minimal.contains("href=\"/manage/repositories\">Repository</a>"));
+    assert!(minimal.contains("href=\"/manage/namespaces\""));
     assert!(!minimal.contains(">Test</a>"));
     assert!(!minimal.contains(">Data</a>"));
 
     let enabled = render_tree_hub(true, true, true, Some("data")).into_string();
     assert!(enabled.contains("href=\"/_test\""));
-    assert!(enabled.contains("href=\"/tree/namespaces\""));
-    assert!(!enabled.contains("aria-current=\"page\" href=\"/tree/repositories\">Repository</a>"));
-    assert!(enabled.contains("href=\"/tree/data\""));
-    assert!(enabled.contains("aria-current=\"page\" href=\"/tree/data\""));
-    assert!(enabled.contains("href=\"/tree/users\">User Management</a>"));
+    assert!(enabled.contains("href=\"/manage/namespaces\""));
+    assert!(
+        !enabled.contains("aria-current=\"page\" href=\"/manage/repositories\">Repository</a>")
+    );
+    assert!(enabled.contains("href=\"/manage/data\""));
+    assert!(enabled.contains("aria-current=\"page\" href=\"/manage/data\""));
+    assert!(enabled.contains("href=\"/manage/users\">User Management</a>"));
     let repository_active =
         render_tree_hub(false, false, false, Some("repositories")).into_string();
     assert!(
         repository_active
-            .contains("aria-current=\"page\" href=\"/tree/repositories\">Repository</a>")
+            .contains("aria-current=\"page\" href=\"/manage/repositories\">Repository</a>")
     );
 }
 
@@ -128,5 +131,5 @@ fn data_page_uses_the_infinite_scroll_placeholder() {
         render_data_page(&["users".to_string()], "users", Some(&page), 0, false).into_string();
     assert!(html.contains("hx-trigger=\"revealed\""));
     assert!(html.contains("hx-swap=\"outerHTML\""));
-    assert!(html.contains("/tree/data/rows?table=users&amp;offset=50"));
+    assert!(html.contains("/manage/data/rows?table=users&amp;offset=50"));
 }

@@ -6,24 +6,29 @@ use crate::email::InvitationDelivery;
 use super::access::UserManagementScope;
 use super::invitations::{format_expiry, is_expired};
 
-pub(super) fn render_user_management_tabs(active_tab: &str) -> Markup {
+pub(super) fn render_user_management_tabs(active_tab: &str, oob: bool) -> Markup {
     let is_invites = active_tab == "invites";
 
     html! {
-        nav class="twig-tabs" aria-label="User management" {
+        nav
+            id="user-management-tabs"
+            hx-swap-oob=[oob.then_some("outerHTML")]
+            class="twig-tabs"
+            aria-label="User management"
+        {
             a
                 class="twig-tab"
                 aria-current=[(!is_invites).then_some("page")]
-                href="/tree/users?tab=users"
-                hx-get="/tree/users?tab=users"
+                href="/manage/users?tab=users"
+                hx-get="/manage/users?tab=users"
                 hx-target="#user-management-content"
                 hx-push-url="true"
             { "Users" }
             a
                 class="twig-tab"
                 aria-current=[is_invites.then_some("page")]
-                href="/tree/users?tab=invites"
-                hx-get="/tree/users?tab=invites"
+                href="/manage/users?tab=invites"
+                hx-get="/manage/users?tab=invites"
                 hx-target="#user-management-content"
                 hx-push-url="true"
             { "Invites" }
@@ -51,7 +56,7 @@ pub(super) fn render_user_management_content(
                     }
                     form
                         class="twig-form"
-                        hx-post="/tree/invites"
+                        hx-post="/manage/invites"
                         hx-target="#invite-result"
                         hx-swap="innerHTML"
                         "hx-status:4xx"="swap:innerHTML target:#invite-result"
@@ -184,7 +189,21 @@ pub(super) fn render_user_management(
     users: &[UserManagementEntry],
 ) -> Markup {
     html! {
-        (render_user_management_tabs(active_tab))
+        (render_user_management_tabs(active_tab, false))
+        div id="user-management-content" {
+            (render_user_management_content(scope, active_tab, invitations, users))
+        }
+    }
+}
+
+pub(super) fn render_user_management_htmx(
+    scope: &UserManagementScope,
+    active_tab: &str,
+    invitations: &[NamespaceInvitation],
+    users: &[UserManagementEntry],
+) -> Markup {
+    html! {
+        (render_user_management_tabs(active_tab, true))
         div id="user-management-content" {
             (render_user_management_content(scope, active_tab, invitations, users))
         }
@@ -229,7 +248,7 @@ pub(super) fn render_invitation_list(invitations: &[NamespaceInvitation], oob: b
                                 }
                                 @if status == "Pending" {
                                     form
-                                        hx-post=(format!("/tree/invites/{}/resend", invitation.token))
+                                         hx-post=(format!("/manage/invites/{}/resend", invitation.token))
                                         hx-target="#invite-result"
                                         hx-swap="innerHTML"
                                         "hx-status:4xx"="swap:innerHTML target:#invite-result"

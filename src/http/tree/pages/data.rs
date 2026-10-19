@@ -31,7 +31,7 @@ pub(super) fn render_data_page(
             div class="twig-panel-body" {
                 nav class="twig-tabs" aria-label="Database tables" {
                     @for table in tables {
-                        a class="twig-tab" aria-current=[(table == selected).then_some("page")] href=(format!("/tree/data?table={table}")) { (table) }
+                        a class="twig-tab" aria-current=[(table == selected).then_some("page")] href=(format!("/manage/data?table={table}")) { (table) }
                     }
                 }
                 @if let Some(page) = page {
@@ -77,7 +77,7 @@ fn render_data_row(row: &[String]) -> maud::Markup {
 fn render_load_more(table: &str, offset: usize) -> maud::Markup {
     maud::html! {
         tr
-            hx-get=(format!("/tree/data/rows?table={table}&offset={offset}"))
+            hx-get=(format!("/manage/data/rows?table={table}&offset={offset}"))
             hx-trigger="revealed"
             hx-swap="outerHTML"
         {
@@ -115,7 +115,7 @@ async fn require_admin(
     Ok(admin_user.to_string())
 }
 
-#[get("/tree/data")]
+#[get("/manage/data")]
 pub async fn data_page(
     req: HttpRequest,
     server: web::Data<config::Server>,
@@ -166,7 +166,7 @@ pub async fn data_page(
         .body(content.into_string())
 }
 
-#[get("/tree/data/rows")]
+#[get("/manage/data/rows")]
 pub async fn data_rows(
     req: HttpRequest,
     server: web::Data<config::Server>,

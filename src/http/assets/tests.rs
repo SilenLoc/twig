@@ -158,6 +158,22 @@ fn test_rich_editor_code_uses_theme_aware_contrast() {
 }
 
 #[test]
+fn test_panel_content_clears_the_header_rule() {
+    let css = css_without_comments(body_of("twig.css"));
+    let rule = css
+        .split(".twig-panel-head + .twig-panel-body")
+        .nth(1)
+        .expect("panel header/body spacing rule exists")
+        .split('}')
+        .next()
+        .expect("panel header/body spacing rule closes");
+    assert!(
+        rule.contains("padding-block-start: var(--twig-panel-pad)"),
+        "panel content needs breathing room after its divider"
+    );
+}
+
+#[test]
 fn test_twig_css_honours_the_depth_and_motion_bans() {
     let css = css_without_comments(body_of("twig.css"));
     for banned in ["box-shadow", "backdrop-filter", "text-shadow", "100vh"] {

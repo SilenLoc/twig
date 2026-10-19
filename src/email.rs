@@ -1,6 +1,6 @@
 use actix_web::http::Uri;
 use maud::html;
-use resend_rs::{Config, Resend, types::CreateEmailBaseOptions};
+use reqwest::{Client, Url};
 
 use crate::auth::NamespaceRole;
 
@@ -14,7 +14,9 @@ pub enum InvitationDelivery {
 }
 
 pub struct ResendMailer {
-    client: Resend,
+    client: Client,
+    api_key: String,
+    emails_url: Url,
     from: String,
 }
 
@@ -25,12 +27,20 @@ impl ResendMailer {
     }
 
     pub fn with_base_url(api_key: &str, from: &str, base_url: &str) -> Result<Self, String> {
-        let base_url = base_url
-            .parse()
+        let base_url =
+            Url::parse(base_url).map_err(|error| format!("Invalid Resend API URL: {error}"))?;
+        let emails_url = base_url
+            .join("emails")
             .map_err(|error| format!("Invalid Resend API URL: {error}"))?;
-        let config = Config::builder(api_key).base_url(base_url).build();
+        let _provider_already_installed =
+            rustls::crypto::ring::default_provider().install_default();
+        let client = Client::builder()
+            .build()
+            .map_err(|error| format!("Failed to create email HTTP client: {error}"))?;
         Ok(Self {
-            client: Resend::with_config(config),
+            client,
+            api_key: api_key.to_string(),
+            emails_url,
             from: from.to_string(),
         })
     }
@@ -53,16 +63,28 @@ impl ResendMailer {
             "You have been invited to join the {namespace} namespace on Twig. Your role is {}.\n\nSet up your account: {invite_url}",
             role.display_name()
         );
-        let email = CreateEmailBaseOptions::new(&self.from, [recipient], subject)
-            .with_html(&body)
-            .with_text(&text);
-
-        self.client
-            .emails
-            .send(email)
+        let response = self
+            .client
+            .post(self.emails_url.clone())
+            .bearer_auth(&self.api_key)
+            .json(&serde_json::json!({
+                "from": self.from,
+                "to": [recipient],
+                "subject": subject,
+                "html": body,
+                "text": text,
+            }))
+            .send()
             .await
-            .map(|_| ())
-            .map_err(|error| error.to_string())
+            .map_err(|error| error.to_string())?;
+
+        if response.status().is_success() {
+            return Ok(());
+        }
+
+        let status = response.status();
+        let body = response.text().await.map_err(|error| error.to_string())?;
+        Err(format!("Resend API returned {status}: {body}"))
     }
 }
 

@@ -6,7 +6,7 @@ use crate::http::view::render_layout;
 
 use super::UserManagementQuery;
 use super::invitations::invitations_for_scope;
-use super::views::{render_user_management, render_user_management_content};
+use super::views::{render_user_management, render_user_management_htmx};
 
 pub(super) struct UserManagementScope {
     pub(super) user: User,
@@ -62,7 +62,7 @@ pub(super) async fn user_management_scope(
     })
 }
 
-#[get("/tree/users")]
+#[get("/manage/users")]
 pub async fn user_management_page(
     req: HttpRequest,
     server: web::Data<config::Server>,
@@ -111,7 +111,7 @@ pub async fn user_management_page(
         Vec::new()
     };
     let content = if req.headers().contains_key("HX-Request") {
-        render_user_management_content(&scope, active_tab, &invitations, &users).into_string()
+        render_user_management_htmx(&scope, active_tab, &invitations, &users).into_string()
     } else {
         let page = maud::html! {
             (crate::http::tree::pages::render_tree_hub(

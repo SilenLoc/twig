@@ -13,15 +13,6 @@ use super::shared::render_settings_auth_error;
 /// Renders the settings page body shared by the full-page and HTMX responses.
 pub(super) fn render_settings(user: &crate::auth::User) -> maud::Markup {
     maud::html! {
-        nav class="twig-crumbs twig-crumbs--page" aria-label="Breadcrumb" {
-            a href="/" { "Namespaces" }
-            span class="twig-crumb-sep" aria-hidden="true" { "/" }
-            span aria-current="page" { "Account" }
-        }
-
-        section class="twig-pagehead" {
-        }
-
         div class="twig-bento" {
             (render_profile_panel(user))
         }

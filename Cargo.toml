@@ -1,6 +1,6 @@
 [package]
 name = "twig"
-version = "0.3.6"
+version = "0.3.7"
 edition = "2024"
 
 [workspace]
@@ -19,7 +19,6 @@ hex = "0.4"
 log = "0.4"
 pulldown-cmark = "0.13"
 qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
-resend-rs = { version = "0.34.0", default-features = false, features = ["rustls-tls"] }
 semver = "1"
 toml = "1.1"
 turso = { version = "0.8.2", default-features = false }
@@ -53,6 +52,16 @@ default-features = false
 [dependencies.maud]
 version = "0.27.0"
 features = ["actix-web"]
+
+[dependencies.reqwest]
+version = "0.13.5"
+default-features = false
+features = ["json", "rustls-no-provider"]
+
+[dependencies.rustls]
+version = "0.23"
+default-features = false
+features = ["ring", "std", "tls12"]
 
 [dependencies.mermaid-rs-renderer]
 version = "0.3.1"

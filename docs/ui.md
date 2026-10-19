@@ -99,12 +99,12 @@ Available to signed-in users:
 - Delete repositories explicitly marked `deleteable = true` in `.twig.toml`.
 - Delete an owned namespace only after its repositories have been removed.
 
-### Tree and admin tools
+### Manage and admin tools
 
-`/tree` redirects signed-in users to Settings. The Tree navigation can also
-show the following optional tools:
+The Manage area links to account settings and namespace management. Optional
+tools may also be available:
 
-#### Database data (`/tree/data`)
+#### Database data (`/manage/data`)
 
 Enabled only when `ADMIN_USER` names a Twig account. It shows read-only database
 tables and their rows in pages of 50.

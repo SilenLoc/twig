@@ -79,7 +79,7 @@ pub(super) async fn load_namespace_page_data(
     })
 }
 
-#[get("/tree/repositories")]
+#[get("/manage/repositories")]
 pub async fn repositories_page(
     req: HttpRequest,
     server: web::Data<config::Server>,

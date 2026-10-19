@@ -79,7 +79,7 @@ async fn deliver_invitation(
     .await
 }
 
-#[post("/tree/invites")]
+#[post("/manage/invites")]
 pub async fn create_namespace_invitation(
     req: HttpRequest,
     server: web::Data<config::Server>,
@@ -162,7 +162,7 @@ pub async fn create_namespace_invitation(
     )
 }
 
-#[post("/tree/invites/{id}/resend")]
+#[post("/manage/invites/{id}/resend")]
 pub async fn resend_namespace_invitation(
     req: HttpRequest,
     server: web::Data<config::Server>,

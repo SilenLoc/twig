@@ -1,6 +1,6 @@
 use super::*;
 use crate::git;
-use crate::http::view::test_util::{classes_in, index_of};
+use crate::http::view::test_util::classes_in;
 
 fn user_fixture(email: Option<&str>) -> crate::auth::User {
     crate::auth::User {
@@ -45,25 +45,15 @@ fn empty_rename_panel_html() -> String {
 }
 
 #[test]
-fn test_settings_leads_with_crumbs_and_page_head() {
+fn test_settings_has_no_redundant_namespace_breadcrumb() {
     let html = populated_html();
     assert!(
-        html.contains("<nav class=\"twig-crumbs twig-crumbs--page\" aria-label=\"Breadcrumb\">"),
-        "breadcrumb must be a labelled nav landmark: {html}"
+        !html.contains("twig-crumbs") && !html.contains("Namespaces"),
+        "the Account tab does not repeat a Namespaces breadcrumb: {html}"
     );
     assert!(
-        html.contains("<span class=\"twig-crumb-sep\" aria-hidden=\"true\">/</span>"),
-        "separators are decorative: {html}"
-    );
-    assert!(
-        html.contains("<span aria-current=\"page\">Account</span>"),
-        "final crumb names the account page: {html}"
-    );
-    let crumbs = index_of(&html, "twig-crumbs");
-    let head = index_of(&html, "<section class=\"twig-pagehead\">");
-    assert!(
-        crumbs < head && head < index_of(&html, "twig-bento"),
-        "crumbs sit above the page head and bento: {html}"
+        !html.contains("twig-pagehead"),
+        "the account page has no empty page head: {html}"
     );
 }
 

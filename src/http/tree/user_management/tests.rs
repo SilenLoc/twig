@@ -40,11 +40,48 @@ fn invitation() -> NamespaceInvitation {
 fn full_user_management_render_has_one_link_per_tab() {
     let markup = render_user_management(&scope(), "invites", &[], &[]).into_string();
 
-    assert_eq!(markup.matches("href=\"/tree/users?tab=users\"").count(), 1);
     assert_eq!(
-        markup.matches("href=\"/tree/users?tab=invites\"").count(),
+        markup.matches("href=\"/manage/users?tab=users\"").count(),
         1
     );
+    assert_eq!(
+        markup.matches("href=\"/manage/users?tab=invites\"").count(),
+        1
+    );
+}
+
+#[test]
+fn user_management_tabs_mark_the_selected_tab_and_htmx_refreshes_them() {
+    let users_markup = render_user_management(&scope(), "users", &[], &[]).into_string();
+    let users_link = users_markup
+        .split("<a ")
+        .nth(1)
+        .unwrap()
+        .split("</a>")
+        .next()
+        .unwrap();
+    let invites_link = users_markup
+        .split("<a ")
+        .nth(2)
+        .unwrap()
+        .split("</a>")
+        .next()
+        .unwrap();
+    assert!(users_link.contains("href=\"/manage/users?tab=users\""));
+    assert!(users_link.contains("aria-current=\"page\""));
+    assert!(!invites_link.contains("aria-current=\"page\""));
+
+    let htmx_markup = render_user_management_htmx(&scope(), "users", &[], &[]).into_string();
+    assert!(htmx_markup.contains("id=\"user-management-tabs\" hx-swap-oob=\"outerHTML\""));
+    let users_link = htmx_markup
+        .split("<a ")
+        .nth(1)
+        .unwrap()
+        .split("</a>")
+        .next()
+        .unwrap();
+    assert!(users_link.contains("href=\"/manage/users?tab=users\""));
+    assert!(users_link.contains("aria-current=\"page\""));
 }
 
 #[test]
@@ -52,8 +89,8 @@ fn htmx_user_management_response_contains_content_without_tabs() {
     for tab in ["users", "invites"] {
         let markup = render_user_management_content(&scope(), tab, &[], &[]).into_string();
 
-        assert!(!markup.contains("href=\"/tree/users?tab=users\""));
-        assert!(!markup.contains("href=\"/tree/users?tab=invites\""));
+        assert!(!markup.contains("href=\"/manage/users?tab=users\""));
+        assert!(!markup.contains("href=\"/manage/users?tab=invites\""));
         assert!(!markup.contains("id=\"user-management-content\""));
     }
 }
@@ -62,7 +99,7 @@ fn htmx_user_management_response_contains_content_without_tabs() {
 fn invite_tab_renders_htmx_form_with_contributor_default_and_expiry() {
     let markup = render_user_management(&scope(), "invites", &[], &[]).into_string();
     for expected in [
-        "hx-post=\"/tree/invites\"",
+        "hx-post=\"/manage/invites\"",
         "name=\"email\"",
         "name=\"namespace\"",
         "value=\"contributor\" selected",
@@ -79,7 +116,7 @@ fn invite_tab_renders_htmx_form_with_contributor_default_and_expiry() {
 #[test]
 fn users_tab_is_reachable_with_htmx_and_renders_scoped_placeholder() {
     let markup = render_user_management(&scope(), "users", &[], &[]).into_string();
-    assert!(markup.contains("hx-get=\"/tree/users?tab=users\""));
+    assert!(markup.contains("hx-get=\"/manage/users?tab=users\""));
     assert!(markup.contains("No users found."));
 }
 
@@ -157,7 +194,7 @@ fn pending_invitation_lists_have_an_htmx_resend_action() {
     let invitation = invitation();
     let markup = render_invitation_list(&[invitation], false).into_string();
     assert!(markup.contains("Pending"));
-    assert!(markup.contains("hx-post=\"/tree/invites/"));
+    assert!(markup.contains("hx-post=\"/manage/invites/"));
     assert!(markup.contains("/resend\""));
     assert!(markup.contains("aria-label=\"Resend invitation to invitee@example.com\""));
 }

@@ -24,20 +24,20 @@
     color-scheme: dark;
 
     /* Dark ink: black ground, raised grayscale surfaces. */
-    --twig-void: #000000;
-    --twig-surface-0: #101010;
-    --twig-surface-1: #191919;
-    --twig-surface-2: #252525;
-    --twig-surface-3: #333333;
+    --twig-void: #080808;
+    --twig-surface-0: #141414;
+    --twig-surface-1: #1d1d1d;
+    --twig-surface-2: #292929;
+    --twig-surface-3: #373737;
 
     /* Ink */
-    --twig-ink-primary: #f2f2f2;
-    --twig-ink-secondary: #c9c9c9;
-    --twig-ink-tertiary: #999999;
+    --twig-ink-primary: #ededed;
+    --twig-ink-secondary: #c8c8c8;
+    --twig-ink-tertiary: #a0a0a0;
 
     /* Rules */
-    --twig-rule: #414141;
-    --twig-rule-strong: #a5a5a5;
+    --twig-rule: #454545;
+    --twig-rule-strong: #9b9b9b;
 
     /* Interaction and feedback remain grayscale. */
     --twig-accent-700: #b5b5b5;
@@ -50,16 +50,16 @@
     --twig-signal-ok: #c8c8c8;
     --twig-signal-warn: #a0a0a0;
 
-    /* Syntax roles are semantic so language grammars can share one palette. */
-    --twig-syntax-keyword: #f0f0f0;
-    --twig-syntax-type: #dfdfdf;
-    --twig-syntax-function: #cccccc;
-    --twig-syntax-macro: #b8b8b8;
-    --twig-syntax-string: #a8a8a8;
-    --twig-syntax-lifetime: #d4d4d4;
-    --twig-syntax-number: #c0c0c0;
-    --twig-syntax-comment: #929292;
-    --twig-syntax-attribute: #e7e7e7;
+    /* Syntax uses color for quick token recognition, even on the e-ink UI. */
+    --twig-syntax-keyword: #d7a5ff;
+    --twig-syntax-type: #9ec1ff;
+    --twig-syntax-function: #83e0d4;
+    --twig-syntax-macro: #ffd479;
+    --twig-syntax-string: #c6f5a6;
+    --twig-syntax-lifetime: #ffad8a;
+    --twig-syntax-number: #ffb86c;
+    --twig-syntax-comment: #a9c7a0;
+    --twig-syntax-attribute: #ff9fca;
 
     /* Families */
     --twig-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -112,7 +112,7 @@
     --twig-masthead-h: 56px;
     --twig-panel-pad: var(--twig-space-4);
     --twig-row-h: 56px;
-    --twig-nav-gap: var(--twig-space-3);
+    --twig-nav-gap: var(--twig-space-4);
 
     /* Motion */
     --twig-dur-micro: 90ms;
@@ -126,18 +126,18 @@
     color-scheme: light;
 
     /* Light ink on a soft-gray field. */
-    --twig-void: #ffffff;
-    --twig-surface-0: #f0f0f0;
-    --twig-surface-1: #ffffff;
-    --twig-surface-2: #e7e7e7;
-    --twig-surface-3: #dcdcdc;
+    --twig-void: #f7f7f7;
+    --twig-surface-0: #eeeeee;
+    --twig-surface-1: #f7f7f7;
+    --twig-surface-2: #e5e5e5;
+    --twig-surface-3: #d9d9d9;
 
-    --twig-ink-primary: #171717;
-    --twig-ink-secondary: #414141;
-    --twig-ink-tertiary: #686868;
+    --twig-ink-primary: #1b1b1b;
+    --twig-ink-secondary: #444444;
+    --twig-ink-tertiary: #696969;
 
-    --twig-rule: #c4c4c4;
-    --twig-rule-strong: #666666;
+    --twig-rule: #c3c3c3;
+    --twig-rule-strong: #696969;
 
     --twig-accent-700: #252525;
     --twig-accent-500: #444444;
@@ -148,15 +148,15 @@
     --twig-signal-ok: #484848;
     --twig-signal-warn: #707070;
 
-    --twig-syntax-keyword: #202020;
-    --twig-syntax-type: #343434;
-    --twig-syntax-function: #484848;
-    --twig-syntax-macro: #5b5b5b;
-    --twig-syntax-string: #676767;
-    --twig-syntax-lifetime: #555555;
-    --twig-syntax-number: #414141;
-    --twig-syntax-comment: #777777;
-    --twig-syntax-attribute: #2d2d2d;
+    --twig-syntax-keyword: #6b21a8;
+    --twig-syntax-type: #1e40af;
+    --twig-syntax-function: #0f6257;
+    --twig-syntax-macro: #854d0e;
+    --twig-syntax-string: #166534;
+    --twig-syntax-lifetime: #9a3412;
+    --twig-syntax-number: #9f1239;
+    --twig-syntax-comment: #48634d;
+    --twig-syntax-attribute: #9d174d;
 }
 
 @media (min-width: 48rem) {
@@ -284,6 +284,23 @@ body.twig-workspace-shell {
     min-block-size: var(--twig-masthead-h);
 }
 
+.twig-masthead-start,
+.twig-masthead-end {
+    display: flex;
+    align-items: center;
+}
+
+.twig-masthead-start {
+    flex: 1 1 auto;
+    gap: var(--twig-space-2);
+    min-inline-size: 0;
+}
+
+.twig-masthead-end {
+    flex: 0 0 auto;
+    gap: var(--twig-space-2);
+}
+
 .twig-wordmark {
     display: inline-flex;
     align-items: center;
@@ -315,6 +332,16 @@ body.twig-workspace-shell {
     scrollbar-width: none;
 }
 
+.twig-nav--primary {
+    flex: 0 1 auto;
+}
+
+.twig-nav--account {
+    flex: 0 0 auto;
+    gap: var(--twig-space-2);
+    overflow: visible;
+}
+
 .twig-nav::-webkit-scrollbar {
     display: none;
 }
@@ -323,6 +350,13 @@ body.twig-workspace-shell {
    full 44px height, natural text width, so every item stays visible at 375px. */
 .twig-nav .twig-btn {
     padding-inline: 0;
+    font-size: var(--twig-t-body-sm);
+    letter-spacing: 0.02em;
+    text-transform: none;
+}
+
+.twig-nav .twig-btn:hover {
+    border-block-end-color: var(--twig-rule-strong);
 }
 
 .twig-nav form {
@@ -335,15 +369,14 @@ body.twig-workspace-shell {
     align-items: center;
     justify-content: center;
     flex: 0 0 auto;
-    gap: var(--twig-space-2);
-    padding-inline: var(--twig-space-3);
+    inline-size: var(--twig-control-h);
+    padding-inline: 0;
     border-color: var(--twig-rule-strong);
     color: var(--twig-ink-primary);
-    letter-spacing: 0.08em;
 }
 
-.twig-masthead .twig-theme-toggle {
-    margin-inline-start: auto;
+.twig-nav--account .twig-nav-user {
+    max-inline-size: 8ch;
 }
 
 .twig-theme-toggle:hover {
@@ -352,22 +385,8 @@ body.twig-workspace-shell {
 }
 
 .twig-theme-icon {
-    font-size: 1.05rem;
+    font-size: 1.25rem;
     line-height: 1;
-}
-
-.twig-theme-label {
-    font-size: var(--twig-t-eyebrow);
-    font-weight: 600;
-    letter-spacing: 0.1em;
-}
-
-.twig-theme-label::after {
-    content: "E-INK DARK";
-}
-
-:root[data-twig-theme="light"] .twig-theme-label::after {
-    content: "E-INK LIGHT";
 }
 
 .twig-nav-user {
@@ -415,6 +434,22 @@ body.twig-workspace-shell {
 }
 
 @media (min-width: 48rem) {
+    .twig-masthead-start {
+        gap: var(--twig-space-6);
+    }
+
+    .twig-masthead-end {
+        gap: var(--twig-space-4);
+    }
+
+    .twig-nav--account {
+        gap: var(--twig-space-3);
+    }
+
+    .twig-nav--account .twig-nav-user {
+        max-inline-size: 12ch;
+    }
+
     .twig-optic-rule--column {
         margin-block-end: var(--twig-space-12);
     }
@@ -658,7 +693,7 @@ body.twig-workspace-shell {
 }
 
 .twig-panel-head + .twig-panel-body {
-    padding-block-start: 0;
+    padding-block-start: var(--twig-panel-pad);
 }
 
 .twig-panel--flush > .twig-panel-body {

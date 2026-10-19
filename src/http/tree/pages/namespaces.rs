@@ -182,7 +182,7 @@ fn render_namespace_deletion_panel(deletable_namespaces: &[String]) -> maud::Mar
     }
 }
 
-#[get("/tree/namespaces")]
+#[get("/manage/namespaces")]
 pub async fn namespaces_page(
     req: HttpRequest,
     server: web::Data<config::Server>,

@@ -115,13 +115,13 @@ async fn test_signup_page_loads() {
 #[actix_web::test]
 async fn test_user_management_renders_admin_page_and_htmx_tabs() {
     let (app, session, owner_session, _, _, _) = create_admin_test_service().await;
-    let req = test::TestRequest::get().uri("/tree/users").to_request();
+    let req = test::TestRequest::get().uri("/manage/users").to_request();
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), StatusCode::FOUND);
     assert_eq!(resp.headers().get("Location").unwrap(), "/auth/login");
 
     let req = test::TestRequest::get()
-        .uri("/tree/users")
+        .uri("/manage/users")
         .cookie(actix_web::cookie::Cookie::new("session", session.clone()))
         .to_request();
     let resp = test::call_service(&app, req).await;
@@ -131,22 +131,22 @@ async fn test_user_management_renders_admin_page_and_htmx_tabs() {
     assert!(body.contains("<title>User Management · Twig</title>"));
     assert!(body.contains("User Management"));
     assert_eq!(
-        body.matches("href=\"/tree/users?tab=users\"").count(),
+        body.matches("href=\"/manage/users?tab=users\"").count(),
         1,
         "full page should contain one Users tab"
     );
     assert_eq!(
-        body.matches("href=\"/tree/users?tab=invites\"").count(),
+        body.matches("href=\"/manage/users?tab=invites\"").count(),
         1,
         "full page should contain one Invites tab"
     );
-    assert!(body.contains("hx-post=\"/tree/invites\""));
+    assert!(body.contains("hx-post=\"/manage/invites\""));
     assert!(body.contains("value=\"contributor\" selected"));
     assert!(body.contains("value=\"acme\""));
     assert!(body.contains("value=\"docs-team\""));
 
     let req = test::TestRequest::get()
-        .uri("/tree/users?tab=users")
+        .uri("/manage/users?tab=users")
         .cookie(actix_web::cookie::Cookie::new("session", session.clone()))
         .insert_header(("HX-Request", "true"))
         .to_request();
@@ -158,11 +158,12 @@ async fn test_user_management_renders_admin_page_and_htmx_tabs() {
     assert!(body.contains("owner"));
     assert!(body.contains("admin"));
     assert!(!body.contains("<title>"));
-    assert!(!body.contains("href=\"/tree/users?tab=users\""));
-    assert!(!body.contains("href=\"/tree/users?tab=invites\""));
+    assert!(body.contains("id=\"user-management-tabs\" hx-swap-oob=\"outerHTML\""));
+    assert!(body.contains("href=\"/manage/users?tab=users\""));
+    assert!(body.contains("aria-current=\"page\""));
 
     let req = test::TestRequest::get()
-        .uri("/tree/users?tab=invites")
+        .uri("/manage/users?tab=invites")
         .cookie(actix_web::cookie::Cookie::new("session", session))
         .insert_header(("HX-Request", "true"))
         .to_request();
@@ -172,11 +173,12 @@ async fn test_user_management_renders_admin_page_and_htmx_tabs() {
     let body = String::from_utf8(body.to_vec()).unwrap();
     assert!(body.contains("Create invitation"));
     assert!(body.contains("No invitations yet."));
-    assert!(!body.contains("href=\"/tree/users?tab=users\""));
-    assert!(!body.contains("href=\"/tree/users?tab=invites\""));
+    assert!(body.contains("id=\"user-management-tabs\" hx-swap-oob=\"outerHTML\""));
+    assert!(body.contains("href=\"/manage/users?tab=invites\""));
+    assert!(body.contains("aria-current=\"page\""));
 
     let req = test::TestRequest::get()
-        .uri("/tree/users?tab=users")
+        .uri("/manage/users?tab=users")
         .cookie(actix_web::cookie::Cookie::new("session", owner_session))
         .to_request();
     let resp = test::call_service(&app, req).await;
@@ -192,7 +194,7 @@ async fn test_user_management_renders_admin_page_and_htmx_tabs() {
 async fn test_created_invitation_completes_account_and_membership_setup() {
     let (app, session, _, _, db, _) = create_admin_test_service().await;
     let req = test::TestRequest::post()
-        .uri("/tree/invites")
+        .uri("/manage/invites")
         .cookie(actix_web::cookie::Cookie::new("session", session.clone()))
         .set_form([
             ("email", "sam@example.com"),
@@ -218,7 +220,7 @@ async fn test_created_invitation_completes_account_and_membership_setup() {
     let token = invite_path.rsplit('/').next().unwrap();
 
     let req = test::TestRequest::post()
-        .uri(&format!("/tree/invites/{token}/resend"))
+        .uri(&format!("/manage/invites/{token}/resend"))
         .cookie(actix_web::cookie::Cookie::new("session", session))
         .to_request();
     let resp = test::call_service(&app, req).await;

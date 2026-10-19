@@ -18,6 +18,10 @@ fn test_render_test_page_is_idle_until_started() {
     assert!(markup.contains("id=\"btn-stop\""));
     assert!(markup.contains("hx-get=\"/_test/runner\""));
     assert!(markup.contains("hx-get=\"/_test/stopped\""));
+    assert!(
+        !markup.contains("twig-crumbs") && !markup.contains("Twig</a>"),
+        "the test page does not repeat a Twig breadcrumb: {markup}"
+    );
     assert!(markup.contains("id=\"test-runner-idle\""));
     assert!(!markup.contains("id=\"test-runner\""));
     assert!(!markup.contains("hx-trigger=\"every 25ms\""));

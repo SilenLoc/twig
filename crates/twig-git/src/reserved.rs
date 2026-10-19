@@ -18,6 +18,7 @@ const RESERVED_REPO_NAMES: &[&str] = &[
     "up",
     "auth",
     "init",
+    "manage",
 ];
 
 /// Whether `name` is reserved. Compared case-insensitively so the check still
@@ -59,12 +60,20 @@ mod tests {
     fn test_reserved_check_is_case_insensitive() {
         assert!(is_reserved_repo_name("auth"));
         assert!(is_reserved_repo_name("AUTH"));
+        assert!(is_reserved_repo_name("MANAGE"));
         assert!(validate_repo_name("SeTtInGs").is_err());
+        assert!(validate_repo_name("MANAGE").is_err());
     }
 
     #[test]
     fn test_namespace_level_routes_are_reserved() {
-        for name in ["create-repo", "create-repo-form", "settings", "assets"] {
+        for name in [
+            "create-repo",
+            "create-repo-form",
+            "settings",
+            "assets",
+            "manage",
+        ] {
             assert!(
                 validate_repo_name(name).is_err(),
                 "{name} should be reserved"

@@ -143,7 +143,7 @@ async fn contributor_cannot_create_namespaces_or_repositories_but_can_access_exi
     );
 
     let req = test::TestRequest::get()
-        .uri("/tree/users")
+        .uri("/manage/users")
         .cookie(actix_web::cookie::Cookie::new(
             "session",
             contributor_session,

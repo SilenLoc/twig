@@ -31,7 +31,7 @@ pub use invitations::{create_namespace_invitation, resend_namespace_invitation};
 #[cfg(test)]
 use views::{
     render_invitation_created, render_invitation_list, render_user_management,
-    render_user_management_content,
+    render_user_management_content, render_user_management_htmx,
 };
 
 #[cfg(test)]

@@ -3,11 +3,6 @@ use super::{CallerRole, generate_qr_svg, list_test_endpoints};
 fn render_pagehead(role: &CallerRole) -> maud::Markup {
     maud::html! {
         section class="twig-pagehead" {
-            nav class="twig-crumbs twig-crumbs--page" aria-label="Breadcrumb" {
-                a href="/" { "Twig" }
-                span class="twig-crumb-sep" aria-hidden="true" { "/" }
-                span aria-current="page" { "Test Suite" }
-            }
             div class="twig-cluster" {
                 div {
                     p class="twig-eyebrow" { (role.display_name()) }
