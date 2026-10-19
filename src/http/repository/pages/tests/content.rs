@@ -166,3 +166,31 @@ fn test_content_view_reports_missing_paths_and_binary_files() {
         "no remote editor scripts: {html}"
     );
 }
+
+#[test]
+fn source_files_show_line_links_and_a_column_ruler() {
+    let html = render_content_file(
+        "acme",
+        "my-project",
+        "main.rs",
+        b"fn main() {\n  let value = 1;\n}",
+    )
+    .into_string();
+
+    assert_eq!(
+        count_of(&html, "class=\"twig-code-line-number\""),
+        3,
+        "{html}"
+    );
+    assert!(html.contains("id=\"L1\" href=\"#L1\""), "{html}");
+    assert!(html.contains("id=\"L3\" href=\"#L3\""), "{html}");
+    assert!(
+        html.contains("class=\"twig-code-column-ruler\" aria-label=\"Column numbers\""),
+        "{html}"
+    );
+    assert!(html.contains("1        10"), "{html}");
+    assert!(
+        html.contains("<span class=\"twig-syn-keyword\">fn</span>"),
+        "{html}"
+    );
+}

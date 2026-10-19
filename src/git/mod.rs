@@ -84,7 +84,7 @@ pub async fn git_handler(
             &git_req,
             body_bytes,
             username.as_deref(),
-            namespace_role.map(|role| role.as_str()),
+            namespace_role.map(crate::auth::NamespaceRole::as_str),
         )
     })
     .await;
@@ -93,7 +93,7 @@ pub async fn git_handler(
         Ok(Ok((headers, response_body))) => build_cgi_response(&headers, response_body),
         Ok(Err(e)) => {
             log::error!("Git HTTP backend failed: {e}");
-            HttpResponse::InternalServerError().body(e.to_string())
+            HttpResponse::InternalServerError().body(e)
         }
         Err(e) => {
             log::error!("Git HTTP backend blocking task failed: {e}");

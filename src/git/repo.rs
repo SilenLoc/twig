@@ -57,7 +57,7 @@ pub async fn init(
     .await
     {
         Ok(Some(permissions)) if permissions.contains(NamespacePermission::CreateRepositories) => {}
-        Ok(Some(_)) | Ok(None) => {
+        Ok(Some(_) | None) => {
             return HttpResponse::Forbidden().body("Only namespace owners can create repositories");
         }
         Err(e) => {

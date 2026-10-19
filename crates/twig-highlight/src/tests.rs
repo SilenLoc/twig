@@ -98,6 +98,28 @@ fn handles_nested_comments_raw_strings_raw_identifiers_and_lifetimes() {
 }
 
 #[test]
+fn highlighted_lines_preserve_multiline_tokens_and_ignore_a_trailing_newline() {
+    let lines = highlight_path_lines(
+        "src/main.rs",
+        "/* first line\r\nsecond line */\r\nfn main() {}\r\n",
+    )
+    .unwrap();
+
+    assert_eq!(lines.len(), 3);
+    assert_eq!(
+        lines[0],
+        "<span class=\"twig-syn-comment\">/* first line</span>"
+    );
+    assert_eq!(
+        lines[1],
+        "<span class=\"twig-syn-comment\">second line */</span>"
+    );
+    assert!(lines[2].contains("<span class=\"twig-syn-keyword\">fn</span>"));
+
+    assert_eq!(highlight_path_lines("empty.rs", "").unwrap(), vec![""]);
+}
+
+#[test]
 fn unclosed_constructs_are_still_safely_rendered() {
     let html = highlight("rust", "/* unfinished <tag>\n\"unfinished").unwrap();
     assert!(html.contains("&lt;tag&gt;"));

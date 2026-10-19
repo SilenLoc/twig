@@ -2404,6 +2404,46 @@ body.twig-workspace-shell {
     tab-size: 2;
 }
 
+.twig-code-grid {
+    display: grid;
+    grid-template-columns: max-content max-content;
+    column-gap: var(--twig-space-4);
+    inline-size: max-content;
+    min-inline-size: 100%;
+}
+
+.twig-code-gutter,
+.twig-code-line-number {
+    min-inline-size: 4ch;
+    min-block-size: 1.6em;
+    padding-inline-end: var(--twig-space-3);
+    border-inline-end: 1px solid var(--twig-rule);
+    color: var(--twig-ink-tertiary);
+    text-align: end;
+}
+
+.twig-code-line-number {
+    text-decoration: none;
+    user-select: none;
+}
+
+.twig-code-line-number:hover {
+    color: var(--twig-ink-primary);
+    text-decoration: underline;
+}
+
+.twig-code-column-ruler {
+    min-block-size: 1.6em;
+    color: var(--twig-ink-tertiary);
+    white-space: pre;
+    user-select: none;
+}
+
+.twig-code-line-source {
+    min-block-size: 1.6em;
+    white-space: pre;
+}
+
 /* Highlight spans use language-independent roles; grammar changes do not
    couple tokenization to either the dark or light palette. */
 .twig-syn-keyword {

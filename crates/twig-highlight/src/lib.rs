@@ -48,21 +48,59 @@ impl TokenKind {
 /// Output target for a grammar. Both plain text and tokens are HTML-escaped.
 pub struct HtmlWriter<'a> {
     output: &'a mut String,
+    lines: Option<&'a mut Vec<String>>,
 }
 
 impl HtmlWriter<'_> {
     /// Writes source text without adding markup.
     pub fn text(&mut self, text: &str) {
-        escape_into(self.output, text);
+        if self.lines.is_none() {
+            escape_into(self.output, text);
+            return;
+        }
+
+        for segment in text.split_inclusive('\n') {
+            let has_newline = segment.ends_with('\n');
+            let content = segment.strip_suffix('\n').unwrap_or(segment);
+            escape_into(self.output, content);
+            if has_newline {
+                self.finish_line();
+            }
+        }
     }
 
     /// Writes a highlighted token using its stable semantic CSS class.
     pub fn token(&mut self, kind: TokenKind, text: &str) {
+        if self.lines.is_some() {
+            for segment in text.split_inclusive('\n') {
+                let has_newline = segment.ends_with('\n');
+                let content = segment.strip_suffix('\n').unwrap_or(segment);
+                self.open_token(kind);
+                escape_into(self.output, content);
+                self.output.push_str("</span>");
+                if has_newline {
+                    self.finish_line();
+                }
+            }
+            return;
+        }
+
+        self.open_token(kind);
+        escape_into(self.output, text);
+        self.output.push_str("</span>");
+    }
+
+    fn open_token(&mut self, kind: TokenKind) {
         self.output.push_str("<span class=\"twig-syn-");
         self.output.push_str(kind.class());
         self.output.push_str("\">");
-        escape_into(self.output, text);
-        self.output.push_str("</span>");
+    }
+
+    fn finish_line(&mut self) {
+        self.lines
+            .as_deref_mut()
+            .expect("line output is enabled")
+            .push(std::mem::take(self.output));
     }
 }
 
@@ -94,6 +132,38 @@ pub fn highlight_path(path: &str, source: &str) -> Option<String> {
     highlight(extension, source)
 }
 
+/// Highlights a file into separate HTML lines while preserving multiline
+/// token highlighting. A trailing newline does not produce an extra display
+/// line; empty source produces one empty line.
+pub fn highlight_path_lines(path: &str, source: &str) -> Option<Vec<String>> {
+    let extension = Path::new(path).extension()?.to_str()?;
+    let grammar = grammars().iter().find(|grammar| {
+        grammar.name.eq_ignore_ascii_case(extension)
+            || grammar
+                .aliases
+                .iter()
+                .chain(&grammar.extensions)
+                .any(|value| value.eq_ignore_ascii_case(extension))
+    })?;
+
+    let source = source.replace("\r\n", "\n");
+    let mut output = String::with_capacity(source.len());
+    let mut lines = Vec::new();
+    grammar.highlight(
+        &source,
+        &mut HtmlWriter {
+            output: &mut output,
+            lines: Some(&mut lines),
+        },
+    );
+
+    if source.is_empty() || !source.ends_with('\n') {
+        lines.push(output);
+    }
+
+    Some(lines)
+}
+
 /// Runs a grammar directly, useful for grammars that are not in the built-in
 /// language registry.
 pub fn highlight_with<G: Grammar + ?Sized>(grammar: &G, source: &str) -> String {
@@ -102,6 +172,7 @@ pub fn highlight_with<G: Grammar + ?Sized>(grammar: &G, source: &str) -> String 
         source,
         &mut HtmlWriter {
             output: &mut output,
+            lines: None,
         },
     );
     output

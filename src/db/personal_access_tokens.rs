@@ -6,18 +6,33 @@ use crate::auth::{
 };
 use crate::db::Database;
 
+pub struct NewPersonalAccessToken<'a> {
+    pub id: &'a str,
+    pub user_id: &'a str,
+    pub name: &'a str,
+    pub token_hash: &'a str,
+    pub token_hint: &'a str,
+    pub namespace_ids: &'a [String],
+    pub permissions: &'a [NamespacePermission],
+    pub expires_at: Option<&'a str>,
+}
+
 impl Database {
     pub async fn create_personal_access_token(
         &self,
-        id: &str,
-        user_id: &str,
-        name: &str,
-        token_hash: &str,
-        token_hint: &str,
-        namespace_ids: &[String],
-        permissions: &[NamespacePermission],
-        expires_at: Option<&str>,
+        token: NewPersonalAccessToken<'_>,
     ) -> Result<(), String> {
+        let NewPersonalAccessToken {
+            id,
+            user_id,
+            name,
+            token_hash,
+            token_hint,
+            namespace_ids,
+            permissions,
+            expires_at,
+        } = token;
+
         let conn = self.conn().await?;
         conn.execute("BEGIN IMMEDIATE", ())
             .await
@@ -98,9 +113,9 @@ impl Database {
         let mut tokens: Vec<PersonalAccessToken> = Vec::new();
         while let Some(row) = rows.next().await.map_err(|error| error.to_string())? {
             let id: String = row.get(0).map_err(|error| error.to_string())?;
-            let token_index = match tokens.iter().position(|token| token.id == id) {
-                Some(index) => index,
-                None => {
+            let token_index = if let Some(index) = tokens.iter().position(|token| token.id == id) {
+                index
+            } else {
                     tokens.push(PersonalAccessToken {
                         id: id.clone(),
                         name: row.get(1).map_err(|error| error.to_string())?,
@@ -111,7 +126,6 @@ impl Database {
                         scopes: Vec::new(),
                     });
                     tokens.len() - 1
-                }
             };
 
             let namespace_id: Option<String> = row.get(6).map_err(|error| error.to_string())?;
@@ -123,19 +137,18 @@ impl Database {
             let permission = NamespacePermission::parse(&permission_name)
                 .ok_or_else(|| format!("Unknown token permission: {permission_name}"))?;
             let scopes = &mut tokens[token_index].scopes;
-            let scope_index = match scopes
+            let scope_index = if let Some(index) = scopes
                 .iter()
                 .position(|scope| scope.namespace_id == namespace_id)
             {
-                Some(index) => index,
-                None => {
+                index
+            } else {
                     scopes.push(TokenNamespacePermissions {
                         namespace_id: namespace_id.clone(),
                         namespace_name,
                         permissions: PermissionSet::default(),
                     });
                     scopes.len() - 1
-                }
             };
             scopes[scope_index].permissions.insert(permission);
         }
@@ -307,16 +320,16 @@ mod tests {
             NamespacePermission::ViewNamespace,
             NamespacePermission::PushChanges,
         ];
-        db.create_personal_access_token(
-            "token-row-1",
-            &user.id,
-            "Build server",
-            "secret-hash",
-            "9a2f",
-            &namespace_ids,
-            &permissions,
-            None,
-        )
+        db.create_personal_access_token(NewPersonalAccessToken {
+            id: "token-row-1",
+            user_id: &user.id,
+            name: "Build server",
+            token_hash: "secret-hash",
+            token_hint: "9a2f",
+            namespace_ids: &namespace_ids,
+            permissions: &permissions,
+            expires_at: None,
+        })
         .await
         .expect("store token and grants");
 
@@ -349,31 +362,31 @@ mod tests {
         let (db, db_path, user, namespace_ids) = setup_db().await;
         let token = "twigt_database_auth_token";
         let hash = crate::auth::hash_personal_access_token(token);
-        db.create_personal_access_token(
-            "token-auth-valid",
-            &user.id,
-            "Valid token",
-            &hash,
-            "oken",
-            &namespace_ids,
-            &[NamespacePermission::PushChanges],
-            None,
-        )
+        db.create_personal_access_token(NewPersonalAccessToken {
+            id: "token-auth-valid",
+            user_id: &user.id,
+            name: "Valid token",
+            token_hash: &hash,
+            token_hint: "oken",
+            namespace_ids: &namespace_ids,
+            permissions: &[NamespacePermission::PushChanges],
+            expires_at: None,
+        })
         .await
         .expect("store valid token");
 
         let expired_at = (chrono::Utc::now() - chrono::Duration::minutes(1)).to_rfc3339();
         let expired_hash = crate::auth::hash_personal_access_token("twigt_database_expired");
-        db.create_personal_access_token(
-            "token-auth-expired",
-            &user.id,
-            "Expired token",
-            &expired_hash,
-            "ired",
-            &namespace_ids,
-            &[NamespacePermission::ViewNamespace],
-            Some(&expired_at),
-        )
+        db.create_personal_access_token(NewPersonalAccessToken {
+            id: "token-auth-expired",
+            user_id: &user.id,
+            name: "Expired token",
+            token_hash: &expired_hash,
+            token_hint: "ired",
+            namespace_ids: &namespace_ids,
+            permissions: &[NamespacePermission::ViewNamespace],
+            expires_at: Some(&expired_at),
+        })
         .await
         .expect("store expired token");
 
@@ -429,16 +442,16 @@ mod tests {
         )
         .expect("create other user");
         db.create_user(&other_user).await.expect("store other user");
-        db.create_personal_access_token(
-            "token-row-2",
-            &user.id,
-            "Owner token",
-            "another-hash",
-            "ab12",
-            &namespace_ids,
-            &[NamespacePermission::ViewNamespace],
-            None,
-        )
+        db.create_personal_access_token(NewPersonalAccessToken {
+            id: "token-row-2",
+            user_id: &user.id,
+            name: "Owner token",
+            token_hash: "another-hash",
+            token_hint: "ab12",
+            namespace_ids: &namespace_ids,
+            permissions: &[NamespacePermission::ViewNamespace],
+            expires_at: None,
+        })
         .await
         .expect("store token");
 
@@ -478,16 +491,16 @@ mod tests {
     #[tokio::test]
     async fn token_permissions_table_rejects_unknown_permission_codes() {
         let (db, db_path, user, namespace_ids) = setup_db().await;
-        db.create_personal_access_token(
-            "token-row-3",
-            &user.id,
-            "Owner token",
-            "unknown-code-hash",
-            "cdef",
-            &namespace_ids,
-            &[NamespacePermission::ViewNamespace],
-            None,
-        )
+        db.create_personal_access_token(NewPersonalAccessToken {
+            id: "token-row-3",
+            user_id: &user.id,
+            name: "Owner token",
+            token_hash: "unknown-code-hash",
+            token_hint: "cdef",
+            namespace_ids: &namespace_ids,
+            permissions: &[NamespacePermission::ViewNamespace],
+            expires_at: None,
+        })
         .await
         .expect("store token");
 

@@ -10,6 +10,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::db::Database;
+use crate::db::personal_access_tokens::NewPersonalAccessToken;
 
 pub mod permissions;
 pub mod session_store;
@@ -282,16 +283,16 @@ impl TwigContext {
         let permissions = permissions.iter().collect::<Vec<NamespacePermission>>();
 
         self.db
-            .create_personal_access_token(
-                &token_id,
+            .create_personal_access_token(NewPersonalAccessToken {
+                id: &token_id,
                 user_id,
                 name,
-                &token_hash,
-                &token_hint,
+                token_hash: &token_hash,
+                token_hint: &token_hint,
                 namespace_ids,
-                &permissions,
+                permissions: &permissions,
                 expires_at,
-            )
+            })
             .await?;
 
         let tokens = match self.db.list_personal_access_tokens(user_id).await {

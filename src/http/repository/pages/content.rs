@@ -288,17 +288,67 @@ pub(super) fn render_content_file(namespace: &str, repo: &str, path: &str, bytes
                         (maud::PreEscaped(markdown_to_html(&text, namespace, repo, parent_path(path))))
                     }
                 } @else {
-                    pre class="twig-code" tabindex="0" aria-label=(format!("{path} contents")) {
-                        @if let Some(highlighted) = twig_highlight::highlight_path(path, &text) {
-                            code { (maud::PreEscaped(highlighted)) }
+                    (render_source_code(path, &text))
+                }
+            }
+        }
+    }
+}
+
+fn render_source_code(path: &str, source: &str) -> Markup {
+    let highlighted_lines = twig_highlight::highlight_path_lines(path, source);
+    let source_lines = if source.is_empty() {
+        vec![""]
+    } else {
+        source.lines().collect::<Vec<_>>()
+    };
+    let max_columns = source_lines
+        .iter()
+        .map(|line| line.chars().count())
+        .max()
+        .unwrap_or(0)
+        .max(1);
+    let ruler = column_ruler(max_columns);
+
+    maud::html! {
+        pre class="twig-code" tabindex="0" aria-label=(format!("{path} contents")) {
+            code class="twig-code-grid" {
+                span class="twig-code-gutter" aria-hidden="true" { "LINE" }
+                span class="twig-code-column-ruler" aria-label="Column numbers" title="Column ruler" { (ruler) }
+                @for (index, line) in source_lines.iter().enumerate() {
+                    @let line_number = index + 1;
+                    @let line_id = format!("L{line_number}");
+                    a id=(line_id) href=(format!("#{line_id}")) class="twig-code-line-number" aria-label=(format!("Line {line_number}")) { (line_number) }
+                    span class="twig-code-line-source" {
+                        @if let Some(lines) = &highlighted_lines {
+                            @if let Some(highlighted_line) = lines.get(index) {
+                                (maud::PreEscaped(highlighted_line))
+                            }
                         } @else {
-                            code { (text) }
+                            (line)
                         }
                     }
                 }
             }
         }
     }
+}
+
+fn column_ruler(max_columns: usize) -> String {
+    let mut ruler = String::new();
+    let mut column = 1;
+
+    while column <= max_columns {
+        let column_offset = column - 1;
+        let ruler_width = ruler.chars().count();
+        if ruler_width < column_offset {
+            ruler.push_str(&" ".repeat(column_offset - ruler_width));
+        }
+        ruler.push_str(&column.to_string());
+        column = if column == 1 { 10 } else { column + 10 };
+    }
+
+    ruler
 }
 
 /// The Scripts tab: each configured group becomes a sub-tab labelled with the

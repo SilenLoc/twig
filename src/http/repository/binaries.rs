@@ -200,7 +200,7 @@ async fn require_namespace_writer(
     .await
     {
         Ok(Some(permissions)) if permissions.contains(NamespacePermission::PushChanges) => Ok(()),
-        Ok(Some(_)) | Ok(None) => {
+        Ok(Some(_) | None) => {
             Err(HttpResponse::Forbidden().body("Push permission required for namespace"))
         }
         Err(error) => {

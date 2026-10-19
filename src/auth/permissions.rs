@@ -110,10 +110,6 @@ impl PermissionSet {
         Self(self.0.intersection(&other.0).copied().collect())
     }
 
-    pub fn is_subset_of(&self, other: &Self) -> bool {
-        self.0.is_subset(&other.0)
-    }
-
     pub fn iter(&self) -> impl Iterator<Item = NamespacePermission> + '_ {
         self.0.iter().copied()
     }
@@ -235,7 +231,11 @@ mod tests {
 
         assert!(effective.contains(NamespacePermission::PushChanges));
         assert_eq!(effective.iter().count(), 1);
-        assert!(effective.is_subset_of(&user_permissions));
+        assert!(
+            effective
+                .iter()
+                .all(|permission| user_permissions.contains(permission))
+        );
     }
 
     #[tokio::test]
