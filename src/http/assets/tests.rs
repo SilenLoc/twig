@@ -4,10 +4,13 @@ use actix_web::{http::header::HeaderValue, test as aw_test, web};
 use crate::config;
 
 fn body_of(filename: &str) -> &'static str {
-    find(filename).map_or_else(
-        || panic!("{filename} must be a known asset"),
-        |(asset, _)| asset.body,
+    std::str::from_utf8(
+        find(filename)
+            .unwrap_or_else(|| panic!("{filename} must be a known asset"))
+            .0
+            .body,
     )
+    .unwrap_or_else(|_| panic!("{filename} must be a text asset"))
 }
 
 fn css_without_comments(css: &str) -> String {
@@ -61,6 +64,16 @@ fn test_asset_constants_are_non_empty() {
     ] {
         assert!(
             !body_of(filename).is_empty(),
+            "{filename} should not be empty"
+        );
+    }
+
+    for filename in [
+        "ibm-plex-mono-variable.woff2",
+        "ibm-plex-sans-variable.woff2",
+    ] {
+        assert!(
+            !find(filename).unwrap().0.body.is_empty(),
             "{filename} should not be empty"
         );
     }
@@ -314,6 +327,8 @@ async fn test_assets_handler_known_files() {
         ("turndown.js", "application/javascript"),
         ("twig.svg", "image/svg+xml"),
         ("twig.schema.json", "application/schema+json"),
+        ("ibm-plex-mono-variable.woff2", "font/woff2"),
+        ("ibm-plex-sans-variable.woff2", "font/woff2"),
     ] {
         for (path, expected_cache) in [
             (url(name), config::DEFAULT_CACHE_CONTROL),

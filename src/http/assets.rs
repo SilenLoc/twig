@@ -16,7 +16,7 @@ struct Asset {
     stem: &'static str,
     extension: &'static str,
     content_type: &'static str,
-    body: &'static str,
+    body: &'static [u8],
 }
 
 impl Asset {
@@ -34,79 +34,91 @@ const ASSETS: &[Asset] = &[
         stem: "t",
         extension: "css",
         content_type: "text/css; charset=utf-8",
-        body: include_str!("../../assets/t.css"),
+        body: include_bytes!("../../assets/t.css"),
     },
     Asset {
         stem: "twig",
         extension: "css",
         content_type: "text/css; charset=utf-8",
-        body: include_str!("../../assets/twig.css"),
+        body: include_bytes!("../../assets/twig.css"),
     },
     Asset {
         stem: "theme",
         extension: "js",
         content_type: "application/javascript; charset=utf-8",
-        body: include_str!("../../assets/theme.js"),
+        body: include_bytes!("../../assets/theme.js"),
     },
     Asset {
         stem: "h",
         extension: "js",
         content_type: "application/javascript; charset=utf-8",
-        body: include_str!("../../assets/h.js"),
+        body: include_bytes!("../../assets/h.js"),
     },
     Asset {
         stem: "hx-live",
         extension: "js",
         content_type: "application/javascript; charset=utf-8",
-        body: include_str!("../../assets/hx-live.js"),
+        body: include_bytes!("../../assets/hx-live.js"),
     },
     Asset {
         stem: "repo-edit",
         extension: "js",
         content_type: "application/javascript; charset=utf-8",
-        body: include_str!("../../assets/repo-edit.js"),
+        body: include_bytes!("../../assets/repo-edit.js"),
     },
     Asset {
         stem: "quill",
         extension: "js",
         content_type: "application/javascript; charset=utf-8",
-        body: include_str!("../../assets/vendor/quill/quill.min.js"),
+        body: include_bytes!("../../assets/vendor/quill/quill.min.js"),
     },
     Asset {
         stem: "quill.snow",
         extension: "css",
         content_type: "text/css; charset=utf-8",
-        body: include_str!("../../assets/vendor/quill/quill.snow.css"),
+        body: include_bytes!("../../assets/vendor/quill/quill.snow.css"),
     },
     Asset {
         stem: "marked",
         extension: "js",
         content_type: "application/javascript; charset=utf-8",
-        body: include_str!("../../assets/vendor/marked/marked.umd.js"),
+        body: include_bytes!("../../assets/vendor/marked/marked.umd.js"),
     },
     Asset {
         stem: "purify",
         extension: "js",
         content_type: "application/javascript; charset=utf-8",
-        body: include_str!("../../assets/vendor/dompurify/purify.min.js"),
+        body: include_bytes!("../../assets/vendor/dompurify/purify.min.js"),
     },
     Asset {
         stem: "turndown",
         extension: "js",
         content_type: "application/javascript; charset=utf-8",
-        body: include_str!("../../assets/vendor/turndown/turndown.js"),
+        body: include_bytes!("../../assets/vendor/turndown/turndown.js"),
     },
     Asset {
         stem: "twig",
         extension: "svg",
         content_type: "image/svg+xml",
-        body: include_str!("../../assets/twig.svg"),
+        body: include_bytes!("../../assets/twig.svg"),
     },
     Asset {
         stem: "twig.schema",
         extension: "json",
         content_type: "application/schema+json; charset=utf-8",
-        body: include_str!("../../assets/twig.schema.json"),
+        body: include_bytes!("../../assets/twig.schema.json"),
+    },
+    Asset {
+        stem: "ibm-plex-mono-variable",
+        extension: "woff2",
+        content_type: "font/woff2",
+        body: include_bytes!("../../assets/fonts/ibm-plex-mono-variable.woff2"),
+    },
+    Asset {
+        stem: "ibm-plex-sans-variable",
+        extension: "woff2",
+        content_type: "font/woff2",
+        body: include_bytes!("../../assets/fonts/ibm-plex-sans-variable.woff2"),
     },
 ];
 
@@ -139,14 +151,14 @@ pub async fn assets(req: HttpRequest, config: web::Data<config::Server>) -> impl
         Some((asset, true)) => HttpResponse::Ok()
             .content_type(asset.content_type)
             .insert_header((CACHE_CONTROL, config.cache_control().clone()))
-            .body(asset.body),
+            .body(web::Bytes::from_static(asset.body)),
         Some((asset, false)) => HttpResponse::Ok()
             .content_type(asset.content_type)
             .insert_header((
                 CACHE_CONTROL,
                 HeaderValue::from_static(UNVERSIONED_CACHE_CONTROL),
             ))
-            .body(asset.body),
+            .body(web::Bytes::from_static(asset.body)),
         None => HttpResponse::NotFound().body("Not found"),
     }
 }

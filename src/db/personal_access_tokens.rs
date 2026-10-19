@@ -116,16 +116,16 @@ impl Database {
             let token_index = if let Some(index) = tokens.iter().position(|token| token.id == id) {
                 index
             } else {
-                    tokens.push(PersonalAccessToken {
-                        id: id.clone(),
-                        name: row.get(1).map_err(|error| error.to_string())?,
-                        token_hint: row.get(2).map_err(|error| error.to_string())?,
-                        created_at: row.get(3).map_err(|error| error.to_string())?,
-                        last_used_at: row.get(4).map_err(|error| error.to_string())?,
-                        expires_at: row.get(5).map_err(|error| error.to_string())?,
-                        scopes: Vec::new(),
-                    });
-                    tokens.len() - 1
+                tokens.push(PersonalAccessToken {
+                    id: id.clone(),
+                    name: row.get(1).map_err(|error| error.to_string())?,
+                    token_hint: row.get(2).map_err(|error| error.to_string())?,
+                    created_at: row.get(3).map_err(|error| error.to_string())?,
+                    last_used_at: row.get(4).map_err(|error| error.to_string())?,
+                    expires_at: row.get(5).map_err(|error| error.to_string())?,
+                    scopes: Vec::new(),
+                });
+                tokens.len() - 1
             };
 
             let namespace_id: Option<String> = row.get(6).map_err(|error| error.to_string())?;
@@ -143,12 +143,12 @@ impl Database {
             {
                 index
             } else {
-                    scopes.push(TokenNamespacePermissions {
-                        namespace_id: namespace_id.clone(),
-                        namespace_name,
-                        permissions: PermissionSet::default(),
-                    });
-                    scopes.len() - 1
+                scopes.push(TokenNamespacePermissions {
+                    namespace_id: namespace_id.clone(),
+                    namespace_name,
+                    permissions: PermissionSet::default(),
+                });
+                scopes.len() - 1
             };
             scopes[scope_index].permissions.insert(permission);
         }
