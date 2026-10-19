@@ -40,6 +40,7 @@ mod namespaces;
 mod profile;
 mod repositories;
 mod shared;
+mod tokens;
 
 pub use namespaces::{delete_namespace, rename_namespace};
 #[cfg(test)]
@@ -47,6 +48,9 @@ use profile::render_settings;
 pub use profile::{settings_page, update_email};
 pub use repositories::{delete_repo, move_repo, rename_repo};
 pub(crate) use repositories::{render_repo_deletion_panel, render_repo_rename_panel};
+pub use tokens::{
+    create_personal_access_token, personal_access_tokens_page, revoke_personal_access_token,
+};
 
 #[cfg(test)]
 #[path = "pages/tests.rs"]

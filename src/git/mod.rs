@@ -3,9 +3,8 @@ use std::path::Path;
 use actix_web::{HttpRequest, HttpResponse, web};
 
 use crate::auth::{
-    TwigContext, User, extract_basic_auth,
+    AuthenticatedPrincipal, CredentialAuth, TwigContext, User,
     permissions::{self, NamespacePermission, PermissionSet},
-    verify_password,
 };
 use crate::config;
 use crate::git::repo::bare_init;
@@ -243,22 +242,22 @@ async fn is_authenticated(
     auth_state: &web::Data<TwigContext>,
     namespace_name: &str,
 ) -> Result<Option<AuthResult>, HttpResponse> {
-    let user = authenticate_git_user(req, auth_state, namespace_name).await?;
-    let username = user.username.clone();
+    let principal = authenticate_git_user(req, auth_state, namespace_name).await?;
+    let username = principal.user.username.clone();
     let db = auth_state.db();
 
     // Resolve effective permissions. Unknown namespaces can only be
     // bootstrapped by users who still have namespace-creation permission.
     log::debug!(
         "Checking namespace access: user_id='{}' namespace='{}'",
-        user.id,
+        principal.user.id,
         namespace_name
     );
-    match permissions::for_user(
+    match permissions::for_principal(
         db,
-        &user.id,
+        &principal,
         namespace_name,
-        server.is_configured_admin(&user.username),
+        server.is_configured_admin(&principal.user.username),
     )
     .await
     {
@@ -267,7 +266,7 @@ async fn is_authenticated(
                 "Git auth success: user='{username}' has access to namespace='{namespace_name}'"
             );
             Ok(Some(AuthResult {
-                user,
+                user: principal.user,
                 namespace_exists: true,
                 permissions,
             }))
@@ -277,18 +276,19 @@ async fn is_authenticated(
                 log::warn!(
                     "Git auth failed: user='{}' (id='{}') does NOT have access to namespace='{}'",
                     username,
-                    user.id,
+                    principal.user.id,
                     namespace_name
                 );
                 Ok(None)
             }
-            Ok(None) => match db.user_can_create_namespace(&user.id).await {
+            Ok(None) if principal.token_permissions.is_some() => Ok(None),
+            Ok(None) => match db.user_can_create_namespace(&principal.user.id).await {
                 Ok(true) => {
                     log::info!(
                         "Git auth success: user='{username}' can create namespace='{namespace_name}' (doesn't exist)"
                     );
                     Ok(Some(AuthResult {
-                        user,
+                        user: principal.user,
                         namespace_exists: false,
                         permissions: PermissionSet::from_role(crate::auth::NamespaceRole::Owner),
                     }))
@@ -322,49 +322,24 @@ async fn authenticate_git_user(
     req: &HttpRequest,
     auth_state: &web::Data<TwigContext>,
     namespace_name: &str,
-) -> Result<User, HttpResponse> {
-    let Some((username, password)) = extract_basic_auth(req) else {
-        log::warn!("Git auth failed: No basic auth credentials for namespace '{namespace_name}'");
-        return Err(HttpResponse::Unauthorized()
-            .insert_header(("WWW-Authenticate", "Basic realm=\"git\""))
-            .body("Missing credentials"));
-    };
-
-    log::debug!("Git auth attempt: user='{username}' namespace='{namespace_name}'");
-
-    let db = auth_state.db();
-
-    // Get user from database
-    let user = match db.get_user_by_username(&username).await {
-        Ok(Some(user)) => {
-            log::debug!("Git auth: Found user '{}' with id '{}'", username, user.id);
-            user
+) -> Result<AuthenticatedPrincipal, HttpResponse> {
+    match auth_state.authenticate_request(req).await {
+        Ok(CredentialAuth::Authenticated(principal)) => Ok(principal),
+        Ok(CredentialAuth::Missing) => {
+            log::warn!("Git auth failed: No credentials for namespace '{namespace_name}'");
+            Err(HttpResponse::Unauthorized()
+                .insert_header(("WWW-Authenticate", "Basic realm=\"git\""))
+                .body("Missing credentials"))
         }
-        Ok(None) => {
-            log::warn!("Git auth failed: User '{username}' not found in database");
-            return Err(HttpResponse::Unauthorized().body("Invalid credentials"));
+        Ok(CredentialAuth::Invalid) => {
+            log::warn!("Git auth failed: Invalid credentials for namespace '{namespace_name}'");
+            Err(HttpResponse::Unauthorized().body("Invalid credentials"))
         }
-        Err(e) => {
-            log::error!("Database error looking up user '{username}': {e}");
-            return Err(actix_web::HttpResponse::InternalServerError().body("Database error"));
-        }
-    };
-
-    // Verify password
-    match verify_password(&password, &user.password_hash) {
-        Ok(true) => {
-            log::debug!("Git auth: Password verified for user '{username}'");
-        }
-        Ok(false) => {
-            log::warn!("Git auth failed: Invalid password for user '{username}'");
-            return Err(HttpResponse::Unauthorized().body("Invalid credentials"));
-        }
-        Err(e) => {
-            log::error!("Password verification error for user '{username}': {e}");
-            return Err(HttpResponse::InternalServerError().body("Authentication error"));
+        Err(error) => {
+            log::error!("Git authentication failed for namespace '{namespace_name}': {error}");
+            Err(HttpResponse::InternalServerError().body("Authentication error"))
         }
     }
-    Ok(user)
 }
 
 /// Ensures a namespace exists in the database, creating it if necessary.

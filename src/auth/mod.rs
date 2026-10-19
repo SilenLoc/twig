@@ -1,15 +1,19 @@
+use std::collections::BTreeMap;
+
 use actix_identity::IdentityExt;
 use actix_web::HttpRequest;
 use argon2::password_hash::phc::PasswordHash;
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
 use rand::TryRng;
 use rand::rngs::SysRng;
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::db::Database;
 
 pub mod permissions;
 pub mod session_store;
+pub use permissions::{NamespacePermission, PermissionSet};
 
 #[derive(Debug, Clone)]
 pub struct User {
@@ -81,6 +85,38 @@ pub struct NamespaceInvitation {
 }
 
 #[derive(Debug, Clone)]
+pub struct TokenNamespacePermissions {
+    pub namespace_id: String,
+    pub namespace_name: String,
+    pub permissions: PermissionSet,
+}
+
+#[derive(Debug, Clone)]
+pub struct PersonalAccessToken {
+    pub id: String,
+    pub name: String,
+    pub token_hint: String,
+    pub created_at: String,
+    pub last_used_at: Option<String>,
+    pub expires_at: Option<String>,
+    pub scopes: Vec<TokenNamespacePermissions>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AuthenticatedPrincipal {
+    pub user: User,
+    // None means ordinary password authentication; Some is the token's namespace scope.
+    pub token_permissions: Option<BTreeMap<String, PermissionSet>>,
+}
+
+#[derive(Debug, Clone)]
+pub enum CredentialAuth {
+    Missing,
+    Invalid,
+    Authenticated(AuthenticatedPrincipal),
+}
+
+#[derive(Debug, Clone)]
 pub struct NewNamespaceInvitation {
     pub email: String,
     pub namespace_id: String,
@@ -122,6 +158,16 @@ pub fn generate_token() -> String {
     hex::encode(bytes)
 }
 
+pub const PERSONAL_ACCESS_TOKEN_PREFIX: &str = "twigt_";
+
+pub fn generate_personal_access_token() -> String {
+    format!("{PERSONAL_ACCESS_TOKEN_PREFIX}{}", generate_token())
+}
+
+pub fn hash_personal_access_token(token: &str) -> String {
+    hex::encode(Sha256::digest(token.as_bytes()))
+}
+
 pub fn create_user(username: String, email: String, password: &str) -> Result<User, String> {
     let password_hash = hash_password(password)?;
     let id = Uuid::new_v4().to_string();
@@ -159,12 +205,12 @@ pub fn extract_basic_auth(req: &HttpRequest) -> Option<(String, String)> {
     let auth_header = req.headers().get("Authorization")?;
     let auth_str = auth_header.to_str().ok()?;
 
-    if !auth_str.starts_with("Basic ") {
+    let (scheme, encoded) = auth_str.split_once(' ')?;
+    if !scheme.eq_ignore_ascii_case("Basic") {
         return None;
     }
 
-    let encoded = &auth_str[6..];
-    let decoded = base64_decode(encoded)?;
+    let decoded = base64_decode(encoded.trim())?;
 
     let parts: Vec<&str> = decoded.splitn(2, ':').collect();
     if parts.len() != 2 {
@@ -218,6 +264,136 @@ impl TwigContext {
     pub async fn invalidate_token(&self, token: &str) -> Result<(), String> {
         let db = self.db();
         db.delete_token(token).await
+    }
+
+    pub async fn issue_personal_access_token(
+        &self,
+        user_id: &str,
+        name: &str,
+        namespace_ids: &[String],
+        permissions: &PermissionSet,
+        expires_at: Option<&str>,
+    ) -> Result<(PersonalAccessToken, String), String> {
+        let secret = generate_personal_access_token();
+        let token_hash = hash_personal_access_token(&secret);
+        let token_hint = secret.chars().rev().take(4).collect::<Vec<_>>();
+        let token_hint = token_hint.into_iter().rev().collect::<String>();
+        let token_id = Uuid::new_v4().to_string();
+        let permissions = permissions.iter().collect::<Vec<NamespacePermission>>();
+
+        self.db
+            .create_personal_access_token(
+                &token_id,
+                user_id,
+                name,
+                &token_hash,
+                &token_hint,
+                namespace_ids,
+                &permissions,
+                expires_at,
+            )
+            .await?;
+
+        let tokens = match self.db.list_personal_access_tokens(user_id).await {
+            Ok(tokens) => tokens,
+            Err(error) => {
+                if let Err(revoke_error) = self
+                    .db
+                    .revoke_personal_access_token(user_id, &token_id)
+                    .await
+                {
+                    return Err(format!(
+                        "Failed to load created token ({error}); cleanup failed ({revoke_error})"
+                    ));
+                }
+                return Err(error);
+            }
+        };
+        let Some(token) = tokens.into_iter().find(|token| token.id == token_id) else {
+            self.db
+                .revoke_personal_access_token(user_id, &token_id)
+                .await?;
+            return Err("Created token was not returned from the database".to_string());
+        };
+
+        Ok((token, secret))
+    }
+
+    pub async fn authenticate_request(&self, req: &HttpRequest) -> Result<CredentialAuth, String> {
+        match self.authenticate_bearer(req).await? {
+            CredentialAuth::Missing => {}
+            credential => return Ok(credential),
+        }
+
+        let Some(auth_header) = req.headers().get("Authorization") else {
+            return Ok(CredentialAuth::Missing);
+        };
+        let Ok(auth_value) = auth_header.to_str() else {
+            return Ok(CredentialAuth::Missing);
+        };
+        let Some((scheme, _)) = auth_value.split_once(' ') else {
+            return Ok(CredentialAuth::Missing);
+        };
+
+        if !scheme.eq_ignore_ascii_case("Basic") {
+            return Ok(CredentialAuth::Missing);
+        }
+        let Some((username, password)) = extract_basic_auth(req) else {
+            return Ok(CredentialAuth::Missing);
+        };
+        if password.starts_with(PERSONAL_ACCESS_TOKEN_PREFIX) {
+            return self.authenticate_personal_access_token(&password).await;
+        }
+
+        let Some(user) = self.db.get_user_by_username(&username).await? else {
+            return Ok(CredentialAuth::Invalid);
+        };
+        match verify_password(&password, &user.password_hash) {
+            Ok(true) => Ok(CredentialAuth::Authenticated(AuthenticatedPrincipal {
+                user,
+                token_permissions: None,
+            })),
+            Ok(false) => Ok(CredentialAuth::Invalid),
+            Err(error) => Err(error),
+        }
+    }
+
+    pub async fn authenticate_bearer(&self, req: &HttpRequest) -> Result<CredentialAuth, String> {
+        let Some(auth_header) = req.headers().get("Authorization") else {
+            return Ok(CredentialAuth::Missing);
+        };
+        let Ok(auth_value) = auth_header.to_str() else {
+            return Ok(CredentialAuth::Missing);
+        };
+        let Some((scheme, credential)) = auth_value.split_once(' ') else {
+            return Ok(CredentialAuth::Missing);
+        };
+        if !scheme.eq_ignore_ascii_case("Bearer") {
+            return Ok(CredentialAuth::Missing);
+        }
+
+        let token = credential.trim();
+        if !token.starts_with(PERSONAL_ACCESS_TOKEN_PREFIX) {
+            return Ok(CredentialAuth::Missing);
+        }
+        self.authenticate_personal_access_token(token).await
+    }
+
+    async fn authenticate_personal_access_token(
+        &self,
+        token: &str,
+    ) -> Result<CredentialAuth, String> {
+        let token_hash = hash_personal_access_token(token);
+        Ok(
+            match self
+                .db
+                .authenticate_personal_access_token(&token_hash)
+                .await?
+            {
+                Some(principal) => CredentialAuth::Authenticated(principal),
+                None => CredentialAuth::Invalid,
+            },
+        )
     }
 
     pub async fn user_id_from_request(&self, req: &HttpRequest) -> Option<String> {

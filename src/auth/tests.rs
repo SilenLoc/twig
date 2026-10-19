@@ -33,6 +33,21 @@ fn test_generate_tokens_are_unique() {
 }
 
 #[test]
+fn personal_access_token_has_prefix_unique_secret_and_stable_hash() {
+    let first = generate_personal_access_token();
+    let second = generate_personal_access_token();
+
+    assert!(first.starts_with(PERSONAL_ACCESS_TOKEN_PREFIX));
+    assert!(second.starts_with(PERSONAL_ACCESS_TOKEN_PREFIX));
+    assert_ne!(first, second);
+
+    let hash = hash_personal_access_token(&first);
+    assert_ne!(hash, first);
+    assert_eq!(hash, hash_personal_access_token(&first));
+    assert_eq!(hash.len(), 64);
+}
+
+#[test]
 fn test_create_user_fields() {
     let user = create_user(
         "testuser".to_string(),

@@ -4,9 +4,8 @@ use serde::Deserialize;
 
 use crate::{
     auth::{
-        TwigContext, extract_basic_auth,
+        CredentialAuth, TwigContext,
         permissions::{self, NamespacePermission},
-        verify_password,
     },
     config,
     db::binaries::{BinaryBlob, PutBinaryOutcome},
@@ -176,37 +175,34 @@ async fn require_namespace_writer(
     auth_state: &TwigContext,
     namespace: &str,
 ) -> Result<(), HttpResponse> {
-    let Some((username, password)) = extract_basic_auth(req) else {
-        return Err(HttpResponse::Unauthorized()
-            .insert_header(("WWW-Authenticate", "Basic realm=\"binary uploads\""))
-            .body("Missing credentials"));
-    };
-
-    let user = match auth_state.db().get_user_by_username(&username).await {
-        Ok(Some(user)) => user,
-        Ok(None) => return Err(HttpResponse::Unauthorized().body("Invalid credentials")),
+    let principal = match auth_state.authenticate_request(req).await {
+        Ok(CredentialAuth::Authenticated(principal)) => principal,
+        Ok(CredentialAuth::Missing) => {
+            return Err(HttpResponse::Unauthorized()
+                .insert_header(("WWW-Authenticate", "Basic realm=\"binary uploads\""))
+                .body("Missing credentials"));
+        }
+        Ok(CredentialAuth::Invalid) => {
+            return Err(HttpResponse::Unauthorized().body("Invalid credentials"));
+        }
         Err(error) => {
-            log::error!("Failed to look up binary uploader '{username}': {error}");
+            log::error!("Failed to authenticate binary uploader: {error}");
             return Err(HttpResponse::InternalServerError().body("Authentication failed"));
         }
     };
 
-    match verify_password(&password, &user.password_hash) {
-        Ok(true) => {}
-        Ok(false) | Err(_) => return Err(HttpResponse::Unauthorized().body("Invalid credentials")),
-    }
-
-    match permissions::has(
+    match permissions::for_principal(
         auth_state.db(),
-        &user.id,
+        &principal,
         namespace,
-        server.is_configured_admin(&user.username),
-        NamespacePermission::PushChanges,
+        server.is_configured_admin(&principal.user.username),
     )
     .await
     {
-        Ok(true) => Ok(()),
-        Ok(false) => Err(HttpResponse::Forbidden().body("Push permission required for namespace")),
+        Ok(Some(permissions)) if permissions.contains(NamespacePermission::PushChanges) => Ok(()),
+        Ok(Some(_)) | Ok(None) => {
+            Err(HttpResponse::Forbidden().body("Push permission required for namespace"))
+        }
         Err(error) => {
             log::error!("Failed to check namespace access for binary upload: {error}");
             Err(HttpResponse::InternalServerError().body("Authorization failed"))

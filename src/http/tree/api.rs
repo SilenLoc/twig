@@ -1,7 +1,9 @@
-use actix_web::{Error, HttpRequest, HttpResponse, Responder, error, get, web};
+use actix_web::{Error, HttpRequest, HttpResponse, error, get, web};
 use serde::{Deserialize, Serialize};
 
-use crate::{auth::TwigContext, config};
+use crate::auth::permissions::{self, NamespacePermission};
+use crate::auth::{CredentialAuth, TwigContext};
+use crate::config;
 use twig_git as git;
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -15,7 +17,7 @@ pub struct NamespaceNode {
     pub repositories: Vec<String>,
 }
 
-pub fn msgpack_responder<T: Serialize>(data: T) -> impl Responder {
+pub fn msgpack_responder<T: Serialize>(data: T) -> HttpResponse {
     match rmp_serde::to_vec_named(&data) {
         Ok(body) => HttpResponse::Ok()
             .content_type("application/msgpack")
@@ -33,9 +35,21 @@ pub async fn tree_endpoint(
     req: HttpRequest,
     server: web::Data<config::Server>,
     auth_state: web::Data<TwigContext>,
-) -> Result<impl Responder, Error> {
+) -> Result<HttpResponse, Error> {
     let username = crate::http::auth::session::get_username_from_request(&req, &auth_state).await;
-    let is_logged_in = username.is_some();
+    let token_principal = if username.is_none() {
+        match auth_state.authenticate_bearer(&req).await {
+            Ok(CredentialAuth::Authenticated(principal)) => Some(principal),
+            Ok(CredentialAuth::Invalid) => return Ok(HttpResponse::Unauthorized().finish()),
+            Ok(CredentialAuth::Missing) => None,
+            Err(error) => {
+                log::error!("Failed to authenticate tree API bearer token: {error}");
+                return Err(error::ErrorInternalServerError("Authentication failed"));
+            }
+        }
+    } else {
+        None
+    };
 
     let namespaces = match auth_state.db().get_all_namespaces_with_owners().await {
         Ok(namespaces) => namespaces,
@@ -47,24 +61,45 @@ pub async fn tree_endpoint(
         }
     };
 
-    let tree = NamespaceTree {
-        namespaces: namespaces
-            .into_iter()
-            .map(|(namespace, _owner)| {
-                let mut repositories =
-                    git::bare::get_repos_with_info(server.project_root(), &namespace.name)
-                        .into_iter()
-                        .filter(|repo| is_logged_in || !repo.is_private)
-                        .map(|repo| repo.name)
-                        .collect::<Vec<_>>();
-                repositories.sort();
-
-                NamespaceNode {
-                    name: namespace.name,
-                    repositories,
+    let mut tree_namespaces = Vec::with_capacity(namespaces.len());
+    for (namespace, _owner) in namespaces {
+        let can_view_private = if let Some(principal) = &token_principal {
+            match permissions::for_principal(
+                auth_state.db(),
+                principal,
+                &namespace.name,
+                server.is_configured_admin(&principal.user.username),
+            )
+            .await
+            {
+                Ok(Some(permissions)) => permissions.contains(NamespacePermission::ViewNamespace),
+                Ok(None) => false,
+                Err(error) => {
+                    log::error!("Failed to resolve token tree permissions: {error}");
+                    return Err(error::ErrorInternalServerError(
+                        "Failed to resolve tree permissions",
+                    ));
                 }
-            })
-            .collect(),
+            }
+        } else {
+            username.is_some()
+        };
+
+        let mut repositories =
+            git::bare::get_repos_with_info(server.project_root(), &namespace.name)
+                .into_iter()
+                .filter(|repo| can_view_private || !repo.is_private)
+                .map(|repo| repo.name)
+                .collect::<Vec<_>>();
+        repositories.sort();
+
+        tree_namespaces.push(NamespaceNode {
+            name: namespace.name,
+            repositories,
+        });
+    }
+    let tree = NamespaceTree {
+        namespaces: tree_namespaces,
     };
 
     Ok(msgpack_responder(tree))
@@ -84,6 +119,36 @@ mod tests {
             "secure".to_string(),
             false,
         )
+    }
+
+    fn init_private_repository(repo_path: &std::path::Path) {
+        std::fs::create_dir_all(repo_path).expect("create private repo directory");
+        twig_git::repo::bare_init(repo_path, "main", "Owner", "owner@example.com")
+            .expect("bare init private repository");
+        let sh = xshell::Shell::new().expect("create shell");
+        let _p = sh.push_dir(repo_path);
+        let blob = xshell::cmd!(sh, "git hash-object -w --stdin")
+            .stdin("private = true\n")
+            .read()
+            .expect("write private repo config");
+        let tree = xshell::cmd!(sh, "git mktree")
+            .stdin(format!("100644 blob {blob}\t.twig.toml\n"))
+            .read()
+            .expect("create private repo tree");
+        let commit = xshell::cmd!(sh, "git commit-tree {tree} -m 'private'")
+            .read()
+            .expect("create private repo commit");
+        xshell::cmd!(sh, "git update-ref refs/heads/main {commit}")
+            .run()
+            .expect("set private repo head");
+    }
+
+    fn repositories_in<'a>(tree: &'a NamespaceTree, namespace: &str) -> &'a [String] {
+        tree.namespaces
+            .iter()
+            .find(|node| node.name == namespace)
+            .map(|node| node.repositories.as_slice())
+            .expect("namespace exists in tree")
     }
 
     #[test]
@@ -178,28 +243,8 @@ mod tests {
         )
         .expect("create repository");
 
-        let secret_repo = project_root.join("silen").join("secret");
-        std::fs::create_dir_all(&secret_repo).expect("create secret repo dir");
-        twig_git::repo::bare_init(&secret_repo, "main", "Owner", "owner@example.com")
-            .expect("bare init");
-        {
-            let sh = xshell::Shell::new().unwrap();
-            let _p = sh.push_dir(&secret_repo);
-            let blob = xshell::cmd!(sh, "git hash-object -w --stdin")
-                .stdin("private = true\n")
-                .read()
-                .unwrap();
-            let tree = xshell::cmd!(sh, "git mktree")
-                .stdin(format!("100644 blob {blob}\t.twig.toml\n"))
-                .read()
-                .unwrap();
-            let commit = xshell::cmd!(sh, "git commit-tree {tree} -m 'private'")
-                .read()
-                .unwrap();
-            xshell::cmd!(sh, "git update-ref refs/heads/main {commit}")
-                .run()
-                .unwrap();
-        }
+        init_private_repository(&project_root.join("silen").join("secret"));
+        init_private_repository(&project_root.join("other").join("private"));
 
         let db = crate::db::Database::new(db_path.to_str().expect("db path"));
         db.init_tables().await.expect("init tables");
@@ -214,11 +259,41 @@ mod tests {
         db.create_namespace(&namespace)
             .await
             .expect("store namespace");
+        let other_namespace = crate::auth::create_namespace("other".to_string(), user.id.clone());
+        db.create_namespace(&other_namespace)
+            .await
+            .expect("store other namespace");
 
         let token = "test_token_for_tree_endpoint_12345678901234567890123456789012";
         db.create_token(token, &user.id)
             .await
             .expect("create token");
+        let view_other_token = "twigt_tree_other_view_123456789012345678901234567890";
+        db.create_personal_access_token(
+            "tree-view-other",
+            &user.id,
+            "View other namespace",
+            &crate::auth::hash_personal_access_token(view_other_token),
+            "7890",
+            &[other_namespace.id.clone()],
+            &[NamespacePermission::ViewNamespace],
+            None,
+        )
+        .await
+        .expect("create scoped read token");
+        let push_silen_token = "twigt_tree_silen_push_123456789012345678901234567890";
+        db.create_personal_access_token(
+            "tree-push-silen",
+            &user.id,
+            "Push silen only",
+            &crate::auth::hash_personal_access_token(push_silen_token),
+            "7890",
+            &[namespace.id.clone()],
+            &[NamespacePermission::PushChanges],
+            None,
+        )
+        .await
+        .expect("create scoped write token");
 
         let app = aw_test::init_service(
             App::new()
@@ -240,7 +315,8 @@ mod tests {
         assert_eq!(response.status(), actix_web::http::StatusCode::OK);
         let body = aw_test::read_body(response).await;
         let decoded: NamespaceTree = rmp_serde::from_slice(&body).expect("decode response");
-        assert_eq!(decoded.namespaces[0].repositories, ["public"]);
+        assert_eq!(repositories_in(&decoded, "silen"), ["public"]);
+        assert!(repositories_in(&decoded, "other").is_empty());
 
         // Authenticated request should include secret repo
         let response = aw_test::call_service(
@@ -254,7 +330,46 @@ mod tests {
         assert_eq!(response.status(), actix_web::http::StatusCode::OK);
         let body = aw_test::read_body(response).await;
         let decoded: NamespaceTree = rmp_serde::from_slice(&body).expect("decode response");
-        assert_eq!(decoded.namespaces[0].repositories, ["public", "secret"]);
+        assert_eq!(repositories_in(&decoded, "silen"), ["public", "secret"]);
+        assert_eq!(repositories_in(&decoded, "other"), ["private"]);
+
+        let response = aw_test::call_service(
+            &app,
+            aw_test::TestRequest::get()
+                .uri("/api/tree")
+                .insert_header(("Authorization", format!("Bearer {view_other_token}")))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(response.status(), actix_web::http::StatusCode::OK);
+        let body = aw_test::read_body(response).await;
+        let decoded: NamespaceTree = rmp_serde::from_slice(&body).expect("decode scoped tree");
+        assert_eq!(repositories_in(&decoded, "silen"), ["public"]);
+        assert_eq!(repositories_in(&decoded, "other"), ["private"]);
+
+        let response = aw_test::call_service(
+            &app,
+            aw_test::TestRequest::get()
+                .uri("/api/tree")
+                .insert_header(("Authorization", format!("Bearer {push_silen_token}")))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(response.status(), actix_web::http::StatusCode::OK);
+        let body = aw_test::read_body(response).await;
+        let decoded: NamespaceTree = rmp_serde::from_slice(&body).expect("decode write-only tree");
+        assert_eq!(repositories_in(&decoded, "silen"), ["public"]);
+        assert!(repositories_in(&decoded, "other").is_empty());
+
+        let response = aw_test::call_service(
+            &app,
+            aw_test::TestRequest::get()
+                .uri("/api/tree")
+                .insert_header(("Authorization", "Bearer twigt_invalid"))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(response.status(), actix_web::http::StatusCode::UNAUTHORIZED);
 
         let _ = std::fs::remove_file(db_path);
         let _ = std::fs::remove_dir_all(project_root);

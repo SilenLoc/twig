@@ -150,6 +150,49 @@ const MIGRATIONS: &[Migration] = &[
         name: "normalize_legacy_namespace_member_role",
         sql: r"UPDATE namespace_members SET role = 'contributor' WHERE role = 'member';",
     },
+    Migration {
+        name: "create_personal_access_tokens_table",
+        sql: r"CREATE TABLE IF NOT EXISTS personal_access_tokens (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            token_hash TEXT NOT NULL UNIQUE,
+            token_hint TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            last_used_at TEXT,
+            expires_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );",
+    },
+    Migration {
+        name: "create_personal_access_token_permissions_table",
+        sql: r"CREATE TABLE IF NOT EXISTS personal_access_token_permissions (
+            token_id TEXT NOT NULL,
+            namespace_id TEXT NOT NULL,
+            permission TEXT NOT NULL CHECK (permission IN (
+                'view_namespace',
+                'push_changes',
+                'create_repositories',
+                'manage_repositories',
+                'manage_namespace',
+                'manage_members',
+                'rewrite_protected_branches'
+            )),
+            PRIMARY KEY (token_id, namespace_id, permission),
+            FOREIGN KEY (token_id) REFERENCES personal_access_tokens(id),
+            FOREIGN KEY (namespace_id) REFERENCES namespaces(id)
+        );",
+    },
+    Migration {
+        name: "create_personal_access_tokens_user_created_index",
+        sql: r"CREATE INDEX IF NOT EXISTS idx_personal_access_tokens_user_created
+            ON personal_access_tokens(user_id, created_at DESC);",
+    },
+    Migration {
+        name: "create_personal_access_token_permissions_namespace_index",
+        sql: r"CREATE INDEX IF NOT EXISTS idx_personal_access_token_permissions_namespace
+            ON personal_access_token_permissions(namespace_id, permission);",
+    },
 ];
 
 async fn prepare_migrations(conn: &turso::Connection) -> Result<Vec<String>, String> {
@@ -293,6 +336,8 @@ mod tests {
         assert!(tables.contains(&"invites".to_string()));
         assert!(tables.contains(&"namespace_invitations".to_string()));
         assert!(tables.contains(&"tokens".to_string()));
+        assert!(tables.contains(&"personal_access_tokens".to_string()));
+        assert!(tables.contains(&"personal_access_token_permissions".to_string()));
         assert!(tables.contains(&"test_pins".to_string()));
         assert!(tables.contains(&"repository_binaries".to_string()));
         assert!(tables.contains(&"_migrations".to_string()));
@@ -318,6 +363,8 @@ mod tests {
         }
 
         assert!(indexes.contains(&"idx_invites_user".to_string()));
+        assert!(indexes.contains(&"idx_personal_access_tokens_user_created".to_string()));
+        assert!(indexes.contains(&"idx_personal_access_token_permissions_namespace".to_string()));
         assert!(!indexes.contains(&"idx_tickets_user".to_string()));
 
         let mut rows = db

@@ -188,6 +188,149 @@ async fn start_network_git_server(
 }
 
 #[actix_web::test]
+async fn test_git_http_extra_headers_accept_scoped_bearer_and_basic_token_passwords() {
+    use base64::Engine;
+    use std::process::Command;
+
+    let root = std::env::temp_dir().join(format!(
+        "test_twig_git_http_personal_tokens_{}",
+        uuid::Uuid::new_v4()
+    ));
+    let repository = root.join("token-space/example");
+    std::fs::create_dir_all(&repository).unwrap();
+    crate::git::repo::bare_init(&repository, "main", "Test", "test@example.com").unwrap();
+
+    let (address, server_handle, db, database_path) = start_network_git_server(&root).await;
+    let owner = crate::auth::create_user(
+        "token-push-owner".to_string(),
+        "token-push-owner@example.com".to_string(),
+        "owner-password",
+    )
+    .expect("create namespace owner");
+    db.create_user(&owner).await.expect("store owner");
+    let namespace = crate::auth::create_namespace("token-space".to_string(), owner.id.clone());
+    db.create_namespace(&namespace)
+        .await
+        .expect("store namespace");
+
+    let auth_state = crate::auth::TwigContext::new(db.clone(), "test-key".to_string());
+    let namespace_ids = [namespace.id.clone()];
+    let (_, push_token) = auth_state
+        .issue_personal_access_token(
+            &owner.id,
+            "Push-only Git token",
+            &namespace_ids,
+            &crate::auth::PermissionSet::new([crate::auth::NamespacePermission::PushChanges]),
+            None,
+        )
+        .await
+        .expect("create push token");
+    let (_, read_token) = auth_state
+        .issue_personal_access_token(
+            &owner.id,
+            "Read-only Git token",
+            &namespace_ids,
+            &crate::auth::PermissionSet::new([crate::auth::NamespacePermission::ViewNamespace]),
+            None,
+        )
+        .await
+        .expect("create read token");
+
+    let working_copy = root.with_extension("working-copy");
+    let clone_url = format!("http://{address}/token-space/example.git");
+    let working_copy_path = working_copy.to_string_lossy().into_owned();
+    let bearer_header = format!("Bearer {push_token}");
+    let basic_value =
+        base64::engine::general_purpose::STANDARD.encode(format!("not-the-owner:{push_token}"));
+    let basic_header = format!("Basic {basic_value}");
+    let read_header = format!("Bearer {read_token}");
+
+    let (bearer_push, basic_password_push, read_only_push) =
+        tokio::task::spawn_blocking(move || {
+            let run = |args: &[&str]| {
+                let output = Command::new("git").args(args).output().unwrap();
+                assert!(output.status.success(), "{args:?}: {output:?}");
+                String::from_utf8_lossy(&output.stdout).trim().to_string()
+            };
+            let push_with_header = |header: &str| {
+                Command::new("git")
+                    .arg("-c")
+                    .arg(format!("http.extraHeader=Authorization: {header}"))
+                    .args(["-C", &working_copy_path, "push", "origin", "main"])
+                    .output()
+                    .unwrap()
+            };
+
+            run(&["clone", "--quiet", &clone_url, &working_copy_path]);
+            run(&[
+                "-C",
+                &working_copy_path,
+                "config",
+                "user.name",
+                "Token Push",
+            ]);
+            run(&[
+                "-C",
+                &working_copy_path,
+                "config",
+                "user.email",
+                "token-push@example.com",
+            ]);
+
+            std::fs::write(
+                std::path::Path::new(&working_copy_path).join("bearer.txt"),
+                "Bearer push\n",
+            )
+            .unwrap();
+            run(&["-C", &working_copy_path, "add", "bearer.txt"]);
+            run(&["-C", &working_copy_path, "commit", "-m", "Bearer push"]);
+            let bearer_push = push_with_header(&bearer_header);
+
+            std::fs::write(
+                std::path::Path::new(&working_copy_path).join("basic.txt"),
+                "Basic token password push\n",
+            )
+            .unwrap();
+            run(&["-C", &working_copy_path, "add", "basic.txt"]);
+            run(&[
+                "-C",
+                &working_copy_path,
+                "commit",
+                "-m",
+                "Basic token password push",
+            ]);
+            let basic_password_push = push_with_header(&basic_header);
+
+            std::fs::write(
+                std::path::Path::new(&working_copy_path).join("read-only.txt"),
+                "This push must be denied\n",
+            )
+            .unwrap();
+            run(&["-C", &working_copy_path, "add", "read-only.txt"]);
+            run(&["-C", &working_copy_path, "commit", "-m", "Denied push"]);
+            let read_only_push = push_with_header(&read_header);
+            (bearer_push, basic_password_push, read_only_push)
+        })
+        .await
+        .expect("join Git token pushes");
+
+    assert!(bearer_push.status.success(), "{bearer_push:?}");
+    assert!(
+        basic_password_push.status.success(),
+        "Basic token-password push failed: {basic_password_push:?}"
+    );
+    assert!(
+        !read_only_push.status.success(),
+        "read-only token must not push: {read_only_push:?}"
+    );
+
+    server_handle.stop(true).await;
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&working_copy);
+    let _ = std::fs::remove_file(database_path);
+}
+
+#[actix_web::test]
 async fn test_git_client_push_uses_managed_and_custom_shell_hooks() {
     use std::os::unix::fs::PermissionsExt;
     use std::process::Command;

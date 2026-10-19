@@ -10,6 +10,8 @@ mod tests {
     mod auth_and_invitations;
     #[path = "../namespace_permissions.rs"]
     mod namespace_permissions;
+    #[path = "../personal_access_tokens.rs"]
+    mod personal_access_tokens;
     #[path = "../repo_access_and_routes.rs"]
     mod repo_access_and_routes;
     #[path = "../repo_binaries.rs"]

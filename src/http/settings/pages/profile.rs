@@ -3,16 +3,16 @@ use actix_web::{HttpRequest, HttpResponse, Responder, get, post, web};
 use log::info;
 
 use crate::auth::TwigContext;
-use crate::auth::permissions::{self, NamespacePermission};
 use crate::config;
 use crate::http::view::{render_error, render_success};
 
 use super::UpdateEmailForm;
-use super::shared::render_settings_auth_error;
+use super::shared::{render_account_tabs, render_settings_auth_error, render_settings_navigation};
 
 /// Renders the settings page body shared by the full-page and HTMX responses.
 pub(super) fn render_settings(user: &crate::auth::User) -> maud::Markup {
     maud::html! {
+        (render_account_tabs("profile"))
         div class="twig-bento" {
             (render_profile_panel(user))
         }
@@ -94,31 +94,11 @@ pub async fn settings_page(
         return Ok(render_error("Failed to load user."));
     };
 
-    let is_site_admin = server.is_configured_admin(&user.username);
-    let user_management_enabled = match permissions::namespaces_for_user(
-        db,
-        &user_id,
-        is_site_admin,
-        NamespacePermission::ManageMembers,
-    )
-    .await
-    {
-        Ok(namespaces) => is_site_admin || !namespaces.is_empty(),
-        Err(error) => {
-            log::error!("Failed to check User Management access: {error}");
-            false
-        }
-    };
-
+    let navigation = render_settings_navigation(&server, db, &user).await;
     let content = render_settings(&user);
 
     let content = maud::html! {
-        (crate::http::tree::pages::render_tree_hub(
-            server.is_test_user_enabled(),
-            is_site_admin,
-            user_management_enabled,
-            Some("account"),
-        ))
+        (navigation)
         (content)
     };
 

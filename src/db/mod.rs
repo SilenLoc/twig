@@ -11,6 +11,7 @@ pub mod invitations;
 pub mod invites;
 pub mod migration;
 pub mod namespaces;
+pub mod personal_access_tokens;
 pub mod sessions;
 pub mod test_pins;
 pub mod tokens;

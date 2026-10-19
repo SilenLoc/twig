@@ -20,6 +20,7 @@ log = "0.4"
 pulldown-cmark = "0.13"
 qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
 semver = "1"
+sha2 = "0.10"
 toml = "1.1"
 turso = { version = "0.8.2", default-features = false }
 

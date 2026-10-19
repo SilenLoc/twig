@@ -5,6 +5,52 @@ use crate::config;
 use crate::db::Database;
 use crate::http::view::{render_error, render_error_with_action};
 
+pub(super) async fn render_settings_navigation(
+    server: &config::Server,
+    db: &Database,
+    user: &crate::auth::User,
+) -> maud::Markup {
+    let is_site_admin = server.is_configured_admin(&user.username);
+    let user_management_enabled = match permissions::namespaces_for_user(
+        db,
+        &user.id,
+        is_site_admin,
+        NamespacePermission::ManageMembers,
+    )
+    .await
+    {
+        Ok(namespaces) => is_site_admin || !namespaces.is_empty(),
+        Err(error) => {
+            log::error!("Failed to check User Management access: {error}");
+            false
+        }
+    };
+
+    crate::http::tree::pages::render_tree_hub(
+        server.is_test_user_enabled(),
+        is_site_admin,
+        user_management_enabled,
+        Some("account"),
+    )
+}
+
+pub(super) fn render_account_tabs(active: &str) -> maud::Markup {
+    maud::html! {
+        nav class="twig-tabs twig-tabs--nested" aria-label="Account sections" {
+            a
+                class="twig-tab"
+                aria-current=[(active == "profile").then_some("page")]
+                href="/settings"
+            { "Profile" }
+            a
+                class="twig-tab"
+                aria-current=[(active == "tokens").then_some("page")]
+                href="/settings/tokens"
+            { "Access Tokens" }
+        }
+    }
+}
+
 pub(super) async fn require_namespace_permission(
     db: &Database,
     server: &config::Server,

@@ -6,9 +6,8 @@ use log::info;
 use serde::Deserialize;
 
 use crate::auth::{
-    TwigContext, extract_basic_auth,
+    CredentialAuth, TwigContext,
     permissions::{self, NamespacePermission},
-    verify_password,
 };
 use crate::config;
 
@@ -33,49 +32,32 @@ pub async fn init(
 ) -> impl Responder {
     let db = auth_state.db();
 
-    // Authenticate the request
-    let Some((username, password)) = extract_basic_auth(&req) else {
-        return HttpResponse::Unauthorized()
-            .insert_header(("WWW-Authenticate", "Basic realm=\"twig\""))
-            .body("Missing credentials");
-    };
-
-    // Get user from database
-    let user = match db.get_user_by_username(&username).await {
-        Ok(Some(user)) => user,
-        Ok(None) => {
+    let principal = match auth_state.authenticate_request(&req).await {
+        Ok(CredentialAuth::Authenticated(principal)) => principal,
+        Ok(CredentialAuth::Missing) => {
+            return HttpResponse::Unauthorized()
+                .insert_header(("WWW-Authenticate", "Basic realm=\"twig\""))
+                .body("Missing credentials");
+        }
+        Ok(CredentialAuth::Invalid) => {
             return HttpResponse::Unauthorized().body("Invalid credentials");
         }
-        Err(e) => {
-            log::error!("Database error: {e}");
-            return HttpResponse::InternalServerError().body("Database error");
-        }
-    };
-
-    // Verify password
-    match verify_password(&password, &user.password_hash) {
-        Ok(true) => {}
-        Ok(false) => {
-            return HttpResponse::Unauthorized().body("Invalid credentials");
-        }
-        Err(e) => {
-            log::error!("Password verification error: {e}");
+        Err(error) => {
+            log::error!("Authentication failed for repository initialization: {error}");
             return HttpResponse::InternalServerError().body("Authentication error");
         }
-    }
+    };
 
-    // Check if user has access to namespace
-    match permissions::has(
+    match permissions::for_principal(
         db,
-        &user.id,
+        &principal,
         &init_repo.namespace,
-        server.is_configured_admin(&user.username),
-        NamespacePermission::CreateRepositories,
+        server.is_configured_admin(&principal.user.username),
     )
     .await
     {
-        Ok(true) => {}
-        Ok(false) => {
+        Ok(Some(permissions)) if permissions.contains(NamespacePermission::CreateRepositories) => {}
+        Ok(Some(_)) | Ok(None) => {
             return HttpResponse::Forbidden().body("Only namespace owners can create repositories");
         }
         Err(e) => {
