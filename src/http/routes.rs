@@ -13,7 +13,6 @@ pub(crate) fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(health::health)
         .service(health::up)
         .service(assets::assets)
-        .service(tree::api::tree_endpoint)
         .service(api::version_endpoint)
         .service(info::pages::index)
         // Auth UI endpoints (HTML forms)

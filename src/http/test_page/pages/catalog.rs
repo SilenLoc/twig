@@ -14,12 +14,6 @@ fn core_system_endpoints() -> Vec<TestEndpoint> {
             method: "GET",
             url: "/up".to_string(),
         },
-        TestEndpoint {
-            id: "tree",
-            category: "API",
-            method: "GET",
-            url: "/api/tree".to_string(),
-        },
     ]
 }
 

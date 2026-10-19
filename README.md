@@ -20,8 +20,7 @@ SQLite-compatible database (Turso/libSQL) and Git's smart-HTTP backend.
   deleting repositories/namespaces.
 - Optional endpoint test runner (`TEST_USER`) and read-only database browser
   (`ADMIN_USER`).
-- API endpoints for the application version (`GET /api/version`) and a
-  MessagePack namespace/repository tree (`GET /api/tree`).
+- API endpoint for the application version (`GET /api/version`).
 
 ## Quick start
 
@@ -57,7 +56,7 @@ configuration reference.
 
 | Document | Description |
 |----------|-------------|
-| [API](docs/api.md) | Version and namespace/repository tree endpoints |
+| [API](docs/api.md) | Application version endpoint |
 | [Git Backend](docs/git-backend.md) | Clone, fetch, push, authentication, and repository creation |
 | [Web UI](docs/ui.md) | Pages, account access, settings, and optional admin tools |
 | [Environment Variables](docs/environment-variables.md) | Runtime configuration |

@@ -28,13 +28,13 @@ fn test_render_test_page_is_idle_until_started() {
 }
 
 #[test]
-fn test_endpoint_catalog_uses_current_api_and_info_routes() {
+fn test_endpoint_catalog_uses_current_info_routes() {
     let endpoints = list_test_endpoints();
     let urls: Vec<_> = endpoints
         .iter()
         .map(|endpoint| endpoint.url.as_str())
         .collect();
-    assert!(urls.contains(&"/api/tree"));
+    assert!(!urls.contains(&"/api/tree"));
     assert!(urls.contains(&"/_info?tab=docs&page=git-backend"));
     assert!(urls.contains(&"/_info?tab=docs&page=ui"));
     assert!(urls.contains(&"/_info?tab=docs&page=environment-variables"));

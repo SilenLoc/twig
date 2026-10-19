@@ -56,7 +56,7 @@ async fn test_test_page_and_rapid_runner_when_authenticated_as_admin() {
     assert!(body_str.contains("hx-trigger=\"every 25ms\""));
     assert!(body_str.contains("hx-trigger=\"load, every 5ms\""));
     assert!(body_str.contains("/health"));
-    assert!(body_str.contains("/api/tree"));
+    assert!(!body_str.contains("/api/tree"));
     assert!(!body_str.contains("/settings"));
     assert!(!body_str.contains("delete-namespace"));
 
