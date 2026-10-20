@@ -20,6 +20,16 @@ Token permissions are limited to their selected namespaces and actions, then
 intersected with the user's current Twig permissions. A token cannot grant more
 access than its owner currently has.
 
+## Request body limits
+
+Git read request bodies and repository-edit forms are limited to 1 MiB. Git
+pushes and binary uploads are limited to 512 MiB. Write credentials and
+permissions are checked before Twig consumes those bodies; oversized bodies are
+rejected with `413 Payload Too Large`. Large Git-write and binary-upload body
+processing shares one in-flight slot, while small request bodies share eight.
+These application limits complement, but do not replace, reverse-proxy ingress
+limits.
+
 ## Clone and fetch
 
 ```sh

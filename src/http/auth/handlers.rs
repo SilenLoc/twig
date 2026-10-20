@@ -6,7 +6,9 @@ use serde::Deserialize;
 use crate::{
     auth::{Invite, TwigContext, create_namespace, create_user, generate_token, verify_password},
     config,
+    db::invites::SignupInviteError,
     http::auth::pages::{render_invite_success, render_login_success, render_signup_success},
+    http::auth::rate_limit::AuthRateLimiter,
     http::auth::session::safe_device_return_to,
     http::view::{render_error, render_success},
 };
@@ -73,9 +75,16 @@ pub async fn logout_ui_handler(
 
 #[post("/auth/invite")]
 pub async fn create_invite_ui_handler(
+    req: HttpRequest,
     auth_state: web::Data<TwigContext>,
     form: web::Form<InviteForm>,
+    rate_limiter: web::Data<AuthRateLimiter>,
 ) -> impl Responder {
+    if !rate_limiter.allow_invite(AuthRateLimiter::peer_ip(&req), std::time::Instant::now()) {
+        return HttpResponse::TooManyRequests()
+            .insert_header(("Retry-After", "60"))
+            .body(render_error("Too many invite requests. Try again later.").into_string());
+    }
     if !auth_state.validate_api_key(&form.api_key) {
         return HttpResponse::Unauthorized().body(render_error("Invalid API key").into_string());
     }
@@ -173,17 +182,19 @@ pub async fn signup_ui_handler(
         }
     };
 
-    // Save user to database
-    if let Err(e) = db.create_user(&user).await {
-        log::error!("Failed to save user: {e}");
-        return HttpResponse::InternalServerError()
-            .body(render_error("Failed to save user").into_string());
-    }
-
-    // Mark invite as used
-    if let Err(e) = db.mark_invite_used(&invite.id).await {
-        log::error!("Failed to mark invite used: {e}");
-        // Don't fail here, user is already created
+    if let Err(error) = db.create_user_with_invite(&invite.id, &user).await {
+        return match error {
+            SignupInviteError::InviteUnavailable => HttpResponse::Unauthorized()
+                .body(render_error("Invite has already been used").into_string()),
+            SignupInviteError::UsernameExists => {
+                HttpResponse::Conflict().body(render_error("Username already exists").into_string())
+            }
+            SignupInviteError::Database(error) => {
+                log::error!("Failed to atomically create signup user: {error}");
+                HttpResponse::InternalServerError()
+                    .body(render_error("Failed to save user").into_string())
+            }
+        };
     }
 
     info!(
@@ -202,7 +213,13 @@ pub async fn login_ui_handler(
     req: HttpRequest,
     auth_state: web::Data<TwigContext>,
     form: web::Form<LoginForm>,
+    rate_limiter: web::Data<AuthRateLimiter>,
 ) -> impl Responder {
+    if !rate_limiter.allow_login(AuthRateLimiter::peer_ip(&req), std::time::Instant::now()) {
+        return HttpResponse::TooManyRequests()
+            .insert_header(("Retry-After", "60"))
+            .body(render_error("Too many login attempts. Try again later.").into_string());
+    }
     let db = auth_state.db();
 
     let user = match db.get_user_by_username(&form.username).await {
@@ -277,14 +294,9 @@ pub async fn create_namespace_ui_handler(
 ) -> impl Responder {
     let db = auth_state.db();
 
-    // Validate namespace name
-    if form.name.len() < 2 {
-        return HttpResponse::BadRequest()
-            .body(render_error("Namespace name must be at least 2 characters").into_string());
-    }
-    if form.name.starts_with('_') {
-        return HttpResponse::BadRequest()
-            .body(render_error("Namespace names starting with '_' are reserved").into_string());
+    // Namespace names are used as filesystem path components as well as DB keys.
+    if let Err(message) = crate::git::reserved::validate_namespace_name(&form.name) {
+        return HttpResponse::BadRequest().body(render_error(&message).into_string());
     }
 
     // Check if namespace already exists
@@ -324,6 +336,21 @@ pub async fn create_namespace_ui_handler(
         }
     }
 
+    // Check the filesystem boundary before persisting a namespace that would
+    // later be used to resolve repositories.
+    let project_root = req.app_data::<web::Data<config::Server>>().map_or_else(
+        || "/srv/git".to_string(),
+        |cfg| cfg.project_root().to_string(),
+    );
+    if let Err(error) = crate::git::repo::ensure_namespace_directory(
+        std::path::Path::new(&project_root),
+        &form.name,
+    ) {
+        log::error!("Failed to prepare namespace directory: {error}");
+        return HttpResponse::InternalServerError()
+            .body(render_error("Failed to create namespace directory").into_string());
+    }
+
     // Create namespace
     let namespace = create_namespace(form.name.clone(), user_id.clone());
 
@@ -337,20 +364,6 @@ pub async fn create_namespace_ui_handler(
         "Created namespace via UI: {} for user: {}",
         namespace.name, namespace.owner_id
     );
-
-    // Get project root from config
-    let project_root = req.app_data::<web::Data<config::Server>>().map_or_else(
-        || "/srv/git".to_string(),
-        |cfg| cfg.project_root().to_string(),
-    );
-
-    // Create the namespace directory
-    let namespace_path = std::path::Path::new(&project_root).join(&namespace.name);
-
-    if let Err(e) = std::fs::create_dir_all(&namespace_path) {
-        log::error!("Failed to create namespace directory: {e}");
-        // Don't fail here, directory can be created later
-    }
 
     // Return HTML response for HTMX
     let success_msg = format!(

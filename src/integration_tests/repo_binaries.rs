@@ -5,6 +5,71 @@ use super::support::*;
 use super::repo_content::{get_body, init_repo_with_files};
 
 #[actix_web::test]
+async fn binary_upload_honors_small_test_body_limit_without_persisting_oversized_data() {
+    let root = format!("/tmp/test_twig_binary_body_limit_{}", uuid::Uuid::new_v4());
+    let limits = crate::http::body::RequestBodyLimits::for_tests(16, 16, 2, 1);
+    let (app, db) = create_test_service_with_db_and_body_limits(&root, limits).await;
+    let owner = auth::create_user(
+        "body-limit-owner".to_string(),
+        "body-limit-owner@example.com".to_string(),
+        "correct horse battery staple",
+    )
+    .expect("create upload user");
+    db.create_user(&owner).await.expect("store upload user");
+    db.create_namespace(&auth::create_namespace(
+        "body-limit".to_string(),
+        owner.id.clone(),
+    ))
+    .await
+    .expect("create upload namespace");
+    init_repo_with_files(
+        &std::path::Path::new(&root).join("body-limit/repo"),
+        "",
+        &[("README.md", "# upload boundary test\n")],
+    );
+    let authorization = super::repo_access_and_routes::basic_auth(
+        "body-limit-owner",
+        "correct horse battery staple",
+    );
+
+    let exact_limit = test::call_service(
+        &app,
+        test::TestRequest::put()
+            .uri("/body-limit/repo/binaries/1.0.0/exact")
+            .insert_header(("Authorization", authorization.as_str()))
+            .set_payload(b"1234567890123456".to_vec())
+            .to_request(),
+    )
+    .await;
+    assert_eq!(exact_limit.status(), StatusCode::CREATED);
+
+    let oversized = test::call_service(
+        &app,
+        test::TestRequest::put()
+            .uri("/body-limit/repo/binaries/1.0.0/oversized")
+            .insert_header(("Authorization", authorization.as_str()))
+            .set_payload(b"12345678901234567".to_vec())
+            .to_request(),
+    )
+    .await;
+    assert_eq!(oversized.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    assert!(
+        db.get_binary(
+            "body-limit",
+            "repo",
+            &semver::Version::new(1, 0, 0),
+            "oversized"
+        )
+        .await
+        .unwrap()
+        .is_none(),
+        "oversized upload must not be persisted"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[actix_web::test]
 async fn test_http_binary_upload_and_download_work_for_public_and_private_repos() {
     use base64::Engine as _;
 

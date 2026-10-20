@@ -2,13 +2,14 @@
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `PORT` | HTTP server port (binds on `0.0.0.0`) | `80` |
+| `BIND_ADDRESS` | IP address for the HTTP listener | `0.0.0.0` |
+| `PORT` | HTTP server port | `80` |
 | `LOG_LEVEL` | Logging level (error, warn, info, debug, trace) | `info` |
 | `PROJECT_ROOT` | Root directory for Git repositories | `/srv/git` |
 | `DB_PATH` | Path to the SQLite database file | `twig.db` |
-| `API_KEY` | Secret required to generate one-time signup invites. If unset or empty, a random key is generated and logged at startup. | Generated per process |
+| `API_KEY` | Secret required to generate one-time signup invites. Required in release builds. If unset in a debug build, a random key is generated but never logged; invite creation requires an explicitly configured key. | Unset in debug; required in release |
 | `SESSION_KEY` | Secret used to sign/encrypt web session cookies. Set a stable value to keep sessions valid across restarts. | Random per process; sessions do not survive restart |
-| `RESET_DB` | Set to exactly `true` to delete the database file at startup and seed a development `admin` / `admin` account with automatic local login. | `false` |
+| `RESET_DB` | Set to exactly `true` to delete the database file and seed a development `admin` / `admin` account with automatic local login. Refused on port 80, on non-loopback binds, or in release builds. | `false` |
 | `CACHE_CONTROL` | `Cache-Control` header value for versioned static assets (see [Assets](#assets)) | `public, max-age=31536000, immutable` |
 | `TEST_USER` | Username allowed to access the endpoint test page and manage session PINs. Set to `true` as a shortcut for `admin`. If unset, the test page is disabled. | unset |
 | `ADMIN_USER` | Username allowed to inspect database tables and values in Manage → Data and manage users/invites globally. If unset, global administration is disabled. | unset |
@@ -23,8 +24,25 @@ Resend's test setup; production sending to arbitrary recipients requires a
 verified sender domain.
 
 For local development, `mise.toml` overrides several values, including
-`PORT=8080`, `PROJECT_ROOT=tests/git/srv`, `RESET_DB=true`, and
-`TEST_USER=admin`.
+`BIND_ADDRESS=127.0.0.1`, `PORT=8080`, `PROJECT_ROOT=tests/git/srv`,
+`RESET_DB=true`, and `TEST_USER=admin`.
+
+## Browser request protections
+
+Login and invite-generation attempts are limited to ten per minute per
+connection peer and return `429` with `Retry-After` when throttled. Session
+cookies use `SameSite=Lax`; unsafe browser requests that include `Origin` or
+`Referer` are also checked against the configured public origin or request
+origin. When a reverse proxy fronts Twig, configure `PUBLIC_BASE_URL`, sanitize
+forwarded headers at the proxy, and add ingress rate limits there: the
+application limiter sees the proxy's socket address unless clients connect
+directly.
+
+Twig adds `nosniff`, frame, referrer, cache, and Content Security Policy
+headers. The current policy permits inline/evaluated scripts for existing
+HTMX handlers; a stricter script policy requires moving those handlers into
+external assets. The application does not terminate TLS or emit HSTS, so the
+HTTPS edge must enforce TLS and add HSTS in the deployment.
 
 ## Assets
 

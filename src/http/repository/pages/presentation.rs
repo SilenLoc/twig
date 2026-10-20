@@ -479,7 +479,7 @@ pub(super) fn render_pdf_license_page(license: Option<&str>) -> Markup {
             (render_pdf_pagehead("LICENSE", None))
             @if let Some(license) = license {
                 div class="twig-md twig-md--boxed" {
-                    (maud::PreEscaped(license))
+                    (license)
                 }
             } @else {
                 (render_empty("NO LICENSE", "No license information available."))

@@ -70,12 +70,16 @@ pub(crate) fn configure_routes(cfg: &mut web::ServiceConfig) {
         .service(repo_edit::tree_fragment)
         .service(
             web::resource("/{namespace}/{repo}/edit/operation")
-                .app_data(web::FormConfig::default().limit(1 << 29))
+                .app_data(
+                    web::FormConfig::default().limit(crate::http::body::DEFAULT_SMALL_BODY_LIMIT),
+                )
                 .route(web::post().to(repo_edit::apply_operation)),
         )
         .service(
             web::resource("/{namespace}/{repo}/edit/commit")
-                .app_data(web::FormConfig::default().limit(1 << 29))
+                .app_data(
+                    web::FormConfig::default().limit(crate::http::body::DEFAULT_SMALL_BODY_LIMIT),
+                )
                 .route(web::post().to(repo_edit::commit_workspace)),
         )
         .service(repo_edit::file_fragment)

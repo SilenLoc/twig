@@ -53,11 +53,17 @@ where
     let resp = test::call_service(app, req).await;
     assert!(resp.status().is_success(), "login should succeed");
 
-    resp.response()
+    let id_cookie = resp
+        .response()
         .cookies()
         .find(|c| c.name() == "id")
-        .expect("login should set an identity cookie")
-        .into_owned()
+        .expect("login should set an identity cookie");
+    assert_eq!(
+        id_cookie.same_site(),
+        Some(actix_web::cookie::SameSite::Lax),
+        "session cookie SameSite policy is the CSRF fallback"
+    );
+    id_cookie.into_owned()
 }
 pub(super) async fn create_namespace<S>(
     app: &S,
@@ -417,6 +423,330 @@ async fn test_signup_with_invalid_invite() {
     let body_str = String::from_utf8(body.to_vec()).unwrap();
     assert!(body_str.contains("Invalid invite"));
 }
+
+#[actix_web::test]
+async fn signup_invite_is_consumed_once_and_replay_creates_no_second_account() {
+    let root = format!("/tmp/test_twig_signup_invite_once_{}", uuid::Uuid::new_v4());
+    let (app, db) = create_test_service_with_db_in(&root).await;
+    let generated = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/invite")
+            .set_form([("api_key", "secure")])
+            .to_request(),
+    )
+    .await;
+    assert_eq!(generated.status(), StatusCode::OK);
+    let invite_html = String::from_utf8(test::read_body(generated).await.to_vec()).unwrap();
+    let invite = extract_invite(&invite_html);
+
+    let first = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/signup")
+            .set_form([
+                ("invite", invite.as_str()),
+                ("username", "firstsignup"),
+                ("email", "firstsignup@example.test"),
+                ("password", "password123"),
+            ])
+            .to_request(),
+    )
+    .await;
+    assert_eq!(first.status(), StatusCode::OK);
+
+    let replay = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/signup")
+            .set_form([
+                ("invite", invite.as_str()),
+                ("username", "secondsignup"),
+                ("email", "secondsignup@example.test"),
+                ("password", "password123"),
+            ])
+            .to_request(),
+    )
+    .await;
+    assert_eq!(replay.status(), StatusCode::UNAUTHORIZED);
+    let first_user = db
+        .get_user_by_username("firstsignup")
+        .await
+        .unwrap()
+        .expect("first signup should create an account");
+    assert!(
+        db.get_user_by_username("secondsignup")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let invite = db.get_invite(&invite).await.unwrap().unwrap();
+    assert!(invite.used);
+    assert_eq!(invite.user_id.as_deref(), Some(first_user.id.as_str()));
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[actix_web::test]
+async fn login_and_invite_generation_are_rate_limited() {
+    let app = create_test_service().await;
+
+    for _ in 0..10 {
+        let response = test::call_service(
+            &app,
+            test::TestRequest::post()
+                .uri("/auth/login")
+                .set_form([("username", "unknown-user"), ("password", "wrong")])
+                .to_request(),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+    let throttled_login = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/login")
+            .set_form([("username", "unknown-user"), ("password", "wrong")])
+            .to_request(),
+    )
+    .await;
+    assert_eq!(throttled_login.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(throttled_login.headers().get("retry-after").unwrap(), "60");
+
+    for _ in 0..10 {
+        let response = test::call_service(
+            &app,
+            test::TestRequest::post()
+                .uri("/auth/invite")
+                .set_form([("api_key", "wrong-key")])
+                .to_request(),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+    let throttled_invite = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/invite")
+            .set_form([("api_key", "wrong-key")])
+            .to_request(),
+    )
+    .await;
+    assert_eq!(throttled_invite.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(throttled_invite.headers().get("retry-after").unwrap(), "60");
+}
+
+#[actix_web::test]
+async fn same_origin_guard_rejects_cross_origin_login_and_namespace_changes() {
+    let project_root = format!("/tmp/test_twig_csrf_root_{}", uuid::Uuid::new_v4());
+    let db_path = format!("/tmp/test_twig_csrf_{}.db", uuid::Uuid::new_v4());
+    let config = config::Server::new(
+        ("127.0.0.1".to_string(), 8080),
+        "debug".to_string(),
+        project_root.clone(),
+        db_path.clone(),
+        "secure".to_string(),
+        false,
+    )
+    .with_resend_settings(
+        None,
+        config::DEFAULT_RESEND_FROM.to_string(),
+        Some("http://localhost".to_string()),
+    );
+    let db = Database::new(&db_path);
+    db.init_tables().await.unwrap();
+    let user = auth::create_user(
+        "csrfowner".to_string(),
+        "csrfowner@example.test".to_string(),
+        "password123",
+    )
+    .unwrap();
+    db.create_user(&user).await.unwrap();
+    let auth_state = web::Data::new(auth::TwigContext::new(db.clone(), "secure".to_string()));
+    let session = auth_state.create_session(user.id).await.unwrap();
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config))
+            .app_data(auth_state)
+            .app_data(web::Data::new(
+                crate::http::body::RequestBodyLimits::default(),
+            ))
+            .app_data(web::Data::new(
+                crate::http::auth::device::DeviceAuthorizationRateLimiter::default(),
+            ))
+            .app_data(web::Data::new(
+                crate::http::auth::rate_limit::AuthRateLimiter::default(),
+            ))
+            .app_data(web::PayloadConfig::new(
+                crate::http::body::DEFAULT_SMALL_BODY_LIMIT,
+            ))
+            .wrap(actix_identity::IdentityMiddleware::default())
+            .wrap(crate::auth::session_store::middleware(
+                db.clone(),
+                actix_web::cookie::Key::generate(),
+            ))
+            .wrap(actix_web::middleware::from_fn(
+                crate::http::security::same_origin_guard,
+            ))
+            .wrap(actix_web::middleware::from_fn(
+                crate::http::security::security_headers,
+            ))
+            .configure(crate::http::routes::configure_routes),
+    )
+    .await;
+
+    let cross_origin_login = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/login")
+            .insert_header(("Origin", "https://attacker.example"))
+            .set_form([("username", "victim"), ("password", "invalid")])
+            .to_request(),
+    )
+    .await;
+    assert_eq!(cross_origin_login.status(), StatusCode::FORBIDDEN);
+    assert_eq!(
+        cross_origin_login
+            .headers()
+            .get("x-content-type-options")
+            .unwrap(),
+        "nosniff"
+    );
+    assert_eq!(
+        cross_origin_login.headers().get("cache-control").unwrap(),
+        "no-store"
+    );
+    assert!(
+        cross_origin_login
+            .headers()
+            .contains_key("content-security-policy")
+    );
+
+    let cross_origin_change = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/namespace")
+            .cookie(actix_web::cookie::Cookie::new("session", session.clone()))
+            .insert_header(("Origin", "https://attacker.example"))
+            .set_form([("name", "cross-origin-space")])
+            .to_request(),
+    )
+    .await;
+    assert_eq!(cross_origin_change.status(), StatusCode::FORBIDDEN);
+    assert!(
+        db.get_namespace_by_name("cross-origin-space")
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    let same_origin_change = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/namespace")
+            .cookie(actix_web::cookie::Cookie::new("session", session))
+            .insert_header(("Origin", "http://localhost"))
+            .set_form([("name", "same-origin-space")])
+            .to_request(),
+    )
+    .await;
+    assert_eq!(same_origin_change.status(), StatusCode::OK);
+    assert!(
+        db.get_namespace_by_name("same-origin-space")
+            .await
+            .unwrap()
+            .is_some()
+    );
+
+    let _ = std::fs::remove_dir_all(project_root);
+    let _ = std::fs::remove_file(db_path);
+}
+
+#[actix_web::test]
+async fn login_response_does_not_distinguish_unknown_user_from_wrong_password() {
+    let root = format!("/tmp/test_twig_login_enumeration_{}", uuid::Uuid::new_v4());
+    let (app, db) = create_test_service_with_db_in(&root).await;
+    let user = auth::create_user(
+        "known-login-user".to_string(),
+        "known@example.test".to_string(),
+        "correct password",
+    )
+    .unwrap();
+    db.create_user(&user).await.unwrap();
+
+    let unknown = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/login")
+            .set_form([("username", "unknown-login-user"), ("password", "wrong")])
+            .to_request(),
+    )
+    .await;
+    let unknown_status = unknown.status();
+    let unknown_body = test::read_body(unknown).await;
+    let wrong_password = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/login")
+            .set_form([("username", "known-login-user"), ("password", "wrong")])
+            .to_request(),
+    )
+    .await;
+
+    assert_eq!(unknown_status, StatusCode::UNAUTHORIZED);
+    assert_eq!(wrong_password.status(), unknown_status);
+    assert_eq!(test::read_body(wrong_password).await, unknown_body);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[actix_web::test]
+async fn dynamic_responses_receive_security_headers_without_overriding_asset_cache() {
+    let app = create_test_service().await;
+
+    let page = test::call_service(
+        &app,
+        test::TestRequest::get().uri("/auth/login").to_request(),
+    )
+    .await;
+    assert_eq!(page.status(), StatusCode::OK);
+    assert_eq!(
+        page.headers().get("x-content-type-options").unwrap(),
+        "nosniff"
+    );
+    assert_eq!(page.headers().get("x-frame-options").unwrap(), "DENY");
+    assert_eq!(
+        page.headers().get("referrer-policy").unwrap(),
+        "no-referrer"
+    );
+    assert_eq!(page.headers().get("cache-control").unwrap(), "no-store");
+    let csp = page
+        .headers()
+        .get("content-security-policy")
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert!(csp.contains("object-src 'none'"), "{csp}");
+    assert!(csp.contains("frame-ancestors 'none'"), "{csp}");
+
+    let asset = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri("/assets/twig.svg")
+            .to_request(),
+    )
+    .await;
+    assert_eq!(asset.status(), StatusCode::OK);
+    assert_eq!(
+        asset.headers().get("cache-control").unwrap(),
+        "no-cache",
+        "route-specific asset cache policy takes precedence over the default"
+    );
+    assert_eq!(
+        asset.headers().get("x-content-type-options").unwrap(),
+        "nosniff"
+    );
+}
+
 #[actix_web::test]
 async fn test_login_with_wrong_password() {
     let app = create_test_service().await;

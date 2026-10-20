@@ -22,6 +22,62 @@ fn test_create_repo_creates_directory_structure() {
 }
 
 #[test]
+fn create_repo_rejects_namespace_path_traversal() {
+    let fixture_root = format!("/tmp/test_twig_repo_escape_{}", uuid::Uuid::new_v4());
+    let project_root = Path::new(&fixture_root).join("project");
+    let sentinel = Path::new(&fixture_root).join("sentinel");
+    std::fs::create_dir_all(&sentinel).unwrap();
+    std::fs::write(sentinel.join("keep.txt"), "unchanged").unwrap();
+
+    let result = create_repo(
+        project_root.to_string_lossy().into_owned(),
+        "../sentinel/escape",
+        "repo",
+        "main",
+    );
+
+    assert!(result.is_err(), "traversal namespace should be rejected");
+    assert!(!sentinel.join("escape").exists());
+    assert_eq!(
+        std::fs::read_to_string(sentinel.join("keep.txt")).unwrap(),
+        "unchanged"
+    );
+    let _ = std::fs::remove_dir_all(&fixture_root);
+}
+
+#[cfg(unix)]
+#[test]
+fn create_repo_rejects_namespace_symlink_outside_project_root() {
+    use std::os::unix::fs::symlink;
+
+    let fixture_root = format!("/tmp/test_twig_repo_symlink_{}", uuid::Uuid::new_v4());
+    let project_root = Path::new(&fixture_root).join("project");
+    let sentinel = Path::new(&fixture_root).join("sentinel");
+    std::fs::create_dir_all(&project_root).unwrap();
+    std::fs::create_dir_all(&sentinel).unwrap();
+    std::fs::write(sentinel.join("keep.txt"), "unchanged").unwrap();
+    symlink(&sentinel, project_root.join("linked")).unwrap();
+
+    let result = create_repo(
+        project_root.to_string_lossy().into_owned(),
+        "linked",
+        "repo",
+        "main",
+    );
+
+    assert!(
+        result.is_err(),
+        "outside-root namespace symlink should fail"
+    );
+    assert!(!sentinel.join("repo").exists());
+    assert_eq!(
+        std::fs::read_to_string(sentinel.join("keep.txt")).unwrap(),
+        "unchanged"
+    );
+    let _ = std::fs::remove_dir_all(&fixture_root);
+}
+
+#[test]
 fn test_bare_init_creates_valid_repository_and_initial_config_commit() {
     let temp_dir = format!("/tmp/test_twig_bare_init_{}", uuid::Uuid::new_v4());
     std::fs::create_dir_all(&temp_dir).unwrap();

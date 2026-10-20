@@ -1,6 +1,7 @@
 pub mod api;
 pub mod assets;
 pub mod auth;
+pub mod body;
 pub mod health;
 pub mod info;
 pub mod namespace;
@@ -8,6 +9,7 @@ pub mod overview;
 pub mod repo_edit;
 pub mod repository;
 pub mod routes;
+pub mod security;
 pub mod settings;
 pub mod test_page;
 pub mod tree;

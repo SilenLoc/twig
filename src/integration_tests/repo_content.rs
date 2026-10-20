@@ -1,6 +1,37 @@
 use super::*;
 
+use super::auth_and_invitations::{create_namespace, signup_and_login};
 use super::support::*;
+
+async fn assert_repository_markup_is_inert<S>(app: &S, uri: &str, use_htmx: bool, marker: &str)
+where
+    S: actix_web::dev::Service<
+            Request,
+            Response = actix_web::dev::ServiceResponse,
+            Error = actix_web::Error,
+        >,
+{
+    let mut req = test::TestRequest::get().uri(uri);
+    if use_htmx {
+        req = req.insert_header(("HX-Request", "true"));
+    }
+    let response = test::call_service(app, req.to_request()).await;
+    assert_eq!(response.status(), StatusCode::OK, "{uri}");
+    let html = String::from_utf8(test::read_body(response).await.to_vec()).unwrap();
+    assert!(
+        html.contains(marker),
+        "repository text should remain visible: {html}"
+    );
+    assert!(
+        html.contains("&lt;"),
+        "repository tags must be escaped: {html}"
+    );
+    assert!(
+        !html.contains("<div data-security-marker=")
+            && !html.contains("<span data-security-marker="),
+        "repository markup must not become an HTML element: {html}"
+    );
+}
 
 /// Builds a bare repository whose tree contains the given `.twig.toml` and,
 /// when non-empty, a `paper/` directory holding the supplied pages.
@@ -295,6 +326,129 @@ async fn test_invalid_twig_toml_shows_a_diagnostic() {
         body.contains(".twig.toml"),
         "the offending file is named: {body}"
     );
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[actix_web::test]
+async fn repository_license_and_presentation_markup_are_inert_on_all_views() {
+    let root = format!("/tmp/test_twig_stored_markup_{}", uuid::Uuid::new_v4());
+    let app = create_test_service_in(&root).await;
+    let license_md = r#"<div data-security-marker="license-md">primary license marker</div>"#;
+    let license_fallback =
+        r#"<span data-security-marker="license-fallback">fallback license marker</span>"#;
+    let slide = "# Slide title\n\n**Supported Markdown**\n\n<div data-security-marker=\"slide\">slide marker</div>\n";
+    init_repo_with_files(
+        &std::path::Path::new(&root).join("pub/primary"),
+        "[present]\nfiles = [\"slides/one.md\"]\n",
+        &[
+            ("LICENSE.md", license_md),
+            ("LICENSE", license_fallback),
+            ("slides/one.md", slide),
+        ],
+    );
+    init_repo_with_files(
+        &std::path::Path::new(&root).join("pub/fallback"),
+        "",
+        &[("LICENSE", license_fallback)],
+    );
+
+    for (uri, htmx, marker) in [
+        ("/pub/primary/license", false, "primary license marker"),
+        ("/pub/primary/license", true, "primary license marker"),
+        ("/pub/primary/present", false, "slide marker"),
+        ("/pub/primary/present", true, "slide marker"),
+        ("/pub/primary/slide/0", false, "slide marker"),
+        ("/pub/primary/slide/0", true, "slide marker"),
+        (
+            "/pub/primary/present/print",
+            false,
+            "primary license marker",
+        ),
+        ("/pub/primary/present/print", false, "slide marker"),
+        ("/pub/fallback/license", false, "fallback license marker"),
+        (
+            "/pub/fallback/present/print",
+            false,
+            "fallback license marker",
+        ),
+    ] {
+        assert_repository_markup_is_inert(&app, uri, htmx, marker).await;
+    }
+
+    let present_html = get_body(&app, "/pub/primary/present").await;
+    assert!(
+        present_html.contains("<h1>Slide title</h1>"),
+        "{present_html}"
+    );
+    assert!(
+        present_html.contains("<strong>Supported Markdown</strong>"),
+        "{present_html}"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[actix_web::test]
+async fn private_repository_markup_is_inert_for_an_authorized_reader() {
+    let root = format!("/tmp/test_twig_private_markup_{}", uuid::Uuid::new_v4());
+    let (app, _) = create_test_service_with_db_in(&root).await;
+    let session = signup_and_login(&app, "markupreader").await;
+    create_namespace(&app, session.clone(), "private-space").await;
+    init_repo_with_files(
+        &std::path::Path::new(&root).join("private-space/private-repo"),
+        "private = true\n[present]\nfiles = [\"slides/one.md\"]\n",
+        &[
+            (
+                "LICENSE.md",
+                r#"<div data-security-marker="private-license">private license marker</div>"#,
+            ),
+            (
+                "slides/one.md",
+                "<div data-security-marker=\"private-slide\">private slide marker</div>",
+            ),
+        ],
+    );
+
+    for (uri, marker) in [
+        (
+            "/private-space/private-repo/license",
+            "private license marker",
+        ),
+        (
+            "/private-space/private-repo/present",
+            "private slide marker",
+        ),
+        (
+            "/private-space/private-repo/slide/0",
+            "private slide marker",
+        ),
+        (
+            "/private-space/private-repo/present/print",
+            "private license marker",
+        ),
+    ] {
+        let response = test::call_service(
+            &app,
+            test::TestRequest::get()
+                .uri(uri)
+                .cookie(session.clone())
+                .to_request(),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK, "{uri}");
+        let html = String::from_utf8(test::read_body(response).await.to_vec()).unwrap();
+        assert!(html.contains(marker), "{html}");
+        assert!(
+            html.contains("&lt;"),
+            "repository tags must be escaped: {html}"
+        );
+        assert!(
+            !html.contains("<div data-security-marker=")
+                && !html.contains("<span data-security-marker="),
+            "repository markup must not become an HTML element: {html}"
+        );
+    }
 
     let _ = std::fs::remove_dir_all(&root);
 }

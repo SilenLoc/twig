@@ -1,7 +1,145 @@
 use super::*;
 
+use super::auth_and_invitations::signup_and_login;
 use super::repo_content::init_repo_with_files;
-use super::support::create_test_service_in;
+use super::support::{create_test_service_in, create_test_service_with_db_and_body_limits};
+
+#[actix_web::test]
+async fn oversized_git_push_does_not_create_namespace_or_repository() {
+    let root = format!("/tmp/test_twig_git_body_limit_{}", uuid::Uuid::new_v4());
+    let limits = crate::http::body::RequestBodyLimits::for_tests(8, 16, 2, 1);
+    let (app, db) = create_test_service_with_db_and_body_limits(&root, limits).await;
+    let _session = signup_and_login(&app, "gitbodyowner").await;
+    let authorization = super::repo_access_and_routes::basic_auth("gitbodyowner", "password123");
+
+    let response = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/new-space/new-repo/git-receive-pack")
+            .insert_header(("User-Agent", "git/2.43.0"))
+            .insert_header(("Content-Type", "application/x-git-receive-pack-request"))
+            .insert_header(("Authorization", authorization.as_str()))
+            .set_payload(b"0123456789abcdefg".to_vec())
+            .to_request(),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    assert!(
+        db.get_namespace_by_name("new-space")
+            .await
+            .unwrap()
+            .is_none(),
+        "an oversized push must not create the namespace record"
+    );
+    assert!(
+        !std::path::Path::new(&root)
+            .join("new-space/new-repo")
+            .exists(),
+        "an oversized push must not create a repository"
+    );
+
+    let oversized_public_read = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/public/missing-repo/git-upload-pack")
+            .insert_header(("User-Agent", "git/2.43.0"))
+            .insert_header(("Content-Type", "application/x-git-upload-pack-request"))
+            .set_payload(b"123456789".to_vec())
+            .to_request(),
+    )
+    .await;
+    assert_eq!(
+        oversized_public_read.status(),
+        StatusCode::PAYLOAD_TOO_LARGE,
+        "public Git reads use the smaller request-body ceiling"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[actix_web::test]
+async fn unauthorized_git_write_is_rejected_before_reading_its_body() {
+    use std::io::{Read, Write};
+
+    let root = std::env::temp_dir().join(format!(
+        "test_twig_git_auth_before_body_{}",
+        uuid::Uuid::new_v4()
+    ));
+    let (address, server_handle, db, database_path) = start_network_git_server(&root).await;
+    let response = tokio::task::spawn_blocking(move || {
+        let mut stream = std::net::TcpStream::connect(address).unwrap();
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(2)))
+            .unwrap();
+        stream
+            .write_all(
+                b"POST /untrusted-space/repo/git-receive-pack HTTP/1.1\r\n\
+                  Host: 127.0.0.1\r\n\
+                  User-Agent: git/2.43.0\r\n\
+                  Content-Type: application/x-git-receive-pack-request\r\n\
+                  Content-Length: 2097152\r\n\
+                  Connection: close\r\n\r\n",
+            )
+            .unwrap();
+        let mut response = Vec::new();
+        stream.read_to_end(&mut response).unwrap();
+        String::from_utf8_lossy(&response).into_owned()
+    })
+    .await
+    .expect("join unauthenticated request");
+
+    assert!(response.starts_with("HTTP/1.1 401"), "{response}");
+    assert!(
+        db.get_namespace_by_name("untrusted-space")
+            .await
+            .unwrap()
+            .is_none(),
+        "an unauthenticated push must not create a namespace"
+    );
+    server_handle.stop(true).await;
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_file(database_path);
+}
+
+#[actix_web::test]
+async fn chunked_public_git_read_is_stopped_at_the_small_body_limit() {
+    use std::io::{Read, Write};
+
+    let root = std::env::temp_dir().join(format!(
+        "test_twig_git_chunked_limit_{}",
+        uuid::Uuid::new_v4()
+    ));
+    let limits = crate::http::body::RequestBodyLimits::for_tests(8, 16, 2, 1);
+    let (address, server_handle, _db, database_path) =
+        start_network_git_server_with_limits(&root, limits).await;
+    let response = tokio::task::spawn_blocking(move || {
+        let mut stream = std::net::TcpStream::connect(address).unwrap();
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(2)))
+            .unwrap();
+        stream
+            .write_all(
+                b"POST /public/missing-repo/git-upload-pack HTTP/1.1\r\n\
+                  Host: 127.0.0.1\r\n\
+                  User-Agent: git/2.43.0\r\n\
+                  Content-Type: application/x-git-upload-pack-request\r\n\
+                  Transfer-Encoding: chunked\r\n\
+                  Connection: close\r\n\r\n\
+                  9\r\n123456789\r\n0\r\n\r\n",
+            )
+            .unwrap();
+        let mut response = Vec::new();
+        stream.read_to_end(&mut response).unwrap();
+        String::from_utf8_lossy(&response).into_owned()
+    })
+    .await
+    .expect("join chunked public Git request");
+
+    assert!(response.starts_with("HTTP/1.1 413"), "{response}");
+    server_handle.stop(true).await;
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_file(database_path);
+}
 
 #[actix_web::test]
 async fn test_git_http_head_is_served_by_git_http_backend() {
@@ -139,14 +277,25 @@ async fn test_git_client_clones_and_fetches_through_git_http_backend() {
     let _ = std::fs::remove_file(database_path);
 }
 
-async fn start_network_git_server(
-    project_root: &std::path::Path,
-) -> (
+type NetworkGitServer = (
     std::net::SocketAddr,
     actix_web::dev::ServerHandle,
     crate::db::Database,
     std::path::PathBuf,
-) {
+);
+
+async fn start_network_git_server(project_root: &std::path::Path) -> NetworkGitServer {
+    start_network_git_server_with_limits(
+        project_root,
+        crate::http::body::RequestBodyLimits::default(),
+    )
+    .await
+}
+
+async fn start_network_git_server_with_limits(
+    project_root: &std::path::Path,
+    request_body_limits: crate::http::body::RequestBodyLimits,
+) -> NetworkGitServer {
     let database_path = project_root.with_extension("db");
     let config = config::Server::new(
         ("127.0.0.1".to_string(), 0),
@@ -163,17 +312,27 @@ async fn start_network_git_server(
         "test-key".to_string(),
     ));
     let app_config = web::Data::new(config);
+    let request_body_limits = web::Data::new(request_body_limits);
     let session_db = db.clone();
     let session_key = actix_web::cookie::Key::generate();
     let server = actix_web::HttpServer::new(move || {
         App::new()
             .app_data(app_config.clone())
             .app_data(auth_state.clone())
-            .app_data(web::PayloadConfig::new(1 << 29))
+            .app_data(request_body_limits.clone())
+            .app_data(web::PayloadConfig::new(
+                crate::http::body::DEFAULT_SMALL_BODY_LIMIT,
+            ))
             .wrap(actix_identity::IdentityMiddleware::default())
             .wrap(crate::auth::session_store::middleware(
                 session_db.clone(),
                 session_key.clone(),
+            ))
+            .wrap(actix_web::middleware::from_fn(
+                crate::http::security::same_origin_guard,
+            ))
+            .wrap(actix_web::middleware::from_fn(
+                crate::http::security::security_headers,
             ))
             .configure(crate::http::routes::configure_routes)
     })

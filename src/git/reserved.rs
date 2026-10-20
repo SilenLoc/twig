@@ -6,6 +6,26 @@
 
 use crate::git::bare::is_safe_component;
 
+/// Validates a namespace name before it is stored or joined to the project root.
+pub fn validate_namespace_name(name: &str) -> Result<(), String> {
+    if name.len() < 2 {
+        return Err("Namespace name must be at least 2 characters".to_string());
+    }
+    if name.starts_with('_') {
+        return Err("Namespace names starting with '_' are reserved".to_string());
+    }
+    if name.trim() != name
+        || !is_safe_component(name)
+        || !name
+            .chars()
+            .all(|character| character.is_alphanumeric() || matches!(character, '-' | '_' | '.'))
+    {
+        return Err("Invalid namespace name".to_string());
+    }
+
+    Ok(())
+}
+
 /// Names refused for user-created repositories.
 ///
 /// Each entry shadows a namespace-level UI route registered in `main.rs`.
@@ -103,5 +123,21 @@ mod tests {
     fn test_dotfile_names_are_refused() {
         assert!(validate_repo_name(".git").is_err());
         assert!(validate_repo_name(".hidden").is_err());
+    }
+
+    #[test]
+    fn namespace_names_must_be_safe_single_components() {
+        for name in ["..", ".", "../outside", "a/b", "a\\b", "/tmp", "C:"] {
+            assert!(
+                validate_namespace_name(name).is_err(),
+                "{name} should be refused"
+            );
+        }
+        for name in ["docs", "docs-team", "team_2", "v1.docs"] {
+            assert!(
+                validate_namespace_name(name).is_ok(),
+                "{name} should be allowed"
+            );
+        }
     }
 }

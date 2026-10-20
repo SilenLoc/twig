@@ -32,7 +32,9 @@ async fn create_test_service_with_test_user(
         App::new()
             .app_data(config_data)
             .app_data(auth_state.clone())
-            .app_data(web::PayloadConfig::new(1 << 29))
+            .app_data(web::PayloadConfig::new(
+                crate::http::body::DEFAULT_SMALL_BODY_LIMIT,
+            ))
             .wrap(actix_identity::IdentityMiddleware::default())
             .wrap(crate::auth::session_store::middleware(
                 session_db,

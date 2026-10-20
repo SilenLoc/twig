@@ -4,6 +4,7 @@ PROJECT_ROOT = "tests/git/srv"
 API_KEY = "secure"
 RESET_DB = "true"
 PORT = "8080"
+BIND_ADDRESS = "127.0.0.1"
 CACHE_CONTROL = "no-cache"
 TEST_USER = "admin"
 

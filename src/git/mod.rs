@@ -8,31 +8,30 @@ use crate::auth::{
 };
 use crate::config;
 use crate::git::repo::bare_init;
+use crate::http::body::{BodyClass, BodyReadError, BoundedBody, RequestBodyLimits};
 pub mod bare;
 pub mod repo;
 pub mod reserved;
 
 pub async fn git_handler(
     req: HttpRequest,
-    body: web::Bytes,
+    payload: web::Payload,
     path: web::Path<(String, String, String)>, // (namespace,repo, endpoint)
     server: web::Data<config::Server>,
     auth_state: web::Data<TwigContext>,
+    body_limits: web::Data<RequestBodyLimits>,
 ) -> HttpResponse {
     let (namespace, repo, endpoint) = path.into_inner();
+    let Ok(namespace_path) =
+        repo::checked_namespace_path(Path::new(server.project_root()), &namespace)
+    else {
+        return HttpResponse::BadRequest().body("Invalid namespace path");
+    };
 
-    let clean_repo = if Path::new(server.project_root())
-        .join(&namespace)
-        .join(&repo)
-        .exists()
-    {
+    let clean_repo = if namespace_path.join(&repo).exists() {
         repo.clone()
     } else if let Some(stripped) = repo.strip_suffix(".git") {
-        if Path::new(server.project_root())
-            .join(&namespace)
-            .join(stripped)
-            .exists()
-        {
+        if namespace_path.join(stripped).exists() {
             stripped.to_string()
         } else {
             repo.clone()
@@ -66,6 +65,29 @@ pub async fn git_handler(
             Ok(authenticated_user) => authenticated_user,
             Err(response) => return response,
         };
+
+    let mut body = match read_git_request_body(&req, payload, &kind, &body_limits).await {
+        Ok(body) => body,
+        Err(response) => return response,
+    };
+
+    if is_write_request(&kind) {
+        let Some(authenticated_user) = authenticated_user.as_ref() else {
+            return HttpResponse::InternalServerError().body("Git authorization state is missing");
+        };
+        if let Err(response) = prepare_git_write(
+            &server,
+            &auth_state,
+            &namespace,
+            &clean_repo,
+            authenticated_user,
+        )
+        .await
+        {
+            return response;
+        }
+    }
+
     let username = authenticated_user
         .as_ref()
         .map(|authenticated_user| authenticated_user.username.clone());
@@ -75,7 +97,7 @@ pub async fn git_handler(
 
     let git_backend_config = twig_git::backend::Config::new(server.project_root());
     let namespace = namespace.clone();
-    let body_bytes = body.to_vec();
+    let body_bytes = std::mem::take(&mut body.bytes);
     let git_req = git_req.clone();
     let result = web::block(move || {
         twig_git::backend::run_with_config(
@@ -100,6 +122,58 @@ pub async fn git_handler(
             HttpResponse::InternalServerError().body("blocking task failed")
         }
     }
+}
+
+async fn read_git_request_body(
+    req: &HttpRequest,
+    payload: web::Payload,
+    kind: &twig_git::backend::GitRequestKind,
+    limits: &RequestBodyLimits,
+) -> Result<BoundedBody, HttpResponse> {
+    let (class, max_bytes) = if matches!(kind, twig_git::backend::GitRequestKind::Push) {
+        (BodyClass::Large, limits.git_write_bytes())
+    } else {
+        (BodyClass::Small, limits.git_read_bytes())
+    };
+    if RequestBodyLimits::declared_length_exceeds(req, max_bytes) {
+        return Err(HttpResponse::PayloadTooLarge().body("Git request body exceeds its size limit"));
+    }
+
+    match limits.read_payload(payload, class, max_bytes).await {
+        Ok(body) => Ok(body),
+        Err(BodyReadError::TooLarge) => {
+            Err(HttpResponse::PayloadTooLarge().body("Git request body exceeds its size limit"))
+        }
+        Err(BodyReadError::Payload(error)) => {
+            log::warn!("Failed to read Git request body: {error}");
+            Err(HttpResponse::BadRequest().body("Failed to read Git request body"))
+        }
+        Err(BodyReadError::CapacityClosed) => {
+            Err(HttpResponse::ServiceUnavailable().body("Git request capacity is unavailable"))
+        }
+    }
+}
+
+async fn prepare_git_write(
+    server: &config::Server,
+    auth_state: &web::Data<TwigContext>,
+    namespace: &str,
+    repo: &str,
+    user: &AuthenticatedGitUser,
+) -> Result<(), HttpResponse> {
+    if !user.namespace_exists
+        && let Err(error) =
+            ensure_namespace_exists(auth_state, &user.user_id, &user.username, namespace).await
+    {
+        log::error!("Failed to ensure namespace exists: {error}");
+        return Err(HttpResponse::InternalServerError().body("Failed to create namespace"));
+    }
+    if let Err(error) = ensure_repo_exists(server.project_root(), namespace, repo) {
+        log::error!("Failed to ensure repository exists: {error}");
+        return Err(HttpResponse::InternalServerError().body("Failed to create repository"));
+    }
+
+    Ok(())
 }
 
 fn build_cgi_response(headers: &str, body: Vec<u8>) -> HttpResponse {
@@ -134,26 +208,11 @@ async fn authenticate_git_request(
     repo: &str,
     kind: &twig_git::backend::GitRequestKind,
 ) -> Result<Option<AuthenticatedGitUser>, HttpResponse> {
-    let is_write = matches!(
-        kind,
-        twig_git::backend::GitRequestKind::Push
-            | twig_git::backend::GitRequestKind::AdvertiseRefs(
-                twig_git::backend::GitService::WriteRef
-            )
-    );
+    let is_write = is_write_request(kind);
 
     if is_write {
         match is_authenticated(req, server, auth_state, namespace).await {
             Ok(Some(auth_result)) => {
-                if !auth_result.namespace_exists
-                    && let Err(e) =
-                        ensure_namespace_exists(auth_state, &auth_result.user, namespace).await
-                {
-                    log::error!("Failed to ensure namespace exists: {e}");
-                    return Err(
-                        HttpResponse::InternalServerError().body("Failed to create namespace")
-                    );
-                }
                 let repo_exists = Path::new(server.project_root())
                     .join(namespace)
                     .join(repo)
@@ -172,14 +231,10 @@ async fn authenticate_git_request(
                         HttpResponse::Forbidden().body("Push permission required for namespace")
                     );
                 }
-                if let Err(e) = ensure_repo_exists(server.project_root(), namespace, repo) {
-                    log::error!("Failed to ensure repo exists: {e}");
-                    return Err(
-                        HttpResponse::InternalServerError().body("Failed to create repository")
-                    );
-                }
                 Ok(Some(AuthenticatedGitUser {
+                    user_id: auth_result.user.id,
                     username: auth_result.user.username,
+                    namespace_exists: auth_result.namespace_exists,
                     namespace_role: if auth_result
                         .permissions
                         .contains(NamespacePermission::RewriteProtectedBranches)
@@ -206,7 +261,9 @@ async fn authenticate_git_request(
                     return Err(HttpResponse::Forbidden().body("Read permission required"));
                 }
                 Ok(Some(AuthenticatedGitUser {
+                    user_id: auth_result.user.id,
                     username: auth_result.user.username,
+                    namespace_exists: true,
                     namespace_role: if auth_result
                         .permissions
                         .contains(NamespacePermission::RewriteProtectedBranches)
@@ -226,7 +283,9 @@ async fn authenticate_git_request(
 }
 
 struct AuthenticatedGitUser {
+    user_id: String,
     username: String,
+    namespace_exists: bool,
     namespace_role: crate::auth::NamespaceRole,
 }
 
@@ -345,17 +404,14 @@ async fn authenticate_git_user(
 /// Ensures a namespace exists in the database, creating it if necessary.
 async fn ensure_namespace_exists(
     auth_state: &web::Data<TwigContext>,
-    user: &User,
+    user_id: &str,
+    username: &str,
     namespace_name: &str,
 ) -> Result<(), String> {
     let db = auth_state.db();
 
-    log::info!(
-        "Auto-creating namespace '{}' for user '{}'",
-        namespace_name,
-        user.username
-    );
-    let namespace = crate::auth::create_namespace(namespace_name.to_string(), user.id.clone());
+    log::info!("Auto-creating namespace '{namespace_name}' for user '{username}'");
+    let namespace = crate::auth::create_namespace(namespace_name.to_string(), user_id.to_string());
     db.create_namespace(&namespace)
         .await
         .map_err(|e| format!("Failed to create namespace: {e}"))?;
@@ -363,24 +419,25 @@ async fn ensure_namespace_exists(
     Ok(())
 }
 
+fn is_write_request(kind: &twig_git::backend::GitRequestKind) -> bool {
+    matches!(
+        kind,
+        twig_git::backend::GitRequestKind::Push
+            | twig_git::backend::GitRequestKind::AdvertiseRefs(
+                twig_git::backend::GitService::WriteRef
+            )
+    )
+}
+
 /// Ensures a bare repository exists on disk, creating it if necessary
 fn ensure_repo_exists(project_root: &str, namespace: &str, repo_name: &str) -> Result<(), String> {
-    // User-created repositories must not shadow namespace-level UI routes.
-    if crate::git::reserved::is_reserved_repo_name(repo_name) {
-        return Err(format!("'{repo_name}' is a reserved repository name"));
-    }
-
-    let repo_path = Path::new(project_root).join(namespace).join(repo_name);
+    crate::git::reserved::validate_namespace_name(namespace)?;
+    crate::git::reserved::validate_repo_name(repo_name)?;
+    let namespace_path = repo::ensure_namespace_directory(Path::new(project_root), namespace)?;
+    let repo_path = namespace_path.join(repo_name);
 
     if repo_path.exists() {
         return twig_git::repo::install_pre_receive_hook(&repo_path);
-    }
-
-    // Create namespace directory if needed
-    let ns_path = Path::new(project_root).join(namespace);
-    if !ns_path.exists() {
-        std::fs::create_dir_all(&ns_path)
-            .map_err(|e| format!("Failed to create namespace directory: {e}"))?;
     }
 
     // Create the bare repository

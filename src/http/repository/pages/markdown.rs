@@ -245,6 +245,7 @@ pub(super) fn render_slide_markdown(
     let base_dir = parent_path(file);
 
     let parser = Parser::new_ext(&replaced, markdown_options()).map(|event| match event {
+        Event::Html(text) | Event::InlineHtml(text) => Event::Text(text),
         Event::Start(tag) => Event::Start(fix_link_tag(tag, namespace, repo, base_dir)),
         other => other,
     });

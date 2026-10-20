@@ -50,7 +50,7 @@ fn test_print_export_renders_one_page_per_slide_with_the_license_last() {
             < index_of(&html, r#"class="twig-pdf-page twig-pdf-page--license""#),
         "the license page follows the last slide: {html}"
     );
-    assert!(html.contains("<p>MIT</p>"), "{html}");
+    assert!(html.contains("&lt;p&gt;MIT&lt;/p&gt;"), "{html}");
 
     // The license page starts on its own sheet, and the last page never
     // forces a trailing blank sheet.

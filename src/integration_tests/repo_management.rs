@@ -224,3 +224,69 @@ async fn test_cannot_create_namespace_with_reserved_prefix() {
 
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[actix_web::test]
+async fn namespace_paths_cannot_escape_project_root() {
+    let fixture_root = format!("/tmp/test_twig_namespace_escape_{}", uuid::Uuid::new_v4());
+    let project_root = std::path::Path::new(&fixture_root).join("project");
+    let sentinel = std::path::Path::new(&fixture_root).join("sentinel");
+    std::fs::create_dir_all(&sentinel).unwrap();
+    std::fs::write(sentinel.join("keep.txt"), "unchanged").unwrap();
+    let project_root = project_root.to_string_lossy().into_owned();
+    let (app, db) = create_test_service_with_db_in(&project_root).await;
+    let session = signup_and_login(&app, "pathowner").await;
+    let outside_namespace = "../sentinel/ui-escape";
+
+    let req = test::TestRequest::post()
+        .uri("/auth/namespace")
+        .cookie(session)
+        .set_form([("name", outside_namespace)])
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert!(
+        resp.status().is_client_error(),
+        "namespace creation must reject path components"
+    );
+    assert!(
+        db.get_namespace_by_name(outside_namespace)
+            .await
+            .unwrap()
+            .is_none(),
+        "rejected namespace must not be recorded"
+    );
+    assert!(!sentinel.join("ui-escape").exists());
+
+    let user = db
+        .get_user_by_username("pathowner")
+        .await
+        .unwrap()
+        .expect("signup created test user");
+    let seeded_invalid_namespace = "../sentinel/init-escape";
+    db.create_namespace(&auth::create_namespace(
+        seeded_invalid_namespace.to_string(),
+        user.id,
+    ))
+    .await
+    .unwrap();
+
+    let req = test::TestRequest::post()
+        .uri("/init")
+        .insert_header((
+            "Authorization",
+            super::repo_access_and_routes::basic_auth("pathowner", "password123"),
+        ))
+        .set_form([("namespace", seeded_invalid_namespace), ("repo", "repo")])
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert!(
+        resp.status().is_client_error(),
+        "/init must reject an invalid namespace already stored in the database"
+    );
+    assert!(!sentinel.join("init-escape/repo").exists());
+    assert_eq!(
+        std::fs::read_to_string(sentinel.join("keep.txt")).unwrap(),
+        "unchanged"
+    );
+
+    let _ = std::fs::remove_dir_all(&fixture_root);
+}

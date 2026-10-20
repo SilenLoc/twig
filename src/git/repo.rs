@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use actix_web::{HttpRequest, HttpResponse, Responder, post, web};
 use git2::{Repository, RepositoryInitOptions, Signature};
@@ -10,6 +10,59 @@ use crate::auth::{
     permissions::{self, NamespacePermission},
 };
 use crate::config;
+
+/// Resolves a namespace beneath the configured root, refusing symlinks and
+/// existing paths whose canonical destination is outside that root.
+pub fn checked_namespace_path(project_root: &Path, namespace: &str) -> Result<PathBuf, String> {
+    crate::git::reserved::validate_namespace_name(namespace)?;
+
+    if !project_root.exists() {
+        return Ok(project_root.join(namespace));
+    }
+
+    let canonical_root = project_root
+        .canonicalize()
+        .map_err(|error| format!("Failed to resolve project root: {error}"))?;
+    let namespace_path = canonical_root.join(namespace);
+    match std::fs::symlink_metadata(&namespace_path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            return Err("Namespace directory must not be a symlink".to_string());
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(namespace_path);
+        }
+        Err(error) => return Err(format!("Failed to inspect namespace directory: {error}")),
+    }
+
+    let canonical_namespace = namespace_path
+        .canonicalize()
+        .map_err(|error| format!("Failed to resolve namespace directory: {error}"))?;
+    if !canonical_namespace.starts_with(&canonical_root) || canonical_namespace == canonical_root {
+        return Err("Namespace path is outside the project root".to_string());
+    }
+    if !canonical_namespace.is_dir() {
+        return Err("Namespace path is not a directory".to_string());
+    }
+
+    Ok(canonical_namespace)
+}
+
+/// Creates the namespace directory only after validating its name and checking
+/// that the resulting directory remains under the canonical project root.
+pub fn ensure_namespace_directory(project_root: &Path, namespace: &str) -> Result<PathBuf, String> {
+    crate::git::reserved::validate_namespace_name(namespace)?;
+    std::fs::create_dir_all(project_root)
+        .map_err(|error| format!("Failed to create project root: {error}"))?;
+
+    let namespace_path = checked_namespace_path(project_root, namespace)?;
+    if !namespace_path.exists() {
+        std::fs::create_dir(&namespace_path)
+            .map_err(|error| format!("Failed to create namespace directory: {error}"))?;
+    }
+
+    checked_namespace_path(project_root, namespace)
+}
 
 #[derive(Deserialize)]
 struct InitRepo {
@@ -30,6 +83,10 @@ pub async fn init(
     server: web::Data<config::Server>,
     auth_state: web::Data<TwigContext>,
 ) -> impl Responder {
+    if let Err(message) = crate::git::reserved::validate_namespace_name(&init_repo.namespace) {
+        return HttpResponse::BadRequest().body(message);
+    }
+
     let db = auth_state.db();
 
     let principal = match auth_state.authenticate_request(&req).await {
@@ -89,24 +146,15 @@ fn create_repo(
     let root: String = root.into();
     let root: &Path = Path::new(&root);
     let branch: String = branch.into();
+    let ns: String = namespace.into();
+    let repo: String = repo.into();
+
+    crate::git::reserved::validate_namespace_name(&ns)?;
+    crate::git::reserved::validate_repo_name(&repo)?;
 
     info!("root path:{}", root.display());
 
-    if !root.exists() {
-        std::fs::create_dir_all(root)
-            .map_err(|e| format!("Failed to create root directory: {e}"))?;
-    }
-
-    let ns: String = namespace.into();
-    let ns = root.join(ns);
-
-    if !ns.exists() {
-        std::fs::create_dir_all(&ns)
-            .map_err(|e| format!("Failed to create namespace directory: {e}"))?;
-    }
-
-    let repo: String = repo.into();
-    crate::git::reserved::validate_repo_name(&repo)?;
+    let ns = ensure_namespace_directory(root, &ns)?;
     let repo = ns.join(repo);
 
     if !repo.exists() {

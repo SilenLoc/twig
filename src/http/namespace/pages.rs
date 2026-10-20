@@ -230,6 +230,9 @@ pub async fn handler(
     query: web::Query<SearchQuery>,
 ) -> AwResult<maud::Markup> {
     let namespace = &params.namespace;
+    if let Err(error) = crate::git::reserved::validate_namespace_name(namespace) {
+        return Err(actix_web::error::ErrorBadRequest(error));
+    }
     let search_query = query.q.as_deref().unwrap_or("");
     let username = get_username_from_request(&req, &auth_state).await;
     let can_view_private_repositories = user_has_namespace_permission_for_request(
@@ -332,6 +335,9 @@ pub async fn create_repo_form_handler(
     auth_state: web::Data<TwigContext>,
     params: web::Path<Params>,
 ) -> impl Responder {
+    if let Err(message) = crate::git::reserved::validate_namespace_name(&params.namespace) {
+        return HttpResponse::BadRequest().body(render_error(&message).into_string());
+    }
     if !user_can_create_repositories(&req, &server, &auth_state, &params.namespace).await {
         return HttpResponse::Forbidden()
             .body(render_error("Only namespace owners can create repositories").into_string());
@@ -350,6 +356,9 @@ pub async fn create_repo_handler(
     form: web::Form<CreateRepoForm>,
 ) -> impl Responder {
     let namespace = &params.namespace;
+    if let Err(message) = crate::git::reserved::validate_namespace_name(namespace) {
+        return HttpResponse::BadRequest().body(render_error(&message).into_string());
+    }
 
     let Some(user_id) = auth_state.user_id_from_request(&req).await else {
         let message = if req.cookie("session").is_some() {
@@ -379,9 +388,18 @@ pub async fn create_repo_handler(
         return HttpResponse::BadRequest().body(render_error(&message).into_string());
     }
 
-    let repo_path = std::path::Path::new(server.project_root())
-        .join(namespace)
-        .join(&form.repo_name);
+    let namespace_path = match crate::git::repo::ensure_namespace_directory(
+        std::path::Path::new(server.project_root()),
+        namespace,
+    ) {
+        Ok(path) => path,
+        Err(error) => {
+            log::error!("Failed to prepare namespace directory: {error}");
+            return HttpResponse::InternalServerError()
+                .body(render_error("Failed to prepare namespace directory").into_string());
+        }
+    };
+    let repo_path = namespace_path.join(&form.repo_name);
 
     if repo_path.exists() {
         return HttpResponse::Conflict()

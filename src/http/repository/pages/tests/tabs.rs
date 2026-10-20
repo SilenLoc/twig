@@ -355,7 +355,7 @@ fn test_config_and_license_views_render_code_and_empty_states() {
 
     let html = render_license_view(Some("<p>MIT</p>")).into_string();
     assert!(
-        html.contains(r#"<div class="twig-md twig-md--boxed"><p>MIT</p></div>"#),
+        html.contains(r#"<div class="twig-md twig-md--boxed">&lt;p&gt;MIT&lt;/p&gt;</div>"#),
         "{html}"
     );
 

@@ -22,7 +22,11 @@ pub mod namespace {
     use std::path::Path;
 
     pub fn has_any_repository(root: &str, namespace: &str) -> bool {
-        let namespace_dir = Path::new(root).join(namespace);
+        let Ok(namespace_dir) =
+            crate::git::repo::checked_namespace_path(Path::new(root), namespace)
+        else {
+            return false;
+        };
         if !namespace_dir.is_dir() {
             return false;
         }

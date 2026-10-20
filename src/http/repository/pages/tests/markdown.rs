@@ -82,6 +82,25 @@ fn test_slide_markdown_substitutes_template_variables() {
     );
     assert!(html.contains("Talk by Jane"), "{html}");
 }
+
+#[test]
+fn test_slide_markdown_escapes_raw_html_but_keeps_markdown_formatting() {
+    let source =
+        "# Heading\n\n**Bold text**\n\n<div data-security-marker=\"slide\">safe marker</div>";
+    let html = render_slide_markdown(source, "ns", "repo", "slides/one.md", &HashMap::new());
+
+    assert!(html.contains("<h1>Heading</h1>"), "{html}");
+    assert!(html.contains("<strong>Bold text</strong>"), "{html}");
+    assert!(
+        html.contains("&lt;div"),
+        "raw HTML should be escaped: {html}"
+    );
+    assert!(
+        !html.contains("<div data-security-marker="),
+        "repository HTML must not become an element: {html}"
+    );
+    assert!(html.contains("safe marker"), "{html}");
+}
 #[test]
 fn test_resolve_relative_path() {
     assert_eq!(resolve_relative_path("", "a.md"), "a.md");

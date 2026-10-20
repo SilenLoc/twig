@@ -436,7 +436,7 @@ pub(super) fn render_license_view(license_content: Option<&str>) -> Markup {
         div class="twig-stack" {
             @if let Some(content) = license_content {
                 div class="twig-md twig-md--boxed" {
-                    (maud::PreEscaped(content))
+                    (content)
                 }
             } @else {
                 (render_empty("NO LICENSE", "No license information available."))

@@ -6,6 +6,65 @@ use super::auth_and_invitations::{create_namespace, signup_and_login};
 use super::repo_workspace_ui::{init_repo_files, init_text_repo};
 
 #[actix_web::test]
+async fn repo_edit_rejects_malformed_unauthorized_form_before_parsing() {
+    let root = format!(
+        "/tmp/test_twig_repo_edit_auth_first_{}",
+        uuid::Uuid::new_v4()
+    );
+    let limits = crate::http::body::RequestBodyLimits::for_tests(16, 512 * 1024 * 1024, 2, 1);
+    let (app, _) = create_test_service_with_db_and_body_limits(&root, limits).await;
+
+    let response = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/unauthorized/repo/edit/commit")
+            .insert_header(("Content-Type", "application/x-www-form-urlencoded"))
+            .set_payload(b"draft=malformed".to_vec())
+            .to_request(),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::FOUND);
+    assert_eq!(response.headers().get("location").unwrap(), "/auth/login");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[actix_web::test]
+async fn repo_edit_forms_honor_small_test_limit_without_committing() {
+    let root = format!(
+        "/tmp/test_twig_repo_edit_body_limit_{}",
+        uuid::Uuid::new_v4()
+    );
+    let limits = crate::http::body::RequestBodyLimits::for_tests(32, 512 * 1024 * 1024, 2, 1);
+    let (app, _) = create_test_service_with_db_and_body_limits(&root, limits).await;
+    let session = signup_and_login(&app, "formlimitowner").await;
+    create_namespace(&app, session.clone(), "form-limit").await;
+    let repo_path = std::path::Path::new(&root).join("form-limit/repo");
+    let base_head = init_text_repo(&repo_path, "README.md", b"# Before\n");
+
+    let response = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/form-limit/repo/edit/commit")
+            .cookie(session)
+            .set_form([
+                (
+                    "draft",
+                    "a draft body longer than the injected 32-byte ceiling",
+                ),
+                ("message", "Should not commit"),
+            ])
+            .to_request(),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    let handle = crate::git::bare::RepoHandle::open(&root, "form-limit", "repo").unwrap();
+    assert_eq!(handle.head_oid().unwrap(), Some(base_head));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[actix_web::test]
 async fn repo_edit_commits_the_complete_draft_as_one_commit_and_keeps_the_workspace() {
     let root = format!("/tmp/test_twig_repo_edit_commit_{}", uuid::Uuid::new_v4());
     let app = create_test_service_in(&root).await;
@@ -228,10 +287,7 @@ async fn repo_edit_commit_rejects_invalid_message_noop_and_oversized_file() {
         ])
         .to_request();
     let response = test::call_service(&app, oversized).await;
-    assert_eq!(response.status(), StatusCode::OK);
-    let body = test::read_body(response).await;
-    let html = String::from_utf8_lossy(&body);
-    assert!(html.contains("larger than 1 MiB"), "{html}");
+    assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
     assert_eq!(handle.head_oid().unwrap(), Some(base_head));
     assert_eq!(handle.get_commits(3).unwrap().len(), 1);
 }

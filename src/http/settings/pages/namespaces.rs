@@ -19,25 +19,11 @@ pub async fn rename_namespace(
     auth_state: web::Data<TwigContext>,
     form: web::Form<RenameNamespaceForm>,
 ) -> impl Responder {
-    if !git::bare::is_safe_component(&form.namespace) {
-        return HttpResponse::BadRequest()
-            .body(render_error("Invalid namespace name").into_string());
+    if let Err(message) = git::reserved::validate_namespace_name(&form.namespace) {
+        return HttpResponse::BadRequest().body(render_error(&message).into_string());
     }
-    if form.new_name.len() < 2 {
-        return HttpResponse::BadRequest()
-            .body(render_error("Namespace name must be at least 2 characters").into_string());
-    }
-    if form.new_name.starts_with('_') {
-        return HttpResponse::BadRequest()
-            .body(render_error("Namespace names starting with '_' are reserved").into_string());
-    }
-    if !git::bare::is_safe_component(&form.new_name) {
-        return HttpResponse::BadRequest()
-            .body(render_error("Invalid namespace name").into_string());
-    }
-    if form.new_name.trim() != form.new_name {
-        return HttpResponse::BadRequest()
-            .body(render_error("Invalid namespace name").into_string());
+    if let Err(message) = git::reserved::validate_namespace_name(&form.new_name) {
+        return HttpResponse::BadRequest().body(render_error(&message).into_string());
     }
     if form.new_name == form.namespace {
         return HttpResponse::BadRequest()
@@ -88,8 +74,14 @@ pub async fn rename_namespace(
     }
 
     let root = Path::new(server.project_root());
-    let source = root.join(&form.namespace);
-    let destination = root.join(&form.new_name);
+    let Ok(source) = git::repo::checked_namespace_path(root, &form.namespace) else {
+        return HttpResponse::BadRequest()
+            .body(render_error("Invalid namespace path").into_string());
+    };
+    let Ok(destination) = git::repo::checked_namespace_path(root, &form.new_name) else {
+        return HttpResponse::BadRequest()
+            .body(render_error("Invalid namespace path").into_string());
+    };
 
     if destination.exists() {
         return HttpResponse::Conflict().body(
@@ -129,6 +121,9 @@ pub async fn delete_namespace(
     auth_state: web::Data<TwigContext>,
     form: web::Form<NamespaceForm>,
 ) -> impl Responder {
+    if let Err(message) = git::reserved::validate_namespace_name(&form.namespace) {
+        return HttpResponse::BadRequest().body(render_error(&message).into_string());
+    }
     let Some(user_id) = auth_state.user_id_from_request(&req).await else {
         return HttpResponse::Unauthorized()
             .body(render_error("Not logged in. Please log in first.").into_string());
@@ -176,7 +171,12 @@ pub async fn delete_namespace(
             .body(render_error("Failed to delete namespace").into_string());
     }
 
-    let namespace_dir = Path::new(server.project_root()).join(&form.namespace);
+    let Ok(namespace_dir) =
+        git::repo::checked_namespace_path(Path::new(server.project_root()), &form.namespace)
+    else {
+        return HttpResponse::BadRequest()
+            .body(render_error("Invalid namespace path").into_string());
+    };
     if namespace_dir.is_dir() {
         let _ = std::fs::remove_dir(&namespace_dir);
     }

@@ -96,8 +96,11 @@ fn last_commit_date(repo: &git2::Repository) -> Option<chrono::DateTime<Utc>> {
 }
 
 fn list_repos_with_info(root: &str, namespace: &str, query: Option<&str>) -> Vec<RepoInfo> {
-    let path = Path::new(root).join(namespace);
-    let Ok(entries) = std::fs::read_dir(path) else {
+    let Ok(namespace_path) = crate::git::repo::checked_namespace_path(Path::new(root), namespace)
+    else {
+        return Vec::new();
+    };
+    let Ok(entries) = std::fs::read_dir(&namespace_path) else {
         return Vec::new();
     };
 
@@ -106,6 +109,12 @@ fn list_repos_with_info(root: &str, namespace: &str, query: Option<&str>) -> Vec
         let Ok(entry) = entry else {
             continue;
         };
+        if entry
+            .file_type()
+            .is_ok_and(|file_type| file_type.is_symlink())
+        {
+            continue;
+        }
 
         let Ok(repo_name) = entry.file_name().into_string() else {
             continue;
@@ -119,7 +128,7 @@ fn list_repos_with_info(root: &str, namespace: &str, query: Option<&str>) -> Vec
             continue;
         }
 
-        let repo_path = Path::new(root).join(namespace).join(&repo_name);
+        let repo_path = namespace_path.join(&repo_name);
         let Ok(repo) = git2::Repository::open(&repo_path) else {
             continue;
         };

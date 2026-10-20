@@ -6,11 +6,49 @@ use log::info;
 use crate::auth::TwigContext;
 use crate::auth::permissions::NamespacePermission;
 use crate::config;
+use crate::db::Database;
 use crate::git;
 use crate::http::view::{render_error, render_success};
 
 use super::shared::require_namespace_permission;
 use super::{DeleteRepoForm, MoveRepoForm, RenameRepoForm};
+
+async fn require_move_namespace_permissions(
+    db: &Database,
+    server: &config::Server,
+    user_id: &str,
+    source_namespace: &str,
+    target_namespace: &str,
+) -> Result<(), HttpResponse> {
+    for (namespace, description) in [
+        (source_namespace, "source"),
+        (target_namespace, "destination"),
+    ] {
+        match db.get_namespace_by_name(namespace).await {
+            Ok(Some(_)) => {}
+            Ok(None) => {
+                return Err(HttpResponse::NotFound().body(
+                    render_error(&format!("{description} namespace not found")).into_string(),
+                ));
+            }
+            Err(error) => {
+                log::error!("Failed to load {description} namespace: {error}");
+                return Err(HttpResponse::InternalServerError()
+                    .body(render_error("Database error").into_string()));
+            }
+        }
+        require_namespace_permission(
+            db,
+            server,
+            user_id,
+            namespace,
+            NamespacePermission::ManageRepositories,
+        )
+        .await?;
+    }
+
+    Ok(())
+}
 
 pub(crate) fn render_repo_deletion_panel(
     repos_by_namespace: &[(String, Vec<git::bare::RepoInfo>)],
@@ -131,6 +169,12 @@ pub async fn delete_repo(
     auth_state: web::Data<TwigContext>,
     form: web::Form<DeleteRepoForm>,
 ) -> impl Responder {
+    if let Err(message) = git::reserved::validate_namespace_name(&form.namespace) {
+        return HttpResponse::BadRequest().body(render_error(&message).into_string());
+    }
+    if let Err(message) = git::reserved::validate_repo_name(&form.repo_name) {
+        return HttpResponse::BadRequest().body(render_error(&message).into_string());
+    }
     // Get user from session
     let Some(user_id) = auth_state.user_id_from_request(&req).await else {
         return HttpResponse::Unauthorized()
@@ -152,9 +196,13 @@ pub async fn delete_repo(
     }
 
     // Build the repository path
-    let repo_path = Path::new(server.project_root())
-        .join(&form.namespace)
-        .join(&form.repo_name);
+    let Ok(namespace_path) =
+        git::repo::checked_namespace_path(Path::new(server.project_root()), &form.namespace)
+    else {
+        return HttpResponse::BadRequest()
+            .body(render_error("Invalid namespace path").into_string());
+    };
+    let repo_path = namespace_path.join(&form.repo_name);
 
     // Check that the path exists and is a git repository
     if !repo_path.exists() {
@@ -200,11 +248,11 @@ pub async fn move_repo(
     auth_state: web::Data<TwigContext>,
     form: web::Form<MoveRepoForm>,
 ) -> impl Responder {
-    if !git::bare::is_safe_component(&form.source_namespace)
-        || !git::bare::is_safe_component(&form.target_namespace)
-    {
-        return HttpResponse::BadRequest()
-            .body(render_error("Invalid namespace name").into_string());
+    if let Err(message) = git::reserved::validate_namespace_name(&form.source_namespace) {
+        return HttpResponse::BadRequest().body(render_error(&message).into_string());
+    }
+    if let Err(message) = git::reserved::validate_namespace_name(&form.target_namespace) {
+        return HttpResponse::BadRequest().body(render_error(&message).into_string());
     }
     if let Err(message) = git::reserved::validate_repo_name(&form.repo_name) {
         return HttpResponse::BadRequest().body(render_error(&message).into_string());
@@ -224,40 +272,30 @@ pub async fn move_repo(
     };
 
     let db = auth_state.db();
-    for (name, description) in [
-        (&form.source_namespace, "source"),
-        (&form.target_namespace, "destination"),
-    ] {
-        match db.get_namespace_by_name(name).await {
-            Ok(Some(_)) => {}
-            Ok(None) => {
-                return HttpResponse::NotFound().body(
-                    render_error(&format!("{description} namespace not found")).into_string(),
-                );
-            }
-            Err(e) => {
-                log::error!("Failed to load {description} namespace: {e}");
-                return HttpResponse::InternalServerError()
-                    .body(render_error("Database error").into_string());
-            }
-        }
-        if let Err(response) = require_namespace_permission(
-            db,
-            &server,
-            &user_id,
-            name,
-            NamespacePermission::ManageRepositories,
-        )
-        .await
-        {
-            return response;
-        }
+    if let Err(response) = require_move_namespace_permissions(
+        db,
+        &server,
+        &user_id,
+        &form.source_namespace,
+        &form.target_namespace,
+    )
+    .await
+    {
+        return response;
     }
 
-    let source = Path::new(server.project_root())
-        .join(&form.source_namespace)
-        .join(&form.repo_name);
-    let destination_namespace = Path::new(server.project_root()).join(&form.target_namespace);
+    let root = Path::new(server.project_root());
+    let Ok(source_namespace) = git::repo::checked_namespace_path(root, &form.source_namespace)
+    else {
+        return HttpResponse::BadRequest()
+            .body(render_error("Invalid namespace path").into_string());
+    };
+    let source = source_namespace.join(&form.repo_name);
+    let Ok(destination_namespace) = git::repo::checked_namespace_path(root, &form.target_namespace)
+    else {
+        return HttpResponse::BadRequest()
+            .body(render_error("Invalid namespace path").into_string());
+    };
     let destination = destination_namespace.join(&form.repo_name);
 
     if !source.exists() {
@@ -273,11 +311,16 @@ pub async fn move_repo(
                 .into_string(),
         );
     }
-    if let Err(e) = std::fs::create_dir_all(&destination_namespace) {
-        log::error!("Failed to create destination namespace directory: {e}");
-        return HttpResponse::InternalServerError()
-            .body(render_error("Failed to prepare destination namespace").into_string());
-    }
+    let destination_namespace =
+        match git::repo::ensure_namespace_directory(root, &form.target_namespace) {
+            Ok(path) => path,
+            Err(error) => {
+                log::error!("Failed to prepare destination namespace directory: {error}");
+                return HttpResponse::InternalServerError()
+                    .body(render_error("Failed to prepare destination namespace").into_string());
+            }
+        };
+    let destination = destination_namespace.join(&form.repo_name);
     if let Err(e) = std::fs::rename(&source, &destination) {
         log::error!("Failed to move repository: {e}");
         return HttpResponse::InternalServerError()
@@ -304,9 +347,8 @@ pub async fn rename_repo(
     auth_state: web::Data<TwigContext>,
     form: web::Form<RenameRepoForm>,
 ) -> impl Responder {
-    if !git::bare::is_safe_component(&form.namespace) {
-        return HttpResponse::BadRequest()
-            .body(render_error("Invalid namespace name").into_string());
+    if let Err(message) = git::reserved::validate_namespace_name(&form.namespace) {
+        return HttpResponse::BadRequest().body(render_error(&message).into_string());
     }
     if let Err(message) = git::reserved::validate_repo_name(&form.repo_name) {
         return HttpResponse::BadRequest().body(render_error(&message).into_string());
@@ -357,7 +399,12 @@ pub async fn rename_repo(
         return response;
     }
 
-    let namespace_dir = Path::new(server.project_root()).join(&form.namespace);
+    let Ok(namespace_dir) =
+        git::repo::checked_namespace_path(Path::new(server.project_root()), &form.namespace)
+    else {
+        return HttpResponse::BadRequest()
+            .body(render_error("Invalid namespace path").into_string());
+    };
     let source = namespace_dir.join(&form.repo_name);
     let destination = namespace_dir.join(&form.new_name);
 

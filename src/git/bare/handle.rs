@@ -35,7 +35,15 @@ impl RepoHandle {
                 "Invalid namespace or repository name",
             ));
         }
-        let path = Path::new(root).join(namespace).join(repo);
+        let namespace_path = crate::git::repo::checked_namespace_path(Path::new(root), namespace)
+            .map_err(|error| git2::Error::from_str(&error))?;
+        let path = namespace_path.join(repo);
+        if std::fs::symlink_metadata(&path).is_ok_and(|metadata| metadata.file_type().is_symlink())
+        {
+            return Err(git2::Error::from_str(
+                "Repository path must not be a symlink",
+            ));
+        }
         let repo = git2::Repository::open(&path)?;
         Ok(Self { repo })
     }

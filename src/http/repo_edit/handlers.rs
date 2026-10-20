@@ -12,6 +12,7 @@ use super::{
     workspace_file_url,
 };
 use crate::git::bare::is_safe_repo_path;
+use crate::http::body::RequestBodyLimits;
 
 #[get("/{namespace}/{repo}/edit")]
 pub async fn workspace_page(
@@ -105,10 +106,11 @@ pub async fn tree_fragment(
 
 pub async fn apply_operation(
     req: HttpRequest,
+    payload: web::Payload,
     server: web::Data<config::Server>,
     auth_state: web::Data<TwigContext>,
+    body_limits: web::Data<RequestBodyLimits>,
     params: web::Path<RepoParams>,
-    input: web::Form<WorkspaceOperationInput>,
 ) -> HttpResponse {
     let params = params.into_inner();
     let context = match open_workspace_context(
@@ -124,6 +126,14 @@ pub async fn apply_operation(
         Ok(context) => context,
         Err(response) => return response,
     };
+    let bounded_input = match body_limits
+        .extract_authorized_form::<WorkspaceOperationInput>(&req, payload)
+        .await
+    {
+        Ok(input) => input,
+        Err(response) => return response,
+    };
+    let input = &bounded_input.value;
     let mut draft: WorkspaceDraft = match serde_json::from_str(&input.draft) {
         Ok(draft) => draft,
         Err(error) => {
@@ -148,7 +158,7 @@ pub async fn apply_operation(
         ));
     }
 
-    let message = match apply_file_operation(&context, &mut draft, &input) {
+    let message = match apply_file_operation(&context, &mut draft, input) {
         Ok(message) => message,
         Err(message) => {
             let serialized = serde_json::to_string(&draft).unwrap_or_default();
@@ -166,10 +176,11 @@ pub async fn apply_operation(
 
 pub async fn commit_workspace(
     req: HttpRequest,
+    payload: web::Payload,
     server: web::Data<config::Server>,
     auth_state: web::Data<TwigContext>,
+    body_limits: web::Data<RequestBodyLimits>,
     params: web::Path<RepoParams>,
-    input: web::Form<CommitWorkspaceInput>,
 ) -> HttpResponse {
     let params = params.into_inner();
     let context = match open_workspace_context(
@@ -185,6 +196,14 @@ pub async fn commit_workspace(
         Ok(context) => context,
         Err(response) => return response,
     };
+    let bounded_input = match body_limits
+        .extract_authorized_form::<CommitWorkspaceInput>(&req, payload)
+        .await
+    {
+        Ok(input) => input,
+        Err(response) => return response,
+    };
+    let input = &bounded_input.value;
     let draft: WorkspaceDraft = match serde_json::from_str(&input.draft) {
         Ok(draft) => draft,
         Err(error) => {

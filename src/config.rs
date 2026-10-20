@@ -114,6 +114,13 @@ impl Server {
         self.reset_db
     }
 
+    /// Refuses unsafe development reset mode before any database side effect.
+    pub fn validate_startup(&self) -> Result<(), String> {
+        let (bind_address, port) = &self.address;
+        validate_reset_db_mode(self.reset_db, bind_address, *port, cfg!(debug_assertions))?;
+        validate_api_key_mode(&self.api_key, cfg!(debug_assertions))
+    }
+
     /// Returns the configured test admin user, if set.
     pub fn test_user(&self) -> Option<&str> {
         self.test_user.as_deref()
@@ -129,11 +136,11 @@ impl Server {
         self.test_user.as_deref() == Some(username)
     }
 
-    /// Deletes the database file if `RESET_DB` is set to true.
-    /// Logs warnings and results appropriately.
-    pub fn maybe_reset_database(&self) {
+    /// Deletes the database file if `RESET_DB` is safely enabled.
+    pub fn maybe_reset_database(&self) -> Result<(), String> {
+        self.validate_startup()?;
         if !self.reset_db {
-            return;
+            return Ok(());
         }
 
         log::warn!(
@@ -142,12 +149,11 @@ impl Server {
         );
 
         if std::path::Path::new(&self.db_path).exists() {
-            if let Err(e) = std::fs::remove_file(&self.db_path) {
-                log::error!("Failed to delete database file: {e}");
-            } else {
-                log::info!("Database file deleted successfully");
-            }
+            std::fs::remove_file(&self.db_path)
+                .map_err(|error| format!("Failed to delete database file: {error}"))?;
+            log::info!("Database file deleted successfully");
         }
+        Ok(())
     }
 
     pub fn cache_control(&self) -> &HeaderValue {
@@ -164,16 +170,27 @@ impl Server {
     }
 
     /// Returns the API key, generating a random one if not provided.
-    /// Logs a warning when generating a random key.
+    /// Logs that a random key was generated without exposing the secret.
     pub fn effective_api_key(&self) -> String {
-        if self.api_key.is_empty() {
-            let key = crate::auth::generate_token();
-            log::warn!("No API_KEY set, using generated key: {key}");
-            key
-        } else {
-            self.api_key.clone()
-        }
+        resolve_api_key(&self.api_key, |message| log::warn!("{message}"))
     }
+}
+
+fn resolve_api_key(api_key: &str, warn: impl FnOnce(&str)) -> String {
+    if !api_key.is_empty() {
+        return api_key.to_string();
+    }
+
+    let key = crate::auth::generate_token();
+    warn("No API_KEY set; using a generated key (secret omitted)");
+    key
+}
+
+fn validate_api_key_mode(api_key: &str, debug_build: bool) -> Result<(), String> {
+    if api_key.is_empty() && !debug_build {
+        return Err("API_KEY must be explicitly configured in release builds".to_string());
+    }
+    Ok(())
 }
 
 impl std::fmt::Display for Server {
@@ -188,6 +205,11 @@ pub fn from_env() -> Server {
         .parse()
         .unwrap_or(80);
     let log_level = std::env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string());
+    let bind_address = std::env::var("BIND_ADDRESS")
+        .ok()
+        .map(|address| address.trim().to_string())
+        .filter(|address| !address.is_empty())
+        .unwrap_or_else(|| "0.0.0.0".to_string());
     let project_root = std::env::var("PROJECT_ROOT").unwrap_or_else(|_| "/srv/git".to_string());
     let db_path = std::env::var("DB_PATH").unwrap_or_else(|_| "twig.db".to_string());
     let api_key = std::env::var("API_KEY").unwrap_or_default();
@@ -233,7 +255,7 @@ pub fn from_env() -> Server {
         });
 
     Server::new(
-        ("0.0.0.0".to_string(), port),
+        (bind_address, port),
         log_level,
         project_root,
         db_path,
@@ -245,6 +267,31 @@ pub fn from_env() -> Server {
     .with_test_user(test_user)
     .with_admin_user(admin_user)
     .with_resend_settings(resend_api_key, resend_from, public_base_url)
+}
+
+fn validate_reset_db_mode(
+    reset_db: bool,
+    bind_address: &str,
+    port: u16,
+    debug_build: bool,
+) -> Result<(), String> {
+    if !reset_db {
+        return Ok(());
+    }
+    if port == 80 {
+        return Err("RESET_DB=true is forbidden when PORT=80".to_string());
+    }
+    if !debug_build {
+        return Err("RESET_DB=true is only allowed in debug builds".to_string());
+    }
+    let is_loopback = bind_address
+        .parse::<std::net::IpAddr>()
+        .is_ok_and(|address| address.is_loopback());
+    if !is_loopback {
+        return Err("RESET_DB=true requires BIND_ADDRESS to be a loopback IP address".to_string());
+    }
+
+    Ok(())
 }
 
 fn ascii(server: &Server) -> String {

@@ -76,6 +76,9 @@ fn spawn_database_init(
 
 fn main() -> std::io::Result<()> {
     let config = config::from_env();
+    config
+        .validate_startup()
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error))?;
     init_logging(&config);
 
     actix_web::rt::System::new().block_on(async move {
@@ -84,7 +87,9 @@ fn main() -> std::io::Result<()> {
         let config = web::Data::new(config);
 
         // Check if we should reset the database
-        config.maybe_reset_database();
+        config
+            .maybe_reset_database()
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error))?;
 
         // Initialize database
         let db_path = config.db_path().to_string();
@@ -95,6 +100,7 @@ fn main() -> std::io::Result<()> {
         let auth_state = web::Data::new(auth::TwigContext::new(db, api_key));
         let device_rate_limiter =
             web::Data::new(http::auth::device::DeviceAuthorizationRateLimiter::default());
+        let auth_rate_limiter = web::Data::new(http::auth::rate_limit::AuthRateLimiter::default());
         let dev_session_token: web::Data<tokio::sync::OnceCell<String>> =
             web::Data::new(tokio::sync::OnceCell::new());
 
@@ -106,23 +112,32 @@ fn main() -> std::io::Result<()> {
 
         let bind_address = config.address();
         let session_key = config.session_key();
+        let request_body_limits = web::Data::new(http::body::RequestBodyLimits::default());
 
         HttpServer::new(move || {
             let reset_db = config.reset_db();
             let dev_session_for_mw = dev_session_token.clone();
             let device_rate_limiter = device_rate_limiter.clone();
+            let auth_rate_limiter = auth_rate_limiter.clone();
             let session_key = session_key.clone();
 
             App::new()
                 .app_data(config.clone())
                 .app_data(auth_state.clone())
+                .app_data(request_body_limits.clone())
                 .app_data(device_rate_limiter.clone())
+                .app_data(auth_rate_limiter.clone())
                 // Shared payload ceiling for large Git pushes and binary uploads.
-                .app_data(web::PayloadConfig::new(1 << 29))
+                .app_data(web::PayloadConfig::new(
+                    http::body::DEFAULT_SMALL_BODY_LIMIT,
+                ))
                 .wrap(IdentityMiddleware::default())
                 .wrap(auth::session_store::middleware(
                     auth_state.db().clone(),
                     session_key,
+                ))
+                .wrap(actix_web::middleware::from_fn(
+                    http::security::same_origin_guard,
                 ))
                 // Dev convenience: when RESET_DB is true, auto-attach the seeded
                 // admin session cookie to any request that doesn't already carry
@@ -143,6 +158,9 @@ fn main() -> std::io::Result<()> {
                     }
                     srv.call(req)
                 })
+                .wrap(actix_web::middleware::from_fn(
+                    http::security::security_headers,
+                ))
                 .configure(http::routes::configure_routes)
         })
         .bind(bind_address)?

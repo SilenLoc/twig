@@ -48,8 +48,9 @@ impl Database {
         repo: &str,
         version: &Version,
         filename: &str,
-        bytes: &[u8],
+        bytes: impl Into<Vec<u8>>,
     ) -> Result<PutBinaryOutcome, String> {
+        let bytes = bytes.into();
         let version = version.to_string();
         let size_bytes = i64::try_from(bytes.len())
             .map_err(|_| "Binary asset is too large to store".to_string())?;
@@ -204,7 +205,7 @@ async fn store_binary_in_transaction(
     repo: &str,
     version: &str,
     filename: &str,
-    bytes: &[u8],
+    bytes: Vec<u8>,
     size_bytes: i64,
 ) -> Result<PutBinaryOutcome, String> {
     let mut existing = conn
@@ -272,7 +273,7 @@ async fn store_binary_in_transaction(
             repo,
             version,
             filename,
-            turso::Value::Blob(bytes.to_vec()),
+            turso::Value::Blob(bytes),
             size_bytes,
             chrono::Utc::now().to_rfc3339()
         ],

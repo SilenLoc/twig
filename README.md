@@ -31,9 +31,10 @@ mise run run
 ```
 
 The development configuration sets `PROJECT_ROOT=tests/git/srv`,
-`RESET_DB=true`, `PORT=8080`, and `TEST_USER=admin`. With `RESET_DB=true`, Twig
-resets its local database and seeds an `admin` / `admin` account for local
-browsing. Do not use this mode for persistent data.
+`RESET_DB=true`, `BIND_ADDRESS=127.0.0.1`, `PORT=8080`, and `TEST_USER=admin`.
+With `RESET_DB=true`, Twig resets its local database and seeds an `admin` /
+`admin` account for local browsing. This mode is rejected on port 80, on
+non-loopback binds, and in release builds. Do not use it for persistent data.
 
 The container listens on port 80. Persist both the Git root and database file
 when deploying, and set `SESSION_KEY` to a stable secret so browser sessions

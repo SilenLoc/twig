@@ -32,6 +32,7 @@ pub fn middleware(
     key: actix_web::cookie::Key,
 ) -> actix_session::SessionMiddleware<SqlSessionStore> {
     actix_session::SessionMiddleware::builder(SqlSessionStore::new(db), key)
+        .cookie_same_site(actix_web::cookie::SameSite::Lax)
         .session_lifecycle(
             PersistentSession::default().session_ttl(actix_web::cookie::time::Duration::days(30)),
         )

@@ -1,5 +1,12 @@
-use crate::auth::Invite;
+use crate::auth::{Invite, User};
 use crate::db::Database;
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum SignupInviteError {
+    InviteUnavailable,
+    UsernameExists,
+    Database(String),
+}
 
 impl Database {
     pub async fn create_invite(&self, invite: &Invite) -> Result<(), String> {
@@ -43,18 +50,90 @@ impl Database {
         }
     }
 
-    pub async fn mark_invite_used(&self, invite_id: &str) -> Result<(), String> {
-        let now = chrono::Utc::now().to_rfc3339();
-        self.conn()
-            .await?
-            .execute(
-                "UPDATE invites SET used = TRUE, used_at = ?1 WHERE id = ?2",
-                turso::params![now, invite_id],
+    /// Atomically claims an unused signup invite and inserts the corresponding
+    /// user. A failed insert rolls back the invite claim.
+    pub async fn create_user_with_invite(
+        &self,
+        invite_id: &str,
+        user: &User,
+    ) -> Result<(), SignupInviteError> {
+        let conn = self.conn().await.map_err(SignupInviteError::Database)?;
+        conn.execute("BEGIN IMMEDIATE", ())
+            .await
+            .map_err(|error| SignupInviteError::Database(error.to_string()))?;
+
+        let result = create_user_with_invite_in_transaction(&conn, invite_id, user).await;
+        match result {
+            Ok(()) => match conn.execute("COMMIT", ()).await {
+                Ok(_) => Ok(()),
+                Err(error) => {
+                    let _ = conn.execute("ROLLBACK", ()).await;
+                    Err(SignupInviteError::Database(error.to_string()))
+                }
+            },
+            Err(error) => {
+                if let Err(rollback_error) = conn.execute("ROLLBACK", ()).await {
+                    return Err(SignupInviteError::Database(format!(
+                        "{error:?} (rollback failed: {rollback_error})"
+                    )));
+                }
+                Err(error)
+            }
+        }
+    }
+}
+
+async fn create_user_with_invite_in_transaction(
+    conn: &turso::Connection,
+    invite_id: &str,
+    user: &User,
+) -> Result<(), SignupInviteError> {
+    let username_exists = {
+        let mut rows = conn
+            .query(
+                "SELECT 1 FROM users WHERE username = ?1 LIMIT 1",
+                turso::params![user.username.as_str()],
             )
             .await
-            .map_err(|e| e.to_string())?;
-        Ok(())
+            .map_err(|error| SignupInviteError::Database(error.to_string()))?;
+        rows.next()
+            .await
+            .map_err(|error| SignupInviteError::Database(error.to_string()))?
+            .is_some()
+    };
+    if username_exists {
+        return Err(SignupInviteError::UsernameExists);
     }
+
+    let used_at = chrono::Utc::now().to_rfc3339();
+    let claimed = conn
+        .execute(
+            "UPDATE invites
+             SET used = TRUE, used_at = ?1, user_id = ?2
+             WHERE id = ?3 AND used = FALSE",
+            turso::params![used_at, user.id.as_str(), invite_id],
+        )
+        .await
+        .map_err(|error| SignupInviteError::Database(error.to_string()))?;
+    if claimed != 1 {
+        return Err(SignupInviteError::InviteUnavailable);
+    }
+
+    conn.execute(
+        "INSERT INTO users (id, username, email, password_hash, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        turso::params![
+            user.id.as_str(),
+            user.username.as_str(),
+            user.email.clone(),
+            user.password_hash.as_str(),
+            user.created_at.as_str(),
+        ],
+    )
+    .await
+    .map_err(|error| SignupInviteError::Database(error.to_string()))?;
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -98,26 +177,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_mark_invite_used() {
-        let (db, db_path) = setup_db().await;
-        let invite = test_invite();
-
-        db.create_invite(&invite).await.expect("create invite");
-        db.mark_invite_used(&invite.id).await.expect("mark used");
-
-        let retrieved = db
-            .get_invite(&invite.id)
-            .await
-            .expect("get invite")
-            .unwrap();
-        assert!(retrieved.used);
-        assert!(retrieved.used_at.is_some());
-
-        // Cleanup
-        let _ = std::fs::remove_file(&db_path);
-    }
-
-    #[tokio::test]
     async fn test_get_invite_not_found() {
         let (db, db_path) = setup_db().await;
 
@@ -129,5 +188,113 @@ mod tests {
 
         // Cleanup
         let _ = std::fs::remove_file(&db_path);
+    }
+
+    #[tokio::test]
+    async fn concurrent_signup_claims_consume_one_invite_once() {
+        let (db, db_path) = setup_db().await;
+        let invite = test_invite();
+        db.create_invite(&invite).await.unwrap();
+        let first = crate::auth::create_user(
+            "signup-first".to_string(),
+            "first@example.test".to_string(),
+            "password123",
+        )
+        .unwrap();
+        let second = crate::auth::create_user(
+            "signup-second".to_string(),
+            "second@example.test".to_string(),
+            "password123",
+        )
+        .unwrap();
+
+        let (first_result, second_result) = tokio::join!(
+            db.create_user_with_invite(&invite.id, &first),
+            db.create_user_with_invite(&invite.id, &second),
+        );
+        assert_ne!(first_result.is_ok(), second_result.is_ok());
+
+        let first_saved = db
+            .get_user_by_username(&first.username)
+            .await
+            .unwrap()
+            .is_some();
+        let second_saved = db
+            .get_user_by_username(&second.username)
+            .await
+            .unwrap()
+            .is_some();
+        assert_ne!(first_saved, second_saved);
+        let consumed = db.get_invite(&invite.id).await.unwrap().unwrap();
+        assert!(consumed.used);
+        assert_eq!(
+            consumed.user_id.as_deref(),
+            Some(if first_saved {
+                first.id.as_str()
+            } else {
+                second.id.as_str()
+            })
+        );
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
+    #[tokio::test]
+    async fn failed_user_insert_rolls_back_invite_claim() {
+        let (db, db_path) = setup_db().await;
+        let existing = crate::auth::create_user(
+            "existing-user".to_string(),
+            "existing@example.test".to_string(),
+            "password123",
+        )
+        .unwrap();
+        db.create_user(&existing).await.unwrap();
+        let invite = test_invite();
+        db.create_invite(&invite).await.unwrap();
+        let mut conflicting_id = crate::auth::create_user(
+            "new-user".to_string(),
+            "new@example.test".to_string(),
+            "password123",
+        )
+        .unwrap();
+        conflicting_id.id.clone_from(&existing.id);
+
+        let result = db
+            .create_user_with_invite(&invite.id, &conflicting_id)
+            .await;
+        assert!(matches!(result, Err(SignupInviteError::Database(_))));
+        assert!(db.get_user_by_username("new-user").await.unwrap().is_none());
+        assert!(!db.get_invite(&invite.id).await.unwrap().unwrap().used);
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
+    #[tokio::test]
+    async fn username_conflict_does_not_consume_signup_invite() {
+        let (db, db_path) = setup_db().await;
+        let existing = crate::auth::create_user(
+            "existing-user".to_string(),
+            "existing@example.test".to_string(),
+            "password123",
+        )
+        .unwrap();
+        db.create_user(&existing).await.unwrap();
+        let invite = test_invite();
+        db.create_invite(&invite).await.unwrap();
+        let duplicate_name = crate::auth::create_user(
+            "existing-user".to_string(),
+            "another@example.test".to_string(),
+            "password123",
+        )
+        .unwrap();
+
+        assert!(matches!(
+            db.create_user_with_invite(&invite.id, &duplicate_name)
+                .await,
+            Err(SignupInviteError::UsernameExists)
+        ));
+        assert!(!db.get_invite(&invite.id).await.unwrap().unwrap().used);
+
+        let _ = std::fs::remove_file(db_path);
     }
 }

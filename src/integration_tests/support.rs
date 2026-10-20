@@ -29,6 +29,24 @@ pub(super) async fn create_test_service_with_db_in(
     >,
     Database,
 ) {
+    create_test_service_with_db_and_body_limits(
+        project_root,
+        crate::http::body::RequestBodyLimits::default(),
+    )
+    .await
+}
+
+pub(super) async fn create_test_service_with_db_and_body_limits(
+    project_root: &str,
+    request_body_limits: crate::http::body::RequestBodyLimits,
+) -> (
+    impl actix_web::dev::Service<
+        Request,
+        Response = actix_web::dev::ServiceResponse,
+        Error = actix_web::Error,
+    >,
+    Database,
+) {
     // A distinct database per call: nextest runs each test in its own
     // process, and turso takes an exclusive file lock, so a shared path
     // would make concurrent tests fail to open the database.
@@ -54,20 +72,84 @@ pub(super) async fn create_test_service_with_db_in(
         App::new()
             .app_data(config_data)
             .app_data(auth_state)
+            .app_data(web::Data::new(request_body_limits))
             .app_data(web::Data::new(
                 crate::http::auth::device::DeviceAuthorizationRateLimiter::default(),
             ))
-            .app_data(web::PayloadConfig::new(1 << 29))
+            .app_data(web::Data::new(
+                crate::http::auth::rate_limit::AuthRateLimiter::default(),
+            ))
+            .app_data(web::PayloadConfig::new(
+                crate::http::body::DEFAULT_SMALL_BODY_LIMIT,
+            ))
             .wrap(actix_identity::IdentityMiddleware::default())
             .wrap(crate::auth::session_store::middleware(
                 session_db,
                 actix_web::cookie::Key::generate(),
+            ))
+            .wrap(actix_web::middleware::from_fn(
+                crate::http::security::security_headers,
             ))
             .configure(crate::http::routes::configure_routes),
     )
     .await;
     (app, test_db)
 }
+
+async fn seed_admin_test_users(db: &Database) -> (auth::User, auth::User, auth::User) {
+    let admin = auth::create_user(
+        "admin".to_string(),
+        "admin@example.com".to_string(),
+        "password123",
+    )
+    .expect("create admin");
+    db.create_user(&admin).await.expect("persist admin");
+    let namespace = auth::create_namespace("acme".to_string(), admin.id.clone());
+    db.create_namespace(&namespace)
+        .await
+        .expect("create namespace");
+
+    let contributor = auth::create_user(
+        "contributor".to_string(),
+        "contributor@example.com".to_string(),
+        "password123",
+    )
+    .expect("create contributor");
+    db.create_user(&contributor)
+        .await
+        .expect("persist contributor");
+    db.conn()
+        .await
+        .expect("connect to membership DB")
+        .execute(
+            "INSERT INTO namespace_members (namespace_id, user_id, role, added_at)
+                 VALUES (?1, ?2, 'contributor', ?3)",
+            turso::params![
+                namespace.id.clone(),
+                contributor.id.clone(),
+                chrono::Utc::now().to_rfc3339()
+            ],
+        )
+        .await
+        .expect("add contributor membership");
+
+    let owner = auth::create_user(
+        "owner".to_string(),
+        "owner@example.com".to_string(),
+        "password123",
+    )
+    .expect("create namespace owner");
+    db.create_user(&owner)
+        .await
+        .expect("persist namespace owner");
+    let owned_namespace = auth::create_namespace("docs-team".to_string(), owner.id.clone());
+    db.create_namespace(&owned_namespace)
+        .await
+        .expect("create owned namespace");
+
+    (admin, contributor, owner)
+}
+
 pub(super) async fn create_admin_test_service() -> (
     impl actix_web::dev::Service<
         Request,
@@ -92,53 +174,7 @@ pub(super) async fn create_admin_test_service() -> (
     .with_admin_user(Some("admin".to_string()));
     let db = Database::new(config.db_path());
     db.init_tables().await.expect("init tables");
-    let user = auth::create_user(
-        "admin".to_string(),
-        "admin@example.com".to_string(),
-        "password123",
-    )
-    .expect("create admin");
-    db.create_user(&user).await.expect("persist admin");
-    let namespace = auth::create_namespace("acme".to_string(), user.id.clone());
-    db.create_namespace(&namespace)
-        .await
-        .expect("create namespace");
-    let contributor = auth::create_user(
-        "contributor".to_string(),
-        "contributor@example.com".to_string(),
-        "password123",
-    )
-    .expect("create contributor");
-    db.create_user(&contributor)
-        .await
-        .expect("persist contributor");
-    db.conn()
-        .await
-        .expect("connect to membership DB")
-        .execute(
-            "INSERT INTO namespace_members (namespace_id, user_id, role, added_at)
-                 VALUES (?1, ?2, 'contributor', ?3)",
-            turso::params![
-                namespace.id.clone(),
-                contributor.id.clone(),
-                chrono::Utc::now().to_rfc3339()
-            ],
-        )
-        .await
-        .expect("add contributor membership");
-    let owner = auth::create_user(
-        "owner".to_string(),
-        "owner@example.com".to_string(),
-        "password123",
-    )
-    .expect("create namespace owner");
-    db.create_user(&owner)
-        .await
-        .expect("persist namespace owner");
-    let owned_namespace = auth::create_namespace("docs-team".to_string(), owner.id.clone());
-    db.create_namespace(&owned_namespace)
-        .await
-        .expect("create owned namespace");
+    let (user, contributor, owner) = seed_admin_test_users(&db).await;
 
     let auth_state = web::Data::new(auth::TwigContext::new(db, "secure".to_string()));
     let session = auth_state
@@ -153,20 +189,26 @@ pub(super) async fn create_admin_test_service() -> (
         .create_session(contributor.id)
         .await
         .expect("create contributor session");
-    let session_db = auth_state.db().clone();
-    let test_db = auth_state.db().clone();
     let app = test::init_service(
         App::new()
             .app_data(web::Data::new(config))
-            .app_data(auth_state)
+            .app_data(auth_state.clone())
+            .app_data(web::Data::new(
+                crate::http::body::RequestBodyLimits::default(),
+            ))
             .app_data(web::Data::new(
                 crate::http::auth::device::DeviceAuthorizationRateLimiter::default(),
             ))
-            .app_data(web::PayloadConfig::new(1 << 29))
+            .app_data(web::Data::new(
+                crate::http::auth::rate_limit::AuthRateLimiter::default(),
+            ))
             .wrap(actix_identity::IdentityMiddleware::default())
             .wrap(crate::auth::session_store::middleware(
-                session_db,
+                auth_state.db().clone(),
                 actix_web::cookie::Key::generate(),
+            ))
+            .wrap(actix_web::middleware::from_fn(
+                crate::http::security::security_headers,
             ))
             .configure(crate::http::routes::configure_routes),
     )
@@ -176,7 +218,7 @@ pub(super) async fn create_admin_test_service() -> (
         session,
         owner_session,
         contributor_session,
-        test_db,
+        auth_state.db().clone(),
         project_root,
     )
 }

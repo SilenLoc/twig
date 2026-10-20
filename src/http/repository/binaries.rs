@@ -10,11 +10,9 @@ use crate::{
     config,
     db::binaries::{BinaryBlob, PutBinaryOutcome},
     http::auth::session::get_username_from_request,
+    http::body::{BodyClass, BodyReadError, RequestBodyLimits},
 };
 use twig_git::bare::RepoHandle;
-
-/// Match the Actix request payload ceiling configured in `main`.
-const MAX_BINARY_BYTES: usize = 1 << 29;
 
 #[derive(Deserialize)]
 struct BinaryParams {
@@ -27,15 +25,12 @@ struct BinaryParams {
 #[put("/{namespace}/{repo}/binaries/{version}/{filename}")]
 pub async fn upload_binary(
     req: HttpRequest,
-    body: web::Bytes,
+    payload: web::Payload,
     params: web::Path<BinaryParams>,
     server: web::Data<config::Server>,
     auth_state: web::Data<TwigContext>,
+    body_limits: web::Data<RequestBodyLimits>,
 ) -> HttpResponse {
-    if !is_binary_size_allowed(body.len()) {
-        return HttpResponse::build(actix_web::http::StatusCode::PAYLOAD_TOO_LARGE)
-            .body("Binary exceeds the 512 MiB upload limit");
-    }
     if params.version == "latest" {
         return HttpResponse::BadRequest().body("'latest' is reserved for downloads");
     }
@@ -46,15 +41,38 @@ pub async fn upload_binary(
         return HttpResponse::BadRequest().body("Invalid binary filename");
     }
 
-    if RepoHandle::open(server.project_root(), &params.namespace, &params.repo).is_err() {
-        return HttpResponse::NotFound().finish();
-    }
-
     if let Err(response) =
         require_namespace_writer(&req, &server, &auth_state, &params.namespace).await
     {
         return response;
     }
+
+    if RepoHandle::open(server.project_root(), &params.namespace, &params.repo).is_err() {
+        return HttpResponse::NotFound().finish();
+    }
+
+    let max_bytes = body_limits.binary_upload_bytes();
+    if RequestBodyLimits::declared_length_exceeds(&req, max_bytes) {
+        return HttpResponse::PayloadTooLarge()
+            .body(format!("Binary exceeds the {max_bytes}-byte upload limit"));
+    }
+    let mut body = match body_limits
+        .read_payload(payload, BodyClass::Large, max_bytes)
+        .await
+    {
+        Ok(body) => body,
+        Err(BodyReadError::TooLarge) => {
+            return HttpResponse::PayloadTooLarge()
+                .body(format!("Binary exceeds the {max_bytes}-byte upload limit"));
+        }
+        Err(BodyReadError::Payload(error)) => {
+            log::warn!("Failed to read binary upload body: {error}");
+            return HttpResponse::BadRequest().body("Failed to read upload body");
+        }
+        Err(BodyReadError::CapacityClosed) => {
+            return HttpResponse::ServiceUnavailable().body("Upload capacity is unavailable");
+        }
+    };
 
     match auth_state
         .db()
@@ -63,7 +81,7 @@ pub async fn upload_binary(
             &params.repo,
             &version,
             &params.filename,
-            &body,
+            std::mem::take(&mut body.bytes),
         )
         .await
     {
@@ -225,10 +243,6 @@ fn is_safe_filename(filename: &str) -> bool {
         })
 }
 
-fn is_binary_size_allowed(size_bytes: usize) -> bool {
-    size_bytes <= MAX_BINARY_BYTES
-}
-
 fn binary_response(binary: BinaryBlob) -> HttpResponse {
     HttpResponse::Ok()
         .insert_header(("Content-Type", "application/octet-stream"))
@@ -260,7 +274,6 @@ mod tests {
         assert!(!is_safe_filename("../outside"));
         assert!(!is_safe_filename("bad\r\nname"));
         assert!(!is_safe_filename("."));
-        assert!(is_binary_size_allowed(MAX_BINARY_BYTES));
-        assert!(!is_binary_size_allowed(MAX_BINARY_BYTES + 1));
+        assert_eq!(RequestBodyLimits::default().binary_upload_bytes(), 1 << 29);
     }
 }
