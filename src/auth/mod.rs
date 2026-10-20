@@ -12,6 +12,7 @@ use uuid::Uuid;
 use crate::db::Database;
 use crate::db::personal_access_tokens::NewPersonalAccessToken;
 
+pub mod device;
 pub mod permissions;
 pub mod session_store;
 pub use permissions::{NamespacePermission, PermissionSet};

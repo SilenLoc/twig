@@ -1,10 +1,19 @@
 use actix_web::Result as AwResult;
 use actix_web::{HttpRequest, get, web};
+use serde::Deserialize;
 
 use crate::{
     auth::TwigContext,
-    http::{auth::session::get_username_from_request, view::render_layout},
+    http::{
+        auth::session::{get_username_from_request, safe_device_return_to},
+        view::render_layout,
+    },
 };
+
+#[derive(Deserialize)]
+struct LoginQuery {
+    return_to: Option<String>,
+}
 
 #[derive(Default)]
 struct AuthField<'a> {
@@ -226,7 +235,7 @@ pub async fn signup_page(
     }
 }
 
-fn render_login_page() -> maud::Markup {
+fn render_login_page(return_to: Option<&str>) -> maud::Markup {
     let username = render_field(&AuthField {
         id: "username",
         label: "Username",
@@ -256,6 +265,9 @@ fn render_login_page() -> maud::Markup {
                 {
                     (username)
                     (password)
+                    @if let Some(return_to) = return_to.and_then(safe_device_return_to) {
+                        input type="hidden" name="return_to" value=(return_to);
+                    }
                     (render_submit("Log In"))
                 }
                 div id="login-result" aria-live="polite" {}
@@ -279,9 +291,10 @@ fn render_login_page() -> maud::Markup {
 pub async fn login_page(
     req: HttpRequest,
     auth_state: web::Data<TwigContext>,
+    query: web::Query<LoginQuery>,
 ) -> AwResult<maud::Markup> {
     let username = get_username_from_request(&req, &auth_state).await;
-    let content = render_login_page();
+    let content = render_login_page(query.return_to.as_deref());
 
     if req.headers().get("HX-Request").is_some() {
         Ok(content)

@@ -54,6 +54,9 @@ pub(super) async fn create_test_service_with_db_in(
         App::new()
             .app_data(config_data)
             .app_data(auth_state)
+            .app_data(web::Data::new(
+                crate::http::auth::device::DeviceAuthorizationRateLimiter::default(),
+            ))
             .app_data(web::PayloadConfig::new(1 << 29))
             .wrap(actix_identity::IdentityMiddleware::default())
             .wrap(crate::auth::session_store::middleware(
@@ -156,6 +159,9 @@ pub(super) async fn create_admin_test_service() -> (
         App::new()
             .app_data(web::Data::new(config))
             .app_data(auth_state)
+            .app_data(web::Data::new(
+                crate::http::auth::device::DeviceAuthorizationRateLimiter::default(),
+            ))
             .app_data(web::PayloadConfig::new(1 << 29))
             .wrap(actix_identity::IdentityMiddleware::default())
             .wrap(crate::auth::session_store::middleware(

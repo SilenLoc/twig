@@ -2,6 +2,20 @@ use actix_web::{HttpRequest, web};
 
 use crate::auth::TwigContext;
 
+pub fn device_return_to(user_code: &str) -> Option<String> {
+    let normalized = crate::auth::device::normalize_user_code(user_code).ok()?;
+    Some(format!(
+        "/auth/device?user_code={}",
+        crate::auth::device::format_user_code(&normalized)
+    ))
+}
+
+pub fn safe_device_return_to(value: &str) -> Option<&str> {
+    let user_code = value.strip_prefix("/auth/device?user_code=")?;
+    let normalized = crate::auth::device::normalize_user_code(user_code).ok()?;
+    (crate::auth::device::format_user_code(&normalized) == user_code).then_some(value)
+}
+
 pub async fn get_username_from_request(
     req: &HttpRequest,
     auth_state: &web::Data<TwigContext>,
@@ -39,5 +53,21 @@ mod tests {
             .to_http_request();
         let result = get_username_from_request(&req, &auth_state).await;
         assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn login_return_target_only_accepts_canonical_device_codes() {
+        let valid = "/auth/device?user_code=WQJH-8K2M";
+        assert_eq!(safe_device_return_to(valid), Some(valid));
+        assert_eq!(device_return_to("wqjh8k2m"), Some(valid.to_string()));
+        for invalid in [
+            "https://attacker.example/",
+            "//attacker.example/",
+            "/settings",
+            "/auth/device?user_code=WQJH-8K2M&next=https://attacker.example",
+            "/auth/device?user_code=wqjh-8k2m",
+        ] {
+            assert_eq!(safe_device_return_to(invalid), None, "accepted {invalid}");
+        }
     }
 }

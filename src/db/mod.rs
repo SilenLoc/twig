@@ -7,6 +7,7 @@ use turso::Builder;
 
 pub mod binaries;
 pub mod data;
+pub mod device_authorizations;
 pub mod invitations;
 pub mod invites;
 pub mod migration;

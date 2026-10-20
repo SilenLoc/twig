@@ -6,18 +6,24 @@ commands. The web UI and Git endpoints use the same namespace/repository paths.
 ## Authentication
 
 Git writes use **HTTP Basic Authentication** with your Twig username and
-password. Reads of public repositories do not require credentials; repositories
-marked `private = true` in `.twig.toml` require credentials for reads as well.
+password, or with a Twig access token as the password. Token credentials are
+also accepted as Bearer credentials. Public repository reads do not require
+credentials; repositories marked `private = true` in `.twig.toml` require a
+token with `View namespace` or normal account credentials for reads.
 
 | Operation | Public repository | Private repository |
 |-----------|-------------------|-------------------|
-| Clone/fetch | No credentials | Basic Auth; user must own the namespace |
-| Push | Basic Auth; user must own the namespace | Basic Auth; user must own the namespace |
+| Clone/fetch | No credentials | Basic Auth or Bearer; token needs `View namespace` |
+| Push | Basic Auth or Bearer; account needs `Push changes` | Basic Auth or Bearer; token needs `Push changes` |
+
+Token permissions are limited to their selected namespaces and actions, then
+intersected with the user's current Twig permissions. A token cannot grant more
+access than its owner currently has.
 
 ## Clone and fetch
 
 ```sh
-git clone http://your-twig-server/namespace/repo
+git clone https://your-twig-server/namespace/repo
 cd repo
 git fetch origin
 ```
@@ -25,16 +31,29 @@ git fetch origin
 The `.git` suffix is also accepted. If Git needs credentials, it will prompt;
 you can use a credential helper to store them.
 
+## Sign in with Tree
+
+Run `tree auth` to finish Twig sign-in in your browser, choose token namespaces
+and actions, and configure Git for that Twig URL. Tree defaults to
+`https://twig.silenlocatelli.ch/`; pass `--url` for another instance. The token
+is stored in the operating system's credential store, not in the remote URL or
+Git configuration. Revoke the `Tree CLI` token from Account Settings → Access
+Tokens.
+
 ## Push
 
 ```sh
-git remote add origin http://your-twig-server/namespace/repo
+git remote add origin https://your-twig-server/namespace/repo
 git push -u origin main
 ```
 
-Avoid putting passwords in remote URLs, where they may be saved in shell history
-or Git configuration. Only the namespace owner can push. A push can create a
-missing namespace (owned by the pushing user) and repository.
+Avoid putting passwords or tokens in remote URLs, where they may be saved in
+shell history or Git configuration. A push needs the account's current
+`Push changes` permission for an existing repository. A push can create a new
+repository in an existing namespace when the credential grants
+`Create repositories`. Password-authenticated users who can create namespaces
+may also bootstrap a missing namespace; scoped tokens cannot access namespaces
+that were not selected when the token was created.
 
 ## Account and repository setup
 
@@ -67,9 +86,9 @@ Repository Config docs.
 
 ### Authentication failed
 
-Check your Twig username and password. For pushes, confirm that you own the
-namespace. If Git has cached old credentials, clear or update them using your
-credential helper.
+Check the Twig account credentials or access token. For pushes, confirm the
+account and token have `Push changes` for the namespace. If Git has cached old
+credentials, clear or update them using the configured credential helper.
 
 ### Access denied to namespace
 

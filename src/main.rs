@@ -93,6 +93,8 @@ fn main() -> std::io::Result<()> {
         let db = Database::new(&db_path);
 
         let auth_state = web::Data::new(auth::TwigContext::new(db, api_key));
+        let device_rate_limiter =
+            web::Data::new(http::auth::device::DeviceAuthorizationRateLimiter::default());
         let dev_session_token: web::Data<tokio::sync::OnceCell<String>> =
             web::Data::new(tokio::sync::OnceCell::new());
 
@@ -108,11 +110,13 @@ fn main() -> std::io::Result<()> {
         HttpServer::new(move || {
             let reset_db = config.reset_db();
             let dev_session_for_mw = dev_session_token.clone();
+            let device_rate_limiter = device_rate_limiter.clone();
             let session_key = session_key.clone();
 
             App::new()
                 .app_data(config.clone())
                 .app_data(auth_state.clone())
+                .app_data(device_rate_limiter.clone())
                 // Shared payload ceiling for large Git pushes and binary uploads.
                 .app_data(web::PayloadConfig::new(1 << 29))
                 .wrap(IdentityMiddleware::default())

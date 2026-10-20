@@ -7,6 +7,7 @@ use crate::{
     auth::{Invite, TwigContext, create_namespace, create_user, generate_token, verify_password},
     config,
     http::auth::pages::{render_invite_success, render_login_success, render_signup_success},
+    http::auth::session::safe_device_return_to,
     http::view::{render_error, render_success},
 };
 
@@ -28,6 +29,7 @@ pub struct SignupForm {
 pub struct LoginForm {
     pub username: String,
     pub password: String,
+    pub return_to: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -236,6 +238,12 @@ pub async fn login_ui_handler(
     }
 
     info!("User logged in via UI: {}", form.username);
+
+    if let Some(return_to) = form.return_to.as_deref().and_then(safe_device_return_to) {
+        return HttpResponse::Ok()
+            .insert_header(("HX-Redirect", return_to))
+            .body("");
+    }
 
     // Check if user has any namespaces
     let has_namespaces = match db.user_has_any_namespaces(&user.id).await {

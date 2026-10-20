@@ -115,6 +115,91 @@ impl PermissionSet {
     }
 }
 
+pub fn select_namespaces(
+    accessible: &[Namespace],
+    select_all: bool,
+    requested_ids: &BTreeSet<String>,
+) -> Result<Vec<Namespace>, String> {
+    let accessible_ids = accessible
+        .iter()
+        .map(|namespace| namespace.id.as_str())
+        .collect::<BTreeSet<_>>();
+    if requested_ids
+        .iter()
+        .any(|namespace_id| !accessible_ids.contains(namespace_id.as_str()))
+    {
+        return Err("Choose only namespaces you can access.".to_string());
+    }
+
+    let selected = if select_all {
+        accessible.to_vec()
+    } else {
+        accessible
+            .iter()
+            .filter(|namespace| requested_ids.contains(&namespace.id))
+            .cloned()
+            .collect()
+    };
+    if selected.is_empty() {
+        return Err("Choose at least one namespace.".to_string());
+    }
+    Ok(selected)
+}
+
+pub fn select_permissions(
+    all_read: bool,
+    all_write: bool,
+    requested: &[String],
+) -> Result<PermissionSet, String> {
+    let mut selected = BTreeSet::new();
+    if all_read {
+        selected.extend(NamespacePermission::READ);
+    }
+    if all_write {
+        selected.extend(NamespacePermission::WRITE);
+    }
+    for name in requested {
+        let permission = NamespacePermission::parse(name)
+            .ok_or_else(|| format!("Unknown permission: {name}"))?;
+        selected.insert(permission);
+    }
+    if selected.is_empty() {
+        return Err("Choose at least one permission.".to_string());
+    }
+    Ok(PermissionSet::new(selected))
+}
+
+pub async fn validate_selected_permissions(
+    db: &Database,
+    user_id: &str,
+    is_site_admin: bool,
+    namespaces: &[Namespace],
+    selected: &PermissionSet,
+) -> Result<(), String> {
+    if namespaces.is_empty() {
+        return Err("Choose at least one namespace.".to_string());
+    }
+    if selected.iter().next().is_none() {
+        return Err("Choose at least one permission.".to_string());
+    }
+
+    for namespace in namespaces {
+        let current = for_user(db, user_id, &namespace.name, is_site_admin)
+            .await?
+            .ok_or_else(|| format!("You no longer have access to {}.", namespace.name))?;
+        if selected
+            .iter()
+            .any(|permission| !current.contains(permission))
+        {
+            return Err(format!(
+                "Choose only permissions available in every selected namespace; '{}' does not allow all of them.",
+                namespace.name
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Resolve effective namespace permissions for a user. Site-admin status is a
 /// configuration override, but only for namespaces that exist.
 pub async fn for_user(

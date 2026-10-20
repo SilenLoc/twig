@@ -298,14 +298,10 @@ pub async fn create_personal_access_token(
             return HttpResponse::BadRequest().body(render_error(&message).into_string());
         }
     };
-    if selected_permissions.iter().next().is_none() {
-        return HttpResponse::BadRequest()
-            .body(render_error("Choose at least one permission.").into_string());
-    }
-    if let Err(message) = validate_permissions(
+    if let Err(message) = permissions::validate_selected_permissions(
         db,
-        &server,
-        &user,
+        &user.id,
+        server.is_configured_admin(&user.username),
         &selected_namespaces,
         &selected_permissions,
     )
@@ -409,90 +405,32 @@ fn select_namespaces(
     form: &HashMap<String, String>,
     accessible: &[Namespace],
 ) -> Result<Vec<Namespace>, String> {
-    let accessible_ids = accessible
-        .iter()
-        .map(|namespace| namespace.id.as_str())
-        .collect::<BTreeSet<_>>();
     let selected_ids = form
         .iter()
         .filter_map(|(key, value)| {
             (value == "true")
                 .then(|| key.strip_prefix("namespace_"))
                 .flatten()
+                .map(str::to_owned)
         })
         .collect::<BTreeSet<_>>();
-    if selected_ids
-        .iter()
-        .any(|namespace_id| !accessible_ids.contains(namespace_id))
-    {
-        return Err("Choose only namespaces you can access.".to_string());
-    }
-
-    let selected = if form
+    let select_all = form
         .get("all_namespaces")
-        .is_some_and(|value| value == "true")
-    {
-        accessible.to_vec()
-    } else {
-        accessible
-            .iter()
-            .filter(|namespace| selected_ids.contains(namespace.id.as_str()))
-            .cloned()
-            .collect()
-    };
-    if selected.is_empty() {
-        return Err("Choose at least one namespace.".to_string());
-    }
-    Ok(selected)
+        .is_some_and(|value| value == "true");
+    permissions::select_namespaces(accessible, select_all, &selected_ids)
 }
 
 fn select_permissions(form: &HashMap<String, String>) -> Result<PermissionSet, String> {
-    let mut selected = BTreeSet::new();
-    if form.get("all_read").is_some_and(|value| value == "true") {
-        selected.extend(NamespacePermission::READ);
-    }
-    if form.get("all_write").is_some_and(|value| value == "true") {
-        selected.extend(NamespacePermission::WRITE);
-    }
-    for (key, value) in form {
-        let Some(name) = key.strip_prefix("permission_") else {
-            continue;
-        };
-        if value != "true" {
-            continue;
-        }
-        let permission = NamespacePermission::parse(name)
-            .ok_or_else(|| format!("Unknown permission: {name}"))?;
-        selected.insert(permission);
-    }
-    Ok(PermissionSet::new(selected))
-}
-
-async fn validate_permissions(
-    db: &crate::db::Database,
-    server: &config::Server,
-    user: &User,
-    namespaces: &[Namespace],
-    selected: &PermissionSet,
-) -> Result<(), String> {
-    for namespace in namespaces {
-        let current = permissions::for_user(
-            db,
-            &user.id,
-            &namespace.name,
-            server.is_configured_admin(&user.username),
-        )
-        .await?
-        .ok_or_else(|| format!("You no longer have access to {}.", namespace.name))?;
-        if selected
-            .iter()
-            .any(|permission| !current.contains(permission))
-        {
-            return Err(format!(
-                "Choose only permissions available in every selected namespace; '{}' does not allow all of them.",
-                namespace.name
-            ));
-        }
-    }
-    Ok(())
+    let requested = form
+        .iter()
+        .filter_map(|(key, value)| {
+            (value == "true")
+                .then(|| key.strip_prefix("permission_"))
+                .flatten()
+                .map(str::to_owned)
+        })
+        .collect::<Vec<_>>();
+    let all_read = form.get("all_read").is_some_and(|value| value == "true");
+    let all_write = form.get("all_write").is_some_and(|value| value == "true");
+    permissions::select_permissions(all_read, all_write, &requested)
 }

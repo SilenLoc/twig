@@ -8,6 +8,8 @@ mod tests {
     mod admin_tree_settings;
     #[path = "../auth_and_invitations.rs"]
     mod auth_and_invitations;
+    #[path = "../device_authorization.rs"]
+    mod device_authorization;
     #[path = "../namespace_permissions.rs"]
     mod namespace_permissions;
     #[path = "../personal_access_tokens.rs"]

@@ -5,7 +5,7 @@ fn auth_pages() -> [(&'static str, String); 4] {
     [
         ("invite", render_invite_page().into_string()),
         ("signup", render_signup_page().into_string()),
-        ("login", render_login_page().into_string()),
+        ("login", render_login_page(None).into_string()),
         ("namespace", render_namespace_page().into_string()),
     ]
 }
@@ -178,7 +178,7 @@ fn test_signup_page_preserves_its_form_contract() {
 
 #[test]
 fn test_login_page_preserves_its_form_contract() {
-    let html = render_login_page().into_string();
+    let html = render_login_page(None).into_string();
     for attribute in [
         "hx-post=\"/auth/login\"",
         "hx-target=\"#login-result\"",
@@ -203,6 +203,21 @@ fn test_login_page_preserves_its_form_contract() {
     assert!(
         !password.contains("minlength"),
         "login must not tighten signup's constraints: {password}"
+    );
+}
+
+#[test]
+fn login_page_preserves_only_a_safe_device_return_target() {
+    let html = render_login_page(Some("/auth/device?user_code=WQJH-8K2M")).into_string();
+    assert!(
+        html.contains("name=\"return_to\" value=\"/auth/device?user_code=WQJH-8K2M\""),
+        "the safe device return target must survive browser login: {html}"
+    );
+
+    let unsafe_html = render_login_page(Some("https://attacker.example/")).into_string();
+    assert!(
+        !unsafe_html.contains("name=\"return_to\""),
+        "an external redirect must not be added to the login form: {unsafe_html}"
     );
 }
 

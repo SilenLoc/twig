@@ -193,6 +193,45 @@ const MIGRATIONS: &[Migration] = &[
         sql: r"CREATE INDEX IF NOT EXISTS idx_personal_access_token_permissions_namespace
             ON personal_access_token_permissions(namespace_id, permission);",
     },
+    Migration {
+        name: "create_device_authorizations_table",
+        sql: r"CREATE TABLE IF NOT EXISTS device_authorizations (
+            id TEXT PRIMARY KEY,
+            device_code_hash TEXT NOT NULL UNIQUE,
+            user_code_hash TEXT NOT NULL UNIQUE,
+            status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'denied')),
+            user_id TEXT,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            poll_interval_seconds INTEGER NOT NULL,
+            last_polled_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );",
+    },
+    Migration {
+        name: "create_device_authorization_permissions_table",
+        sql: r"CREATE TABLE IF NOT EXISTS device_authorization_permissions (
+            authorization_id TEXT NOT NULL,
+            namespace_id TEXT NOT NULL,
+            permission TEXT NOT NULL CHECK (permission IN (
+                'view_namespace',
+                'push_changes',
+                'create_repositories',
+                'manage_repositories',
+                'manage_namespace',
+                'manage_members',
+                'rewrite_protected_branches'
+            )),
+            PRIMARY KEY (authorization_id, namespace_id, permission),
+            FOREIGN KEY (authorization_id) REFERENCES device_authorizations(id),
+            FOREIGN KEY (namespace_id) REFERENCES namespaces(id)
+        );",
+    },
+    Migration {
+        name: "create_device_authorizations_expiry_index",
+        sql: r"CREATE INDEX IF NOT EXISTS idx_device_authorizations_expires_at
+            ON device_authorizations(expires_at);",
+    },
 ];
 
 async fn prepare_migrations(conn: &turso::Connection) -> Result<Vec<String>, String> {
@@ -338,6 +377,8 @@ mod tests {
         assert!(tables.contains(&"tokens".to_string()));
         assert!(tables.contains(&"personal_access_tokens".to_string()));
         assert!(tables.contains(&"personal_access_token_permissions".to_string()));
+        assert!(tables.contains(&"device_authorizations".to_string()));
+        assert!(tables.contains(&"device_authorization_permissions".to_string()));
         assert!(tables.contains(&"test_pins".to_string()));
         assert!(tables.contains(&"repository_binaries".to_string()));
         assert!(tables.contains(&"_migrations".to_string()));
@@ -365,6 +406,7 @@ mod tests {
         assert!(indexes.contains(&"idx_invites_user".to_string()));
         assert!(indexes.contains(&"idx_personal_access_tokens_user_created".to_string()));
         assert!(indexes.contains(&"idx_personal_access_token_permissions_namespace".to_string()));
+        assert!(indexes.contains(&"idx_device_authorizations_expires_at".to_string()));
         assert!(!indexes.contains(&"idx_tickets_user".to_string()));
 
         let mut rows = db

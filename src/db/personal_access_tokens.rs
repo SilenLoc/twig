@@ -17,61 +17,67 @@ pub struct NewPersonalAccessToken<'a> {
     pub expires_at: Option<&'a str>,
 }
 
+pub(crate) async fn insert_personal_access_token(
+    connection: &turso::Connection,
+    token: NewPersonalAccessToken<'_>,
+) -> Result<(), String> {
+    let NewPersonalAccessToken {
+        id,
+        user_id,
+        name,
+        token_hash,
+        token_hint,
+        namespace_ids,
+        permissions,
+        expires_at,
+    } = token;
+
+    connection
+        .execute(
+            "INSERT INTO personal_access_tokens
+                (id, user_id, name, token_hash, token_hint, created_at, expires_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            turso::params![
+                id,
+                user_id,
+                name,
+                token_hash,
+                token_hint,
+                chrono::Utc::now().to_rfc3339(),
+                expires_at
+            ],
+        )
+        .await
+        .map_err(|error| error.to_string())?;
+
+    for namespace_id in namespace_ids {
+        for permission in permissions {
+            connection
+                .execute(
+                    "INSERT INTO personal_access_token_permissions
+                        (token_id, namespace_id, permission)
+                     VALUES (?1, ?2, ?3)",
+                    turso::params![id, namespace_id.clone(), permission.as_str()],
+                )
+                .await
+                .map_err(|error| error.to_string())?;
+        }
+    }
+
+    Ok(())
+}
+
 impl Database {
     pub async fn create_personal_access_token(
         &self,
         token: NewPersonalAccessToken<'_>,
     ) -> Result<(), String> {
-        let NewPersonalAccessToken {
-            id,
-            user_id,
-            name,
-            token_hash,
-            token_hint,
-            namespace_ids,
-            permissions,
-            expires_at,
-        } = token;
-
         let conn = self.conn().await?;
         conn.execute("BEGIN IMMEDIATE", ())
             .await
             .map_err(|error| error.to_string())?;
 
-        let result: Result<(), String> = async {
-            conn.execute(
-                "INSERT INTO personal_access_tokens
-                    (id, user_id, name, token_hash, token_hint, created_at, expires_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                turso::params![
-                    id,
-                    user_id,
-                    name,
-                    token_hash,
-                    token_hint,
-                    chrono::Utc::now().to_rfc3339(),
-                    expires_at
-                ],
-            )
-            .await
-            .map_err(|error| error.to_string())?;
-
-            for namespace_id in namespace_ids {
-                for permission in permissions {
-                    conn.execute(
-                        "INSERT INTO personal_access_token_permissions
-                            (token_id, namespace_id, permission)
-                         VALUES (?1, ?2, ?3)",
-                        turso::params![id, namespace_id.clone(), permission.as_str()],
-                    )
-                    .await
-                    .map_err(|error| error.to_string())?;
-                }
-            }
-
-            Ok(())
-        }
-        .await;
+        let result = insert_personal_access_token(&conn, token).await;
 
         match result {
             Ok(()) => conn
