@@ -1,10 +1,10 @@
 [package]
 name = "twig"
-version = "0.3.15"
+version = "0.3.16"
 edition = "2024"
 
 [workspace]
-members = ["crates/twig-highlight", "crates/twig-git", "crates/twig-http"]
+members = ["crates/twig-highlight", "crates/twig-git"]
 resolver = "3"
 
 [dependencies]

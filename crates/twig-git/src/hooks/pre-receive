@@ -38,8 +38,142 @@ fi
 # Custom hooks are preserved beside this managed hook and run after Twig's
 # policy check, receiving the original ref-update lines and CGI environment.
 hook_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+run_root="$hook_dir/twig-runs"
+max_runs=50
+max_output_bytes=16384
+max_ref_bytes=16384
+hook_number=0
+
+prune_hook_runs() (
+    # Generated names are epoch-prefixed; C collation removes the oldest first.
+    LC_ALL=C
+    export LC_ALL
+    [ -d "$run_root" ] && [ ! -L "$run_root" ] || return 0
+    run_count=0
+    for candidate in "$run_root"/run-[0-9]*; do
+        if [ -e "$candidate" ] || [ -L "$candidate" ]; then
+            run_count=$((run_count + 1))
+        fi
+    done
+    [ "$run_count" -gt "$max_runs" ] || return 0
+    for candidate in "$run_root"/run-[0-9]*; do
+        if [ -e "$candidate" ] || [ -L "$candidate" ]; then
+            rm -rf "$candidate" 2>/dev/null || true
+            run_count=$((run_count - 1))
+            [ "$run_count" -gt "$max_runs" ] || break
+        fi
+    done
+)
+
+run_hook_without_recording() {
+    user_hook=$1
+    hook_status=0
+    "$user_hook" < "$updates" || hook_status=$?
+    return "$hook_status"
+}
+
+capture_and_drain() {
+    capture_file=$1
+    dd iflag=fullblock bs="$((max_output_bytes + 1))" count=1 of="$capture_file" 2>/dev/null || true
+    cat >/dev/null 2>/dev/null || true
+}
+
+run_custom_hook() {
+    user_hook=$1
+    hook_name=${user_hook##*/}
+    hook_number=$((hook_number + 1))
+    started_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date '+%Y-%m-%dT%H:%M:%SZ')
+    epoch=$(date +%s 2>/dev/null || echo 0)
+    pending=
+
+    if [ ! -e "$run_root" ] && [ ! -L "$run_root" ]; then
+        mkdir "$run_root" 2>/dev/null || true
+    fi
+    if [ -d "$run_root" ] && [ ! -L "$run_root" ]; then
+        pending=$(mktemp -d "$run_root/.pending.XXXXXX" 2>/dev/null || true)
+    fi
+
+    # Recording is best-effort. If the history path cannot safely be used,
+    # preserve the original direct hook invocation and its result.
+    if [ -z "$pending" ]; then
+        run_hook_without_recording "$user_hook"
+        return $?
+    fi
+
+    if ! mkfifo \
+        "$pending/stdout.pipe" \
+        "$pending/stderr.pipe" \
+        "$pending/stdout.capture.pipe" \
+        "$pending/stderr.capture.pipe" 2>/dev/null; then
+        rm -rf "$pending" 2>/dev/null || true
+        run_hook_without_recording "$user_hook"
+        return $?
+    fi
+
+    capture_and_drain "$pending/stdout.capture" < "$pending/stdout.capture.pipe" &
+    stdout_capture_pid=$!
+    capture_and_drain "$pending/stderr.capture" < "$pending/stderr.capture.pipe" &
+    stderr_capture_pid=$!
+    tee "$pending/stdout.capture.pipe" < "$pending/stdout.pipe" &
+    stdout_relay_pid=$!
+    tee "$pending/stderr.capture.pipe" < "$pending/stderr.pipe" >&2 &
+    stderr_relay_pid=$!
+
+    "$user_hook" < "$updates" > "$pending/stdout.pipe" 2> "$pending/stderr.pipe" &
+    hook_pid=$!
+    if wait "$hook_pid"; then
+        hook_status=0
+    else
+        hook_status=$?
+    fi
+    wait "$stdout_relay_pid" || true
+    wait "$stderr_relay_pid" || true
+    wait "$stdout_capture_pid" || true
+    wait "$stderr_capture_pid" || true
+
+    truncated=0
+    for stream in stdout stderr; do
+        raw_output="$pending/$stream.capture"
+        output_size=$(wc -c < "$raw_output" 2>/dev/null)
+        output_size=${output_size##* }
+        if [ "$output_size" -gt "$max_output_bytes" ]; then
+            truncated=1
+        fi
+        head -c "$max_output_bytes" "$raw_output" > "$pending/$stream" 2>/dev/null || true
+        rm -f "$raw_output"
+        rm -f "$pending/$stream.pipe" "$pending/$stream.capture.pipe"
+    done
+
+    refs_size=$(wc -c < "$updates" 2>/dev/null)
+    refs_size=${refs_size##* }
+    head -c "$max_ref_bytes" "$updates" > "$pending/refs" 2>/dev/null || true
+    if [ "$refs_size" -gt "$max_ref_bytes" ]; then
+        printf '\n[Ref updates truncated.]\n' >> "$pending/refs"
+    fi
+
+    printf '%s\n' "$hook_name" > "$pending/hook"
+    printf '%s\n' "$started_at" > "$pending/started_at"
+    printf '%s\n' "${REMOTE_USER:-}" > "$pending/actor"
+    printf '%s\n' "$hook_status" > "$pending/exit_status"
+    printf '%s\n' "$truncated" > "$pending/truncated"
+
+    pending_id=${pending##*.}
+    run_name="run-${epoch}-${$}-${hook_number}-${pending_id}"
+    if [ -d "$run_root" ] && [ ! -L "$run_root" ] && mv "$pending" "$run_root/$run_name" 2>/dev/null; then
+        prune_hook_runs || true
+    else
+        rm -rf "$pending" 2>/dev/null || true
+    fi
+    return "$hook_status"
+}
+
 for user_hook in "$hook_dir"/pre-receive.twig-user*; do
     [ -f "$user_hook" ] || continue
     [ -x "$user_hook" ] || continue
-    "$user_hook" < "$updates"
+    if run_custom_hook "$user_hook"; then
+        :
+    else
+        hook_status=$?
+        exit "$hook_status"
+    fi
 done

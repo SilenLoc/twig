@@ -2,6 +2,7 @@
 
 pub mod backend;
 pub mod bare;
+pub mod hooks;
 pub mod repo;
 pub mod reserved;
 

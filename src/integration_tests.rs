@@ -30,6 +30,8 @@ mod tests {
     mod repo_workspace_commit;
     #[path = "../repo_workspace_ui.rs"]
     mod repo_workspace_ui;
+    #[path = "../repository_hooks.rs"]
+    mod repository_hooks;
     #[path = "../support.rs"]
     mod support;
     #[path = "../test_page.rs"]

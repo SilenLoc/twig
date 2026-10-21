@@ -163,6 +163,34 @@ fn test_tabs_render_only_available_views_in_order() {
         "a configured paper is hidden when no pages exist: {html}"
     );
 }
+
+#[test]
+fn hooks_tab_is_manager_only_and_survives_custom_tab_configuration() {
+    let configured = ["license".to_string()];
+    let visitor_html = render_tabs(&frame_with(&[]), "commits").into_string();
+    assert!(!visitor_html.contains(">Hooks<"), "{visitor_html}");
+
+    let manager_frame = TabFrame {
+        can_manage_hooks: true,
+        tabs_config: &configured,
+        ..base_frame()
+    };
+    let manager_html = render_tabs(&manager_frame, "hooks").into_string();
+    assert!(
+        manager_html.contains("href=\"/acme/my-project/hooks\""),
+        "{manager_html}"
+    );
+    assert!(
+        manager_html.contains("hx-get=\"/acme/my-project/hooks\""),
+        "{manager_html}"
+    );
+    assert!(
+        manager_html.contains("aria-current=\"page\""),
+        "{manager_html}"
+    );
+    assert!(manager_html.contains(">Hooks</a>"), "{manager_html}");
+    assert_eq!(tab_labels(&manager_html), vec!["License", "Hooks"]);
+}
 #[test]
 fn test_repo_page_leads_with_a_breadcrumb_head_then_the_tabs() {
     let html = render_tab_shell(&base_frame(), "commits", &maud::html! {}).into_string();

@@ -330,6 +330,19 @@ pub(super) fn render_tabs(frame: &TabFrame<'_>, active_tab: &str) -> Markup {
                     (tab_label)
                 }
             }
+            @if frame.can_manage_hooks {
+                @let href = format!("/{namespace}/{repo}/hooks");
+                a
+                    class="twig-tab"
+                    href=(href)
+                    aria-current=[("hooks" == active_tab).then_some("page")]
+                    hx-get=(href)
+                    hx-target="#tab-content"
+                    hx-push-url=(href)
+                {
+                    "Hooks"
+                }
+            }
         }
     }
 }

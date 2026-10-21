@@ -9,6 +9,7 @@ fn base_frame() -> TabFrame<'static> {
         repo: "my-project",
         username: None,
         page_title: "acme/my-project",
+        can_manage_hooks: false,
         twig_error: None,
         twig_filename: None,
         tabs_config: &[],
@@ -147,6 +148,8 @@ fn representative_markup() -> Vec<(&'static str, String)> {
 
 #[path = "tests/content.rs"]
 mod content;
+#[path = "tests/hooks.rs"]
+mod hook_tests;
 #[path = "tests/markdown.rs"]
 mod markdown;
 #[path = "tests/markup.rs"]

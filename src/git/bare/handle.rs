@@ -23,6 +23,11 @@ pub struct RepoHandle {
 }
 
 impl RepoHandle {
+    /// The on-disk Git directory used by administrative repository views.
+    pub fn path(&self) -> &Path {
+        self.repo.path()
+    }
+
     /// Takes ownership of an already opened repository, so namespace listings
     /// can reuse the handle they needed for the HEAD peek.
     pub(super) fn from_repository(repo: git2::Repository) -> Self {
