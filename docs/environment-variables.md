@@ -33,10 +33,11 @@ Login and invite-generation attempts are limited to ten per minute per
 connection peer and return `429` with `Retry-After` when throttled. Session
 cookies use `SameSite=Lax`; unsafe browser requests that include `Origin` or
 `Referer` are also checked against the configured public origin or request
-origin. When a reverse proxy fronts Twig, configure `PUBLIC_BASE_URL`, sanitize
-forwarded headers at the proxy, and add ingress rate limits there: the
-application limiter sees the proxy's socket address unless clients connect
-directly.
+origin. Device approval is the exception: its POST requires a one-time,
+session-bound CSRF token. When a reverse proxy fronts Twig, configure
+`PUBLIC_BASE_URL`, sanitize forwarded headers at the proxy, and add ingress rate
+limits there: the application limiter sees the proxy's socket address unless
+clients connect directly.
 
 Twig adds `nosniff`, frame, referrer, cache, and Content Security Policy
 headers. The current policy permits inline/evaluated scripts for existing

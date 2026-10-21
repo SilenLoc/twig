@@ -18,6 +18,7 @@ where
     B: MessageBody + 'static,
 {
     if should_check_origin(&req)
+        && !is_device_approval(&req)
         && !origin_matches(&req, req.app_data::<actix_web::web::Data<config::Server>>())
     {
         return Ok(req
@@ -28,6 +29,14 @@ where
     next.call(req)
         .await
         .map(ServiceResponse::map_into_left_body)
+}
+
+/// Device approval has its own one-time, session-bound CSRF token. Some device
+/// authorization clients open the approval page from a different origin, so
+/// allow that form submission through the origin check without relaxing other
+/// state-changing routes.
+fn is_device_approval(req: &ServiceRequest) -> bool {
+    req.method() == actix_web::http::Method::POST && req.path() == "/auth/device/approve"
 }
 
 /// Applies safe response defaults without overriding route-specific cache or
@@ -154,5 +163,63 @@ mod tests {
         );
         assert!(parse_web_origin("null", false).is_none());
         assert!(parse_web_origin("https://attacker.example/path", false).is_none());
+    }
+
+    #[actix_web::test]
+    async fn only_device_approval_bypasses_the_same_origin_check() {
+        use actix_web::{App, test, web};
+
+        let app = test::init_service(
+            App::new()
+                .wrap(actix_web::middleware::from_fn(same_origin_guard))
+                .route(
+                    "/auth/device/approve",
+                    web::post().to(|| async { HttpResponse::Ok() }),
+                )
+                .route(
+                    "/auth/login",
+                    web::post().to(|| async { HttpResponse::Ok() }),
+                ),
+        )
+        .await;
+
+        let cross_origin_approval = test::call_service(
+            &app,
+            test::TestRequest::post()
+                .uri("/auth/device/approve")
+                .insert_header(("Origin", "https://tree.example"))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(
+            cross_origin_approval.status(),
+            actix_web::http::StatusCode::OK
+        );
+
+        let cross_origin_login = test::call_service(
+            &app,
+            test::TestRequest::post()
+                .uri("/auth/login")
+                .insert_header(("Origin", "https://tree.example"))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(
+            cross_origin_login.status(),
+            actix_web::http::StatusCode::FORBIDDEN
+        );
+
+        let other_method = test::call_service(
+            &app,
+            test::TestRequest::put()
+                .uri("/auth/device/approve")
+                .insert_header(("Origin", "https://tree.example"))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(
+            other_method.status(),
+            actix_web::http::StatusCode::FORBIDDEN
+        );
     }
 }

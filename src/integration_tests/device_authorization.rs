@@ -336,6 +336,9 @@ async fn device_approval_requires_session_csrf_and_issues_one_scoped_token() {
     )
     .await;
     assert_eq!(invalid_csrf.status(), StatusCode::FORBIDDEN);
+    let invalid_csrf_body =
+        String::from_utf8(test::read_body(invalid_csrf).await.to_vec()).unwrap();
+    assert!(invalid_csrf_body.contains("authorization form expired"));
 
     let approved_form = HashMap::from([
         ("user_code".to_string(), user_code.clone()),
