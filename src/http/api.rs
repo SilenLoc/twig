@@ -1,5 +1,9 @@
-use actix_web::{Responder, get, web};
+use actix_web::{HttpRequest, HttpResponse, get};
 use serde::Serialize;
+
+use crate::auth::TwigContext;
+
+pub mod v1;
 
 #[derive(Debug, Serialize)]
 pub struct VersionResponse {
@@ -8,8 +12,15 @@ pub struct VersionResponse {
 
 /// Returns the current application version as JSON.
 #[get("/api/version")]
-pub async fn version_endpoint() -> impl Responder {
-    web::Json(VersionResponse {
+pub async fn version_endpoint(
+    req: HttpRequest,
+    auth_state: actix_web::web::Data<TwigContext>,
+) -> HttpResponse {
+    if let Err(error) = v1::authenticate(&req, &auth_state).await {
+        return error.into_response();
+    }
+
+    HttpResponse::Ok().json(VersionResponse {
         version: env!("CARGO_PKG_VERSION"),
     })
 }
@@ -17,19 +28,13 @@ pub async fn version_endpoint() -> impl Responder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use actix_web::{App, test as aw_test};
 
-    #[actix_web::test]
-    async fn test_version_endpoint_returns_package_version() {
-        let app = aw_test::init_service(App::new().service(version_endpoint)).await;
-        let response = aw_test::call_service(
-            &app,
-            aw_test::TestRequest::get().uri("/api/version").to_request(),
-        )
-        .await;
-
-        assert_eq!(response.status(), actix_web::http::StatusCode::OK);
-        let body: serde_json::Value = aw_test::read_body_json(response).await;
+    #[test]
+    fn version_response_serializes_as_json() {
+        let body = serde_json::to_value(VersionResponse {
+            version: env!("CARGO_PKG_VERSION"),
+        })
+        .expect("serialize version response");
         assert_eq!(body["version"], env!("CARGO_PKG_VERSION"));
     }
 }

@@ -3,7 +3,7 @@ use std::path::Path;
 use super::super::config::{CONFIG_FILENAMES, TwigConfig, TwigConfigWithRaw};
 use super::super::history::{Commit, chrono};
 use super::super::listing::{extract_license_from_cargo_toml, get_non_commercial_license};
-use super::{RepoFiles, RepoHandle, TreeEntry};
+use super::{BranchInfo, RepoFiles, RepoHandle, TreeEntry};
 
 impl RepoHandle {
     fn head_commit(&self) -> Result<Option<git2::Commit<'_>>, git2::Error> {
@@ -23,6 +23,210 @@ impl RepoHandle {
     /// The resolved commit at HEAD, if this repository has one.
     pub fn head_oid(&self) -> Result<Option<git2::Oid>, git2::Error> {
         Ok(self.head_commit()?.map(|commit| commit.id()))
+    }
+
+    /// Return the branch name selected by symbolic HEAD, if HEAD points to a
+    /// local branch.
+    pub fn default_branch_name(&self) -> Result<Option<String>, git2::Error> {
+        let head = match self.repo.find_reference("HEAD") {
+            Ok(head) => head,
+            Err(error) if error.code() == git2::ErrorCode::NotFound => return Ok(None),
+            Err(error) => return Err(error),
+        };
+        let target = head.symbolic_target()?;
+        Ok(target
+            .and_then(|target| target.strip_prefix("refs/heads/"))
+            .map(str::to_string))
+    }
+
+    /// List exact local branch names. Remote branches and tags are excluded.
+    pub fn list_branches(&self) -> Result<Vec<BranchInfo>, git2::Error> {
+        use git2::BranchType;
+
+        let default = self.default_branch_name()?;
+        let mut branches = Vec::new();
+        for branch in self.repo.branches(Some(BranchType::Local))? {
+            let (branch, _) = branch?;
+            let Some(name) = branch.name()? else {
+                continue;
+            };
+            let tip = branch.get().target();
+            branches.push(BranchInfo {
+                name: name.to_string(),
+                tip,
+                is_default: default.as_deref() == Some(name),
+            });
+        }
+        branches.sort_by(|left, right| left.name.cmp(&right.name));
+        Ok(branches)
+    }
+
+    /// Resolve a local branch name exactly; revision expressions and tags are
+    /// deliberately not accepted by API branch reads.
+    pub fn branch_tip(&self, branch: &str) -> Result<Option<git2::Oid>, git2::Error> {
+        use git2::BranchType;
+
+        let reference = format!("refs/heads/{branch}");
+        if !git2::Reference::is_valid_name(&reference) {
+            return Err(git2::Error::from_str("Invalid branch name"));
+        }
+        match self.repo.find_branch(branch, BranchType::Local) {
+            Ok(branch) => Ok(branch.get().target()),
+            Err(error) if error.code() == git2::ErrorCode::NotFound => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
+    /// Return the Git mode of a path in an exact local branch.
+    pub fn file_mode_at(&self, branch: &str, file_path: &str) -> Result<Option<i32>, git2::Error> {
+        let Some(commit) = self.branch_commit(branch)? else {
+            return Ok(None);
+        };
+        match commit.tree()?.get_path(Path::new(file_path)) {
+            Ok(entry) => Ok(Some(entry.filemode())),
+            Err(error) if error.code() == git2::ErrorCode::NotFound => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
+    fn branch_commit(&self, branch: &str) -> Result<Option<git2::Commit<'_>>, git2::Error> {
+        use git2::BranchType;
+
+        let reference = format!("refs/heads/{branch}");
+        if !git2::Reference::is_valid_name(&reference) {
+            return Err(git2::Error::from_str("Invalid branch name"));
+        }
+        let branch = match self.repo.find_branch(branch, BranchType::Local) {
+            Ok(branch) => branch,
+            Err(error) if error.code() == git2::ErrorCode::NotFound => return Ok(None),
+            Err(error) => return Err(error),
+        };
+        match branch.get().peel_to_commit() {
+            Ok(commit) => Ok(Some(commit)),
+            Err(error)
+                if matches!(
+                    error.code(),
+                    git2::ErrorCode::NotFound | git2::ErrorCode::UnbornBranch
+                ) =>
+            {
+                Ok(None)
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    pub fn get_commits_at(&self, branch: &str, limit: usize) -> Result<Vec<Commit>, git2::Error> {
+        let Some(commit) = self.branch_commit(branch)? else {
+            return Ok(Vec::new());
+        };
+        let mut revwalk = self.repo.revwalk()?;
+        revwalk.push(commit.id())?;
+        let mut commits = Vec::new();
+        for oid in revwalk.take(limit).flatten() {
+            let commit = self.repo.find_commit(oid)?;
+            commits.push(Commit::new(
+                oid.to_string(),
+                commit.author().name().unwrap_or("").to_string(),
+                chrono(commit.author().when()),
+                commit.message().unwrap_or("").to_string(),
+            ));
+        }
+        Ok(commits)
+    }
+
+    pub fn read_blob_bytes_at(
+        &self,
+        branch: &str,
+        file_path: &str,
+    ) -> Result<Option<(git2::Oid, Vec<u8>)>, git2::Error> {
+        let Some(commit) = self.branch_commit(branch)? else {
+            return Ok(None);
+        };
+        let tree = commit.tree()?;
+        let entry = match tree.get_path(Path::new(file_path)) {
+            Ok(entry) => entry,
+            Err(error) if error.code() == git2::ErrorCode::NotFound => return Ok(None),
+            Err(error) => return Err(error),
+        };
+        let object = entry.to_object(&self.repo)?;
+        let blob = object
+            .as_blob()
+            .ok_or_else(|| git2::Error::from_str("Path is not a blob"))?;
+        Ok(Some((entry.id(), blob.content().to_vec())))
+    }
+
+    /// Load Twig's display configuration from the same branch used for a
+    /// branch-specific API read, falling back through historic filenames.
+    pub fn load_config_at(&self, branch: &str) -> Result<TwigConfigWithRaw, git2::Error> {
+        for filename in CONFIG_FILENAMES {
+            if let Some((_, bytes)) = self.read_blob_bytes_at(branch, filename)? {
+                let content = String::from_utf8_lossy(&bytes);
+                return Ok(TwigConfigWithRaw::from_source(&content, filename));
+            }
+        }
+        Ok(TwigConfigWithRaw::default())
+    }
+
+    pub fn list_dir_at(
+        &self,
+        branch: &str,
+        dir_path: &str,
+        config: Option<&TwigConfig>,
+    ) -> Result<Vec<TreeEntry>, git2::Error> {
+        let Some(commit) = self.branch_commit(branch)? else {
+            return Ok(Vec::new());
+        };
+        let mut tree = commit.tree()?;
+        if !dir_path.is_empty() {
+            let entry = match tree.get_path(Path::new(dir_path)) {
+                Ok(entry) => entry,
+                Err(error) if error.code() == git2::ErrorCode::NotFound => {
+                    return Ok(Vec::new());
+                }
+                Err(error) => return Err(error),
+            };
+            let object = entry.to_object(&self.repo)?;
+            let Ok(subtree) = object.into_tree() else {
+                return Ok(Vec::new());
+            };
+            tree = subtree;
+        }
+
+        let mut entries = Vec::new();
+        for entry in &tree {
+            let name = entry.name().unwrap_or("").to_string();
+            let path = if dir_path.is_empty() {
+                name.clone()
+            } else {
+                format!("{dir_path}/{name}")
+            };
+            if config.is_some_and(|config| config.should_ignore(&path)) {
+                continue;
+            }
+            entries.push(TreeEntry {
+                name,
+                path,
+                is_dir: entry.kind() == Some(git2::ObjectType::Tree),
+            });
+        }
+        entries.sort_by(|left, right| {
+            right
+                .is_dir
+                .cmp(&left.is_dir)
+                .then_with(|| left.name.cmp(&right.name))
+        });
+        Ok(entries)
+    }
+
+    pub fn path_exists_at(&self, branch: &str, file_path: &str) -> Result<bool, git2::Error> {
+        let Some(commit) = self.branch_commit(branch)? else {
+            return Ok(false);
+        };
+        match commit.tree()?.get_path(Path::new(file_path)) {
+            Ok(_) => Ok(true),
+            Err(error) if error.code() == git2::ErrorCode::NotFound => Ok(false),
+            Err(error) => Err(error),
+        }
     }
 
     /// The Git mode of a path in HEAD, if it exists.

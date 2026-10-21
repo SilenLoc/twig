@@ -10,13 +10,25 @@ use crate::git;
 /// Static/UI routes must remain before the dynamic namespace/repository paths
 /// they would otherwise be shadowed by.
 pub(crate) fn configure_routes(cfg: &mut web::ServiceConfig) {
+    cfg.app_data(
+        web::JsonConfig::default()
+            .limit(2 << 20)
+            .error_handler(api::v1::json_payload_error),
+    );
     cfg.service(health::health)
         .service(health::up)
         .service(assets::assets)
-        .service(api::version_endpoint)
-        .service(info::pages::index)
-        // Auth UI endpoints (HTML forms)
-        .service(auth::pages::invite_page)
+        .service(api::version_endpoint);
+    configure_v1_api_routes(cfg);
+
+    cfg.service(info::pages::index);
+    configure_auth_routes(cfg);
+    configure_tree_routes(cfg);
+    configure_repository_routes(cfg);
+}
+
+fn configure_auth_routes(cfg: &mut web::ServiceConfig) {
+    cfg.service(auth::pages::invite_page)
         .service(auth::pages::signup_page)
         .service(auth::pages::login_page)
         .service(auth::device::start_device_authorization)
@@ -30,9 +42,11 @@ pub(crate) fn configure_routes(cfg: &mut web::ServiceConfig) {
         .service(auth::handlers::signup_ui_handler)
         .service(auth::handlers::login_ui_handler)
         .service(auth::handlers::create_namespace_ui_handler)
-        .service(auth::handlers::logout_ui_handler)
-        // Web UI endpoints (MUST come before git routes to avoid pattern conflicts)
-        .service(overview::pages::index)
+        .service(auth::handlers::logout_ui_handler);
+}
+
+fn configure_tree_routes(cfg: &mut web::ServiceConfig) {
+    cfg.service(overview::pages::index)
         .service(tree::pages::tree_page)
         .service(tree::pages::namespaces_page)
         .service(tree::pages::repositories_page)
@@ -49,9 +63,12 @@ pub(crate) fn configure_routes(cfg: &mut web::ServiceConfig) {
         .service(test_page::pages::test_feature_check)
         .service(test_page::pages::test_pin_create)
         .service(test_page::pages::test_pin_remove)
-        .service(test_page::pages::test_pin_qr)
-        // Settings page MUST come before namespace handler (which matches /{namespace})
-        .service(settings::pages::settings_page)
+        .service(test_page::pages::test_pin_qr);
+}
+
+fn configure_repository_routes(cfg: &mut web::ServiceConfig) {
+    // Settings and the namespace UI must precede dynamic repository routes.
+    cfg.service(settings::pages::settings_page)
         .service(settings::pages::personal_access_tokens_page)
         .service(settings::pages::create_personal_access_token)
         .service(settings::pages::revoke_personal_access_token)
@@ -114,6 +131,34 @@ pub(crate) fn configure_routes(cfg: &mut web::ServiceConfig) {
             "/{namespace}/{repo}/{endpoint:.*}",
             web::post().guard(is_git()).to(git::git_handler),
         );
+}
+
+fn configure_v1_api_routes(cfg: &mut web::ServiceConfig) {
+    cfg.service(api::v1::me)
+        .service(api::v1::namespaces::list_namespaces)
+        .service(api::v1::namespaces::create_namespace)
+        .service(api::v1::namespaces::get_namespace)
+        .service(api::v1::namespaces::rename_namespace)
+        .service(api::v1::namespaces::delete_namespace)
+        .service(api::v1::namespaces::list_repositories)
+        .service(api::v1::namespaces::create_repository)
+        .service(api::v1::namespaces::list_members)
+        .service(api::v1::namespaces::list_invitations)
+        .service(api::v1::namespaces::create_invitation)
+        .service(api::v1::namespaces::resend_invitation)
+        .service(api::v1::repositories::get_repository)
+        .service(api::v1::repositories::update_repository)
+        .service(api::v1::repositories::delete_repository)
+        .service(api::v1::repositories::list_branches)
+        .service(api::v1::repositories::list_commits)
+        .service(api::v1::contents::get_tree)
+        .service(api::v1::contents::get_content)
+        .service(api::v1::contents::put_content)
+        .service(api::v1::contents::delete_content)
+        .service(api::v1::contents::rename_content)
+        .service(api::v1::binaries::list_binaries)
+        .service(api::v1::binaries::get_binary)
+        .service(api::v1::binaries::put_binary);
 }
 
 fn is_git() -> impl guard::Guard {

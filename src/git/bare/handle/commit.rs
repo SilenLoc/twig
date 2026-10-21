@@ -163,6 +163,110 @@ impl RepoHandle {
         self.advance_branch(&reference_name, commit_oid, expected_head)
     }
 
+    /// Apply arbitrary file bytes as one commit on an exact local branch and
+    /// advance it only when it still points at `expected_head`. Unlike the
+    /// browser editor's text-only path, this API operation preserves binary
+    /// blobs while still rejecting symlinks and gitlinks.
+    pub fn commit_changes_at(
+        &self,
+        branch: &str,
+        changes: &[RepoEditChange],
+        expected_head: git2::Oid,
+        author_name: &str,
+        author_email: &str,
+        message: &str,
+    ) -> Result<CommitChangesOutcome, git2::Error> {
+        if changes.is_empty() {
+            return Err(git2::Error::from_str("There are no changes to commit"));
+        }
+        let reference_name = format!("refs/heads/{branch}");
+        if !git2::Reference::is_valid_name(&reference_name) {
+            return Err(git2::Error::from_str("Invalid branch name"));
+        }
+        let reference = match self.repo.find_reference(&reference_name) {
+            Ok(reference) => reference,
+            Err(error) if error.code() == git2::ErrorCode::NotFound => {
+                return Err(git2::Error::from_str("Branch not found"));
+            }
+            Err(error) => return Err(error),
+        };
+        let current_head = reference.target();
+        if current_head.unwrap_or(git2::Oid::ZERO_SHA1) != expected_head {
+            return Ok(CommitChangesOutcome::Conflict);
+        }
+        let parent = current_head
+            .map(|head| self.repo.find_commit(head))
+            .transpose()?;
+        let parent_tree = self.parent_tree(parent.as_ref())?;
+        let tree_oid = self.create_api_edit_tree(changes, &parent_tree)?;
+        let tree = self.repo.find_tree(tree_oid)?;
+        let commit_oid =
+            self.create_edit_commit(parent.as_ref(), &tree, author_name, author_email, message)?;
+        self.advance_branch(&reference_name, commit_oid, expected_head)
+    }
+
+    fn create_api_edit_tree(
+        &self,
+        changes: &[RepoEditChange],
+        parent_tree: &git2::Tree<'_>,
+    ) -> Result<git2::Oid, git2::Error> {
+        use std::collections::HashSet;
+
+        use git2::{FileMode, ObjectType, build::TreeUpdateBuilder};
+
+        let mut seen = HashSet::with_capacity(changes.len());
+        let mut update = TreeUpdateBuilder::new();
+        for change in changes {
+            let path = match change {
+                RepoEditChange::Upsert { path, .. } | RepoEditChange::Delete { path } => path,
+            };
+            if path.is_empty() || !is_safe_repo_path(path) || !seen.insert(path) {
+                return Err(git2::Error::from_str(
+                    "Invalid or duplicate repository path",
+                ));
+            }
+            match change {
+                RepoEditChange::Upsert { path, content } => {
+                    let mode = match parent_tree.get_path(Path::new(path)) {
+                        Ok(entry)
+                            if entry.kind() == Some(ObjectType::Blob)
+                                && matches!(entry.filemode(), 0o100_644 | 0o100_755) =>
+                        {
+                            if entry.filemode() == 0o100_755 {
+                                FileMode::BlobExecutable
+                            } else {
+                                FileMode::Blob
+                            }
+                        }
+                        Ok(_) => {
+                            return Err(git2::Error::from_str(
+                                "Only regular files can be replaced",
+                            ));
+                        }
+                        Err(error) if error.code() == git2::ErrorCode::NotFound => FileMode::Blob,
+                        Err(error) => return Err(error),
+                    };
+                    let blob_oid = self.repo.blob(content)?;
+                    update.upsert(path, blob_oid, mode);
+                }
+                RepoEditChange::Delete { path } => {
+                    let entry = parent_tree.get_path(Path::new(path))?;
+                    if entry.kind() != Some(ObjectType::Blob)
+                        || !matches!(entry.filemode(), 0o100_644 | 0o100_755)
+                    {
+                        return Err(git2::Error::from_str("Only regular files can be deleted"));
+                    }
+                    update.remove(path);
+                }
+            }
+        }
+        let tree_oid = update.create_updated(&self.repo, parent_tree)?;
+        if tree_oid == parent_tree.id() {
+            return Err(git2::Error::from_str("There are no changes to commit"));
+        }
+        Ok(tree_oid)
+    }
+
     fn head_branch_reference_name(&self) -> Result<String, git2::Error> {
         self.repo
             .find_reference("HEAD")?

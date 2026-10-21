@@ -32,6 +32,8 @@ mod tests {
     mod repo_workspace_ui;
     #[path = "../repository_hooks.rs"]
     mod repository_hooks;
+    #[path = "../repository_json_api.rs"]
+    mod repository_json_api;
     #[path = "../support.rs"]
     mod support;
     #[path = "../test_page.rs"]

@@ -13,7 +13,7 @@ mod path;
 pub use config::{PresentConfig, ScriptEntry, ScriptGroupNode, TwigConfig, TwigConfigWithRaw};
 #[cfg(test)]
 pub use handle::CommitFileOutcome;
-pub use handle::{CommitChangesOutcome, RepoEditChange, RepoHandle, TreeEntry};
+pub use handle::{BranchInfo, CommitChangesOutcome, RepoEditChange, RepoHandle, TreeEntry};
 pub use history::{Commit, MAX_COMMITS};
 pub use listing::{RepoInfo, get_repos_with_info, is_repo_private, search_repos_with_info};
 pub use path::{is_safe_component, is_safe_repo_path};

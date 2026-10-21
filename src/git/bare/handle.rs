@@ -18,6 +18,13 @@ pub struct TreeEntry {
     pub is_dir: bool,
 }
 
+/// One local branch and its current target, if the branch has a commit.
+pub struct BranchInfo {
+    pub name: String,
+    pub tip: Option<git2::Oid>,
+    pub is_default: bool,
+}
+
 pub struct RepoHandle {
     repo: git2::Repository,
 }
