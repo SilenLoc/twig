@@ -133,9 +133,6 @@ fn main() -> std::io::Result<()> {
                     auth_state.db().clone(),
                     session_key,
                 ))
-                .wrap(actix_web::middleware::from_fn(
-                    http::security::same_origin_guard,
-                ))
                 // Dev convenience: when RESET_DB is true, auto-attach the seeded
                 // admin session cookie to any request that doesn't already carry
                 // one, so local browsing never requires a manual login.

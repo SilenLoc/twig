@@ -329,9 +329,6 @@ async fn start_network_git_server_with_limits(
                 session_key.clone(),
             ))
             .wrap(actix_web::middleware::from_fn(
-                crate::http::security::same_origin_guard,
-            ))
-            .wrap(actix_web::middleware::from_fn(
                 crate::http::security::security_headers,
             ))
             .configure(crate::http::routes::configure_routes)

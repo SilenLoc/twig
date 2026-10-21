@@ -27,15 +27,12 @@ For local development, `mise.toml` overrides several values, including
 `BIND_ADDRESS=127.0.0.1`, `PORT=8080`, `PROJECT_ROOT=tests/git/srv`,
 `RESET_DB=true`, and `TEST_USER=admin`.
 
-## Browser request protections
+## Request protections
 
 Login and invite-generation attempts are limited to ten per minute per
 connection peer and return `429` with `Retry-After` when throttled. Session
-cookies use `SameSite=Lax`; unsafe browser requests that include `Origin` or
-`Referer` are also checked against the configured public origin or request
-origin. Device approval is the exception: its POST requires a one-time,
-session-bound CSRF token. When a reverse proxy fronts Twig, configure
-`PUBLIC_BASE_URL`, sanitize forwarded headers at the proxy, and add ingress rate
+cookies use `SameSite=Lax`. Device approval POSTs require a one-time,
+session-bound CSRF token. When a reverse proxy fronts Twig, add ingress rate
 limits there: the application limiter sees the proxy's socket address unless
 clients connect directly.
 
