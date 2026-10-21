@@ -97,7 +97,7 @@ async fn test_tree_hub_and_admin_data_view_are_gated_and_paginated() {
             .unwrap()
             .execute(
                 "INSERT INTO scroll_fixture (id) VALUES (?1)",
-                turso::params![id],
+                crate::db::sqlite::params![id],
             )
             .await
             .unwrap();

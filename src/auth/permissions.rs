@@ -479,7 +479,7 @@ mod tests {
             .execute(
                 "INSERT INTO namespace_members (namespace_id, user_id, role, added_at)
                  VALUES (?1, ?2, 'contributor', ?3)",
-                turso::params![
+                crate::db::sqlite::params![
                     namespace.id,
                     contributor.id.clone(),
                     chrono::Utc::now().to_rfc3339()

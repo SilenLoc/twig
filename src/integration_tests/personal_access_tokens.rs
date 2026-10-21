@@ -112,7 +112,7 @@ async fn account_tokens_create_list_and_revoke_real_scoped_token() {
         .expect("connect to token database")
         .query(
             "SELECT token_hash FROM personal_access_tokens WHERE id = ?1",
-            turso::params![tokens[0].id.clone()],
+            crate::db::sqlite::params![tokens[0].id.clone()],
         )
         .await
         .expect("read token hash");
@@ -241,7 +241,7 @@ async fn token_creation_rejects_unavailable_permissions_and_foreign_namespaces()
         .execute(
             "INSERT INTO namespace_members (namespace_id, user_id, role, added_at)
              VALUES (?1, ?2, 'contributor', ?3)",
-            turso::params![
+            crate::db::sqlite::params![
                 namespace.id.clone(),
                 contributor.id.clone(),
                 chrono::Utc::now().to_rfc3339()

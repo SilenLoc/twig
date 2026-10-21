@@ -11,7 +11,7 @@ impl Database {
         let result: Result<(), String> = async {
             conn.execute(
                 "INSERT INTO namespaces (id, name, owner_id, created_at) VALUES (?1, ?2, ?3, ?4)",
-                turso::params![
+                crate::db::sqlite::params![
                     namespace.id.clone(),
                     namespace.name.clone(),
                     namespace.owner_id.clone(),
@@ -24,7 +24,7 @@ impl Database {
             let now = chrono::Utc::now().to_rfc3339();
             conn.execute(
                 "INSERT INTO namespace_members (namespace_id, user_id, role, added_at) VALUES (?1, ?2, ?3, ?4)",
-                turso::params![namespace.id.clone(), namespace.owner_id.clone(), "owner", now],
+                crate::db::sqlite::params![namespace.id.clone(), namespace.owner_id.clone(), "owner", now],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -55,7 +55,7 @@ impl Database {
             .await?
             .query(
                 "SELECT id, name, owner_id, created_at FROM namespaces WHERE name = ?1",
-                turso::params![name],
+                crate::db::sqlite::params![name],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -97,7 +97,7 @@ impl Database {
                  JOIN users u ON n.owner_id = u.id
                  WHERE (?1 IS NULL OR n.name LIKE ?1)
                  ORDER BY n.name",
-                turso::params![search_pattern],
+                crate::db::sqlite::params![search_pattern],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -130,7 +130,7 @@ impl Database {
                  LEFT JOIN namespace_members nm ON n.id = nm.namespace_id
                  WHERE n.name = ?1 AND (n.owner_id = ?2 OR nm.user_id = ?2)
                  LIMIT 1",
-                turso::params![namespace_name, user_id],
+                crate::db::sqlite::params![namespace_name, user_id],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -152,7 +152,7 @@ impl Database {
                  LEFT JOIN namespace_members nm ON n.id = nm.namespace_id AND nm.user_id = ?2
                  WHERE n.name = ?1 AND (n.owner_id = ?2 OR nm.user_id = ?2)
                  LIMIT 1",
-                turso::params![namespace_name, user_id],
+                crate::db::sqlite::params![namespace_name, user_id],
             )
             .await
             .map_err(|error| error.to_string())?;
@@ -189,7 +189,7 @@ impl Database {
                  LEFT JOIN namespace_members nm ON n.id = nm.namespace_id AND nm.user_id = ?1
                  WHERE n.owner_id = ?1 OR (nm.user_id = ?1 AND nm.role = 'owner')
                  ORDER BY n.name",
-                turso::params![user_id],
+                crate::db::sqlite::params![user_id],
             )
             .await
             .map_err(|error| error.to_string())?;
@@ -223,7 +223,7 @@ impl Database {
                     ) THEN 1
                     ELSE 0
                  END",
-                turso::params![user_id],
+                crate::db::sqlite::params![user_id],
             )
             .await
             .map_err(|error| error.to_string())?;
@@ -242,7 +242,7 @@ impl Database {
             .await?
             .query(
                 "SELECT 1 FROM namespace_members WHERE user_id = ?1 LIMIT 1",
-                turso::params![user_id],
+                crate::db::sqlite::params![user_id],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -262,7 +262,7 @@ impl Database {
                  LEFT JOIN namespace_members nm ON n.id = nm.namespace_id
                  WHERE n.owner_id = ?1 OR nm.user_id = ?1
                  ORDER BY n.name",
-                turso::params![user_id],
+                crate::db::sqlite::params![user_id],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -284,7 +284,7 @@ impl Database {
 
         conn.execute(
             "UPDATE namespaces SET name = ?1 WHERE id = ?2",
-            turso::params![new_name, namespace_id],
+            crate::db::sqlite::params![new_name, namespace_id],
         )
         .await
         .map_err(|e| e.to_string())?;
@@ -300,14 +300,14 @@ impl Database {
         let result: Result<(), String> = async {
             conn.execute(
                 "DELETE FROM namespace_members WHERE namespace_id = ?1",
-                turso::params![namespace_id],
+                crate::db::sqlite::params![namespace_id],
             )
             .await
             .map_err(|e| e.to_string())?;
 
             conn.execute(
                 "DELETE FROM namespaces WHERE id = ?1",
-                turso::params![namespace_id],
+                crate::db::sqlite::params![namespace_id],
             )
             .await
             .map_err(|e| e.to_string())?;

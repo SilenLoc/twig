@@ -9,7 +9,7 @@ impl Database {
             .map_err(|e| e.to_string())?;
         conn.execute(
             "INSERT INTO test_pins (pin, created_at) VALUES (?1, ?2)",
-            turso::params![pin, now],
+            crate::db::sqlite::params![pin, now],
         )
         .await
         .map_err(|e| e.to_string())?;
@@ -52,7 +52,7 @@ impl Database {
             .await?
             .query(
                 "SELECT 1 FROM test_pins WHERE pin = ?1",
-                turso::params![pin],
+                crate::db::sqlite::params![pin],
             )
             .await
             .map_err(|e| e.to_string())?;

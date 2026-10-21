@@ -536,7 +536,7 @@ async fn test_git_client_push_uses_managed_and_custom_shell_hooks() {
         .execute(
             "INSERT INTO namespace_members (namespace_id, user_id, role, added_at)
              VALUES (?1, ?2, 'contributor', ?3)",
-            turso::params![
+            crate::db::sqlite::params![
                 namespace.id,
                 contributor.id,
                 chrono::Utc::now().to_rfc3339()
@@ -862,7 +862,7 @@ async fn run_native_pack_server_child(root: &std::path::Path) {
         .execute(
             "INSERT INTO namespace_members (namespace_id, user_id, role, added_at)
              VALUES (?1, ?2, 'contributor', ?3)",
-            turso::params![
+            crate::db::sqlite::params![
                 namespace.id,
                 contributor.id,
                 chrono::Utc::now().to_rfc3339()

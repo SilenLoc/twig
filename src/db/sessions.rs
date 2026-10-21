@@ -7,7 +7,7 @@ impl Database {
             .await?
             .query(
                 "SELECT state FROM actix_sessions WHERE session_key = ?1 AND expires_at > unixepoch()",
-                turso::params![session_key],
+                crate::db::sqlite::params![session_key],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -29,7 +29,7 @@ impl Database {
             .await?
             .execute(
                 "INSERT INTO actix_sessions (session_key, state, expires_at) VALUES (?1, ?2, unixepoch() + ?3)",
-                turso::params![session_key, state, ttl_seconds],
+                crate::db::sqlite::params![session_key, state, ttl_seconds],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -47,7 +47,7 @@ impl Database {
             .await?
             .execute(
                 "UPDATE actix_sessions SET state = ?2, expires_at = unixepoch() + ?3 WHERE session_key = ?1 AND expires_at > unixepoch()",
-                turso::params![session_key, state, ttl_seconds],
+                crate::db::sqlite::params![session_key, state, ttl_seconds],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -64,7 +64,7 @@ impl Database {
             .await?
             .execute(
                 "UPDATE actix_sessions SET expires_at = unixepoch() + ?2 WHERE session_key = ?1 AND expires_at > unixepoch()",
-                turso::params![session_key, ttl_seconds],
+                crate::db::sqlite::params![session_key, ttl_seconds],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -76,7 +76,7 @@ impl Database {
             .await?
             .execute(
                 "DELETE FROM actix_sessions WHERE session_key = ?1",
-                turso::params![session_key],
+                crate::db::sqlite::params![session_key],
             )
             .await
             .map_err(|e| e.to_string())?;

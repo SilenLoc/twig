@@ -129,7 +129,7 @@ async fn acceptance_creates_account_membership_and_consumes_invite_atomically() 
         .unwrap()
         .query(
             "SELECT role FROM namespace_members WHERE namespace_id = ?1 AND user_id = ?2",
-            turso::params![namespace.id.clone(), user.id.clone()],
+            crate::db::sqlite::params![namespace.id.clone(), user.id.clone()],
         )
         .await
         .unwrap();
@@ -193,7 +193,7 @@ async fn failed_acceptance_rolls_back_account_membership_and_invite_state() {
         .unwrap()
         .query(
             "SELECT 1 FROM namespace_members WHERE namespace_id = ?1 AND user_id = ?2",
-            turso::params![namespace.id, duplicate.id],
+            crate::db::sqlite::params![namespace.id, duplicate.id],
         )
         .await
         .unwrap();

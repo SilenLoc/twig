@@ -1,6 +1,6 @@
 [package]
 name = "twig"
-version = "0.3.13"
+version = "0.3.14"
 edition = "2024"
 
 [workspace]
@@ -22,7 +22,7 @@ qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
 semver = "1"
 sha2 = "0.10"
 toml = "1.1"
-turso = { version = "0.8.2", default-features = false }
+rusqlite = { version = "0.40.1", features = ["bundled"] }
 
 [dependencies.actix-http]
 version = "3"

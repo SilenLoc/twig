@@ -234,7 +234,7 @@ const MIGRATIONS: &[Migration] = &[
     },
 ];
 
-async fn prepare_migrations(conn: &turso::Connection) -> Result<Vec<String>, String> {
+async fn prepare_migrations(conn: &crate::db::sqlite::Connection) -> Result<Vec<String>, String> {
     conn.query("PRAGMA journal_mode = WAL;", ())
         .await
         .map_err(|error| format!("Failed to set WAL mode: {error}"))?;
@@ -262,13 +262,13 @@ async fn prepare_migrations(conn: &turso::Connection) -> Result<Vec<String>, Str
 }
 
 async fn migration_was_recorded(
-    conn: &turso::Connection,
+    conn: &crate::db::sqlite::Connection,
     migration: &Migration,
 ) -> Result<bool, String> {
     let mut rows = conn
         .query(
             "SELECT 1 FROM _migrations WHERE name = ?1",
-            turso::params![migration.name],
+            crate::db::sqlite::params![migration.name],
         )
         .await
         .map_err(|error| format!("Failed to check migration {}: {error}", migration.name))?;
@@ -280,7 +280,7 @@ async fn migration_was_recorded(
 }
 
 async fn apply_migration_body(
-    conn: &turso::Connection,
+    conn: &crate::db::sqlite::Connection,
     migration: &Migration,
 ) -> Result<bool, String> {
     if migration_was_recorded(conn, migration).await? {
@@ -292,14 +292,17 @@ async fn apply_migration_body(
         .map_err(|error| format!("Migration {} failed: {error}", migration.name))?;
     conn.execute(
         "INSERT INTO _migrations (name) VALUES (?1)",
-        turso::params![migration.name],
+        crate::db::sqlite::params![migration.name],
     )
     .await
     .map_err(|error| format!("Failed to record migration {}: {error}", migration.name))?;
     Ok(true)
 }
 
-async fn apply_migration(conn: &turso::Connection, migration: &Migration) -> Result<(), String> {
+async fn apply_migration(
+    conn: &crate::db::sqlite::Connection,
+    migration: &Migration,
+) -> Result<(), String> {
     conn.execute("BEGIN IMMEDIATE", ())
         .await
         .map_err(|error| error.to_string())?;
@@ -464,7 +467,7 @@ mod tests {
             .execute(
                 "INSERT INTO namespace_members (namespace_id, user_id, role, added_at)
                  VALUES (?1, ?2, 'member', ?3)",
-                turso::params![
+                crate::db::sqlite::params![
                     namespace.id.clone(),
                     member.id.clone(),
                     chrono::Utc::now().to_rfc3339()
@@ -477,7 +480,7 @@ mod tests {
             .unwrap()
             .execute(
                 "DELETE FROM _migrations WHERE name = ?1",
-                turso::params!["normalize_legacy_namespace_member_role"],
+                crate::db::sqlite::params!["normalize_legacy_namespace_member_role"],
             )
             .await
             .expect("mark role migration unapplied");
@@ -486,11 +489,22 @@ mod tests {
             .await
             .expect("apply role normalization migration");
 
-        let role = db
-            .get_namespace_role(&member.id, &namespace.name)
+        let mut rows = db
+            .conn()
+            .await
+            .expect("SQLite connection")
+            .query(
+                "SELECT role FROM namespace_members WHERE namespace_id = ?1 AND user_id = ?2",
+                crate::db::sqlite::params![namespace.id, member.id],
+            )
             .await
             .expect("read normalized role");
-        assert_eq!(role, Some(crate::auth::NamespaceRole::Contributor));
+        let row = rows
+            .next()
+            .await
+            .expect("read role row")
+            .expect("role exists");
+        assert_eq!(row.get::<String>(0).expect("role value"), "contributor");
 
         let _ = std::fs::remove_file(&db_path);
     }

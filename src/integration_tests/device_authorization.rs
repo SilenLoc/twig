@@ -500,7 +500,7 @@ async fn device_approval_rejects_permissions_the_user_does_not_have() {
         .execute(
             "INSERT INTO namespace_members (namespace_id, user_id, role, added_at)
              VALUES (?1, ?2, 'contributor', ?3)",
-            turso::params![
+            crate::db::sqlite::params![
                 namespace.id.clone(),
                 contributor.id.clone(),
                 chrono::Utc::now().to_rfc3339()
@@ -588,7 +588,7 @@ async fn device_poll_denies_a_grant_if_namespace_access_was_revoked() {
         .execute(
             "INSERT INTO namespace_members (namespace_id, user_id, role, added_at)
              VALUES (?1, ?2, 'contributor', ?3)",
-            turso::params![
+            crate::db::sqlite::params![
                 namespace.id.clone(),
                 contributor.id.clone(),
                 chrono::Utc::now().to_rfc3339()
@@ -624,7 +624,7 @@ async fn device_poll_denies_a_grant_if_namespace_access_was_revoked() {
         .expect("connect to membership database")
         .execute(
             "DELETE FROM namespace_members WHERE namespace_id = ?1 AND user_id = ?2",
-            turso::params![namespace.id.clone(), contributor.id.clone()],
+            crate::db::sqlite::params![namespace.id.clone(), contributor.id.clone()],
         )
         .await
         .expect("revoke contributor membership");

@@ -82,7 +82,7 @@ impl Database {
                     (id, device_code_hash, user_code_hash, status, created_at, expires_at,
                      poll_interval_seconds)
                  VALUES (?1, ?2, ?3, 'pending', ?4, ?5, ?6)",
-                turso::params![
+                crate::db::sqlite::params![
                     challenge.id,
                     challenge.device_code_hash,
                     challenge.user_code_hash,
@@ -105,7 +105,7 @@ impl Database {
             .query(
                 "SELECT status, expires_at
                  FROM device_authorizations WHERE user_code_hash = ?1",
-                turso::params![user_code_hash],
+                crate::db::sqlite::params![user_code_hash],
             )
             .await
             .map_err(|error| error.to_string())?;
@@ -149,7 +149,7 @@ impl Database {
                     "UPDATE device_authorizations
                      SET status = 'approved', user_id = ?2
                      WHERE id = ?1 AND status = 'pending'",
-                    turso::params![authorization_id.clone(), user_id],
+                    crate::db::sqlite::params![authorization_id.clone(), user_id],
                 )
                 .await
                 .map_err(|error| error.to_string())?;
@@ -162,7 +162,7 @@ impl Database {
                     "INSERT INTO device_authorization_permissions
                         (authorization_id, namespace_id, permission)
                      VALUES (?1, ?2, ?3)",
-                    turso::params![
+                    crate::db::sqlite::params![
                         authorization_id.clone(),
                         scope.namespace_id.clone(),
                         scope.permission.as_str()
@@ -203,7 +203,7 @@ impl Database {
                     "UPDATE device_authorizations
                      SET status = 'denied', user_id = ?2
                      WHERE id = ?1 AND status = 'pending'",
-                    turso::params![authorization_id, user_id],
+                    crate::db::sqlite::params![authorization_id, user_id],
                 )
                 .await
                 .map_err(|error| error.to_string())?;
@@ -228,7 +228,7 @@ impl Database {
                 .query(
                     "SELECT id, status, user_id, expires_at, poll_interval_seconds, last_polled_at
                      FROM device_authorizations WHERE device_code_hash = ?1",
-                    turso::params![device_code_hash],
+                    crate::db::sqlite::params![device_code_hash],
                 )
                 .await
                 .map_err(|error| error.to_string())?;
@@ -266,7 +266,7 @@ impl Database {
                         "UPDATE device_authorizations
                          SET poll_interval_seconds = ?2, last_polled_at = ?3
                          WHERE id = ?1",
-                        turso::params![
+                        crate::db::sqlite::params![
                             authorization_id,
                             i64::try_from(interval)
                                 .map_err(|_| "Poll interval is too large".to_string())?,
@@ -283,7 +283,7 @@ impl Database {
 
             conn.execute(
                 "UPDATE device_authorizations SET last_polled_at = ?2 WHERE id = ?1",
-                turso::params![authorization_id.clone(), now.to_rfc3339()],
+                crate::db::sqlite::params![authorization_id.clone(), now.to_rfc3339()],
             )
             .await
             .map_err(|error| error.to_string())?;
@@ -328,7 +328,7 @@ impl Database {
                     "SELECT id, user_id, expires_at
                      FROM device_authorizations
                      WHERE device_code_hash = ?1 AND status = 'approved'",
-                    turso::params![device_code_hash],
+                    crate::db::sqlite::params![device_code_hash],
                 )
                 .await
                 .map_err(|error| error.to_string())?;
@@ -404,13 +404,13 @@ impl Database {
 }
 
 async fn find_challenge_header_by_user_code_hash(
-    conn: &turso::Connection,
+    conn: &crate::db::sqlite::Connection,
     user_code_hash: &str,
 ) -> Result<Option<(String, String, String)>, String> {
     let mut rows = conn
         .query(
             "SELECT id, status, expires_at FROM device_authorizations WHERE user_code_hash = ?1",
-            turso::params![user_code_hash],
+            crate::db::sqlite::params![user_code_hash],
         )
         .await
         .map_err(|error| error.to_string())?;
@@ -425,7 +425,7 @@ async fn find_challenge_header_by_user_code_hash(
 }
 
 async fn load_scopes(
-    conn: &turso::Connection,
+    conn: &crate::db::sqlite::Connection,
     authorization_id: &str,
 ) -> Result<Vec<DeviceAuthorizationScope>, String> {
     let mut rows = conn
@@ -434,7 +434,7 @@ async fn load_scopes(
              FROM device_authorization_permissions
              WHERE authorization_id = ?1
              ORDER BY namespace_id, permission",
-            turso::params![authorization_id],
+            crate::db::sqlite::params![authorization_id],
         )
         .await
         .map_err(|error| error.to_string())?;
@@ -452,16 +452,19 @@ async fn load_scopes(
     Ok(scopes)
 }
 
-async fn delete_challenge(conn: &turso::Connection, authorization_id: &str) -> Result<(), String> {
+async fn delete_challenge(
+    conn: &crate::db::sqlite::Connection,
+    authorization_id: &str,
+) -> Result<(), String> {
     conn.execute(
         "DELETE FROM device_authorization_permissions WHERE authorization_id = ?1",
-        turso::params![authorization_id],
+        crate::db::sqlite::params![authorization_id],
     )
     .await
     .map_err(|error| error.to_string())?;
     conn.execute(
         "DELETE FROM device_authorizations WHERE id = ?1",
-        turso::params![authorization_id],
+        crate::db::sqlite::params![authorization_id],
     )
     .await
     .map_err(|error| error.to_string())?;
@@ -525,7 +528,7 @@ fn is_expired(expires_at: &str) -> Result<bool, String> {
 }
 
 async fn finish_transaction<T>(
-    conn: &turso::Connection,
+    conn: &crate::db::sqlite::Connection,
     result: Result<T, String>,
     commit_error: &str,
 ) -> Result<T, String> {
@@ -706,7 +709,7 @@ mod tests {
             .expect("connect to test database")
             .execute(
                 "UPDATE device_authorizations SET last_polled_at = ?2 WHERE id = ?1",
-                turso::params!["authorization-slowdown", Utc::now().to_rfc3339()],
+                crate::db::sqlite::params!["authorization-slowdown", Utc::now().to_rfc3339()],
             )
             .await
             .expect("set prior poll time");

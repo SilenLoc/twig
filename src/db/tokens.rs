@@ -7,7 +7,7 @@ impl Database {
             .await?
             .execute(
                 "INSERT INTO tokens (token, user_id, created_at) VALUES (?1, ?2, ?3)",
-                turso::params![token, user_id, now],
+                crate::db::sqlite::params![token, user_id, now],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -19,7 +19,7 @@ impl Database {
             .conn().await?
             .query(
                 "SELECT user_id FROM tokens WHERE token = ?1 AND created_at > datetime('now', '-30 days')",
-                turso::params![token],
+                crate::db::sqlite::params![token],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -34,7 +34,10 @@ impl Database {
     pub async fn delete_token(&self, token: &str) -> Result<(), String> {
         self.conn()
             .await?
-            .execute("DELETE FROM tokens WHERE token = ?1", turso::params![token])
+            .execute(
+                "DELETE FROM tokens WHERE token = ?1",
+                crate::db::sqlite::params![token],
+            )
             .await
             .map_err(|e| e.to_string())?;
         Ok(())
@@ -124,7 +127,7 @@ mod tests {
             .unwrap()
             .execute(
                 "UPDATE tokens SET created_at = datetime('now', '-60 days') WHERE token = ?1",
-                turso::params![token],
+                crate::db::sqlite::params![token],
             )
             .await
             .unwrap();

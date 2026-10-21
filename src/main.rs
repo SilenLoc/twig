@@ -19,10 +19,7 @@ mod integration_tests;
 mod md;
 
 fn init_logging(config: &config::Server) {
-    let log_filter = format!(
-        "{},libsql=warn,turso=warn,tracing::span=warn",
-        config.log_level()
-    );
+    let log_filter = format!("{},tracing::span=warn", config.log_level());
 
     let logger =
         env_logger::Builder::from_env(Env::default().default_filter_or(log_filter)).build();

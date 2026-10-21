@@ -350,7 +350,7 @@ async fn repo_edit_commit_requires_an_author_email() {
         .unwrap()
         .execute(
             "UPDATE users SET email = NULL WHERE username = ?1",
-            turso::params!["repoeditnoemail"],
+            crate::db::sqlite::params!["repoeditnoemail"],
         )
         .await
         .unwrap();

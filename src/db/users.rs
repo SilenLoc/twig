@@ -44,7 +44,7 @@ impl Database {
                  LEFT JOIN namespaces n ON n.id = nm.namespace_id
                  WHERE (?1 IS NULL OR n.id = ?1)
                  ORDER BY u.username, n.name",
-                turso::params![namespace_id.cloned()],
+                crate::db::sqlite::params![namespace_id.cloned()],
             )
             .await
             .map_err(|error| error.to_string())?;
@@ -79,7 +79,7 @@ impl Database {
         self.conn().await?
             .execute(
                 "INSERT INTO users (id, username, email, password_hash, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-                turso::params![user.id.clone(), user.username.clone(), user.email.clone(), user.password_hash.clone(), user.created_at.clone()],
+                crate::db::sqlite::params![user.id.clone(), user.username.clone(), user.email.clone(), user.password_hash.clone(), user.created_at.clone()],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -91,7 +91,7 @@ impl Database {
             .conn().await?
             .query(
                 "SELECT id, username, email, password_hash, created_at FROM users WHERE username = ?1",
-                turso::params![username],
+                crate::db::sqlite::params![username],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -115,7 +115,7 @@ impl Database {
             .await?
             .query(
                 "SELECT id, username, email, password_hash, created_at FROM users WHERE id = ?1",
-                turso::params![user_id],
+                crate::db::sqlite::params![user_id],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -138,7 +138,7 @@ impl Database {
             .await?
             .execute(
                 "UPDATE users SET email = ?1 WHERE id = ?2",
-                turso::params![email, user_id],
+                crate::db::sqlite::params![email, user_id],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -273,7 +273,7 @@ mod tests {
             .execute(
                 "INSERT INTO namespace_members (namespace_id, user_id, role, added_at)
                  VALUES (?1, ?2, ?3, ?4)",
-                turso::params![
+                crate::db::sqlite::params![
                     namespace.id.clone(),
                     contributor.id.clone(),
                     NamespaceRole::Contributor.as_str(),

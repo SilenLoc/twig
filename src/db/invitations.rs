@@ -14,7 +14,7 @@ struct ValidatedInvitation {
 }
 
 async fn accept_invitation_in_transaction(
-    conn: &turso::Connection,
+    conn: &crate::db::sqlite::Connection,
     token: &str,
     user: &User,
 ) -> Result<(), String> {
@@ -28,7 +28,7 @@ async fn accept_invitation_in_transaction(
 }
 
 async fn validate_invitation_for_user(
-    conn: &turso::Connection,
+    conn: &crate::db::sqlite::Connection,
     token: &str,
     user: &User,
 ) -> Result<ValidatedInvitation, String> {
@@ -36,7 +36,7 @@ async fn validate_invitation_for_user(
         .query(
             "SELECT email, namespace_id, role, expires_at, accepted_at, accepted_user_id
              FROM namespace_invitations WHERE token = ?1",
-            turso::params![token],
+            crate::db::sqlite::params![token],
         )
         .await
         .map_err(|error| error.to_string())?;
@@ -68,11 +68,14 @@ async fn validate_invitation_for_user(
     Ok(ValidatedInvitation { namespace_id, role })
 }
 
-async fn ensure_username_available(conn: &turso::Connection, username: &str) -> Result<(), String> {
+async fn ensure_username_available(
+    conn: &crate::db::sqlite::Connection,
+    username: &str,
+) -> Result<(), String> {
     let mut rows = conn
         .query(
             "SELECT 1 FROM users WHERE username = ?1 LIMIT 1",
-            turso::params![username],
+            crate::db::sqlite::params![username],
         )
         .await
         .map_err(|error| error.to_string())?;
@@ -87,11 +90,14 @@ async fn ensure_username_available(conn: &turso::Connection, username: &str) -> 
     Ok(())
 }
 
-async fn insert_invited_user(conn: &turso::Connection, user: &User) -> Result<(), String> {
+async fn insert_invited_user(
+    conn: &crate::db::sqlite::Connection,
+    user: &User,
+) -> Result<(), String> {
     conn.execute(
         "INSERT INTO users (id, username, email, password_hash, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5)",
-        turso::params![
+        crate::db::sqlite::params![
             user.id.clone(),
             user.username.clone(),
             user.email.clone(),
@@ -105,7 +111,7 @@ async fn insert_invited_user(conn: &turso::Connection, user: &User) -> Result<()
 }
 
 async fn add_invited_user_to_namespace(
-    conn: &turso::Connection,
+    conn: &crate::db::sqlite::Connection,
     invitation: &ValidatedInvitation,
     user: &User,
     now: &str,
@@ -113,7 +119,7 @@ async fn add_invited_user_to_namespace(
     conn.execute(
         "INSERT INTO namespace_members (namespace_id, user_id, role, added_at)
          VALUES (?1, ?2, ?3, ?4)",
-        turso::params![
+        crate::db::sqlite::params![
             invitation.namespace_id.clone(),
             user.id.clone(),
             invitation.role.as_str(),
@@ -126,7 +132,7 @@ async fn add_invited_user_to_namespace(
 }
 
 async fn mark_invitation_accepted(
-    conn: &turso::Connection,
+    conn: &crate::db::sqlite::Connection,
     token: &str,
     user_id: &str,
     now: &str,
@@ -135,7 +141,7 @@ async fn mark_invitation_accepted(
         "UPDATE namespace_invitations
          SET accepted_at = ?1, accepted_user_id = ?2
           WHERE token = ?3 AND accepted_at IS NULL",
-        turso::params![now, user_id, token],
+        crate::db::sqlite::params![now, user_id, token],
     )
     .await
     .map(|_| ())
@@ -155,7 +161,7 @@ impl Database {
                 "INSERT INTO namespace_invitations
                     (token, email, namespace_id, role, created_at, expires_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                turso::params![
+                crate::db::sqlite::params![
                     token.clone(),
                     invitation.email.clone(),
                     invitation.namespace_id.clone(),
@@ -181,7 +187,7 @@ impl Database {
             .await?
             .query(
                 &format!("{SELECT_INVITATION} WHERE i.token = ?1"),
-                turso::params![token],
+                crate::db::sqlite::params![token],
             )
             .await
             .map_err(|error| error.to_string())?;
@@ -268,7 +274,7 @@ impl Database {
                      WHERE (?1 IS NULL OR i.namespace_id = ?1)
                      ORDER BY i.created_at DESC"
                 ),
-                turso::params![namespace_id.cloned()],
+                crate::db::sqlite::params![namespace_id.cloned()],
             )
             .await
             .map_err(|error| error.to_string())?;

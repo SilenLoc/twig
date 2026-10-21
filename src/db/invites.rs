@@ -13,7 +13,7 @@ impl Database {
         self.conn().await?
             .execute(
                 "INSERT INTO invites (id, user_id, used, created_at, used_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-                turso::params![
+                crate::db::sqlite::params![
                     invite.id.clone(),
                     invite.user_id.clone(),
                     invite.used,
@@ -32,7 +32,7 @@ impl Database {
             .await?
             .query(
                 "SELECT id, user_id, used, created_at, used_at FROM invites WHERE id = ?1",
-                turso::params![invite_id],
+                crate::db::sqlite::params![invite_id],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -84,7 +84,7 @@ impl Database {
 }
 
 async fn create_user_with_invite_in_transaction(
-    conn: &turso::Connection,
+    conn: &crate::db::sqlite::Connection,
     invite_id: &str,
     user: &User,
 ) -> Result<(), SignupInviteError> {
@@ -92,7 +92,7 @@ async fn create_user_with_invite_in_transaction(
         let mut rows = conn
             .query(
                 "SELECT 1 FROM users WHERE username = ?1 LIMIT 1",
-                turso::params![user.username.as_str()],
+                crate::db::sqlite::params![user.username.as_str()],
             )
             .await
             .map_err(|error| SignupInviteError::Database(error.to_string()))?;
@@ -111,7 +111,7 @@ async fn create_user_with_invite_in_transaction(
             "UPDATE invites
              SET used = TRUE, used_at = ?1, user_id = ?2
              WHERE id = ?3 AND used = FALSE",
-            turso::params![used_at, user.id.as_str(), invite_id],
+            crate::db::sqlite::params![used_at, user.id.as_str(), invite_id],
         )
         .await
         .map_err(|error| SignupInviteError::Database(error.to_string()))?;
@@ -122,7 +122,7 @@ async fn create_user_with_invite_in_transaction(
     conn.execute(
         "INSERT INTO users (id, username, email, password_hash, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5)",
-        turso::params![
+        crate::db::sqlite::params![
             user.id.as_str(),
             user.username.as_str(),
             user.email.clone(),

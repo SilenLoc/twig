@@ -139,7 +139,7 @@ async fn test_created_invitation_completes_account_and_membership_setup() {
         .unwrap()
         .query(
             "SELECT role FROM namespace_members WHERE namespace_id = ?1 AND user_id = ?2",
-            turso::params![accepted.namespace_id, user.id],
+            crate::db::sqlite::params![accepted.namespace_id, user.id],
         )
         .await
         .unwrap();

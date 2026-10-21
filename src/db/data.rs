@@ -56,7 +56,7 @@ impl Database {
         let mut rows = self
             .conn()
             .await?
-            .query(query, ())
+            .query(&query, ())
             .await
             .map_err(|e| e.to_string())?;
         let columns = rows.column_names();
@@ -66,11 +66,11 @@ impl Database {
             for index in 0..columns.len() {
                 let value = row.get_value(index).map_err(|e| e.to_string())?;
                 value_row.push(match value {
-                    turso::Value::Null => "NULL".to_string(),
-                    turso::Value::Integer(value) => value.to_string(),
-                    turso::Value::Real(value) => value.to_string(),
-                    turso::Value::Text(value) => value,
-                    turso::Value::Blob(value) => format!("0x{}", hex::encode(value)),
+                    crate::db::sqlite::Value::Null => "NULL".to_string(),
+                    crate::db::sqlite::Value::Integer(value) => value.to_string(),
+                    crate::db::sqlite::Value::Real(value) => value.to_string(),
+                    crate::db::sqlite::Value::Text(value) => value,
+                    crate::db::sqlite::Value::Blob(value) => format!("0x{}", hex::encode(value)),
                 });
             }
             values.push(value_row);

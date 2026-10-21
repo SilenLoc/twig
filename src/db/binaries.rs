@@ -99,7 +99,7 @@ impl Database {
                 "SELECT version, filename, size_bytes FROM repository_binaries
                  WHERE namespace = ?1 AND repo = ?2
                  ORDER BY filename ASC",
-                turso::params![namespace, repo],
+                crate::db::sqlite::params![namespace, repo],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -144,7 +144,7 @@ impl Database {
             .query(
                 "SELECT filename, content FROM repository_binaries
                  WHERE namespace = ?1 AND repo = ?2 AND version = ?3 AND filename = ?4",
-                turso::params![namespace, repo, version.to_string(), filename],
+                crate::db::sqlite::params![namespace, repo, version.to_string(), filename],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -152,7 +152,9 @@ impl Database {
         let Some(row) = rows.next().await.map_err(|e| e.to_string())? else {
             return Ok(None);
         };
-        let turso::Value::Blob(content) = row.get_value(1).map_err(|e| e.to_string())? else {
+        let crate::db::sqlite::Value::Blob(content) =
+            row.get_value(1).map_err(|e| e.to_string())?
+        else {
             return Err("Binary content is not stored as a BLOB".to_string());
         };
 
@@ -175,7 +177,7 @@ impl Database {
             .query(
                 "SELECT DISTINCT version FROM repository_binaries
                  WHERE namespace = ?1 AND repo = ?2 AND filename = ?3",
-                turso::params![namespace, repo, filename],
+                crate::db::sqlite::params![namespace, repo, filename],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -200,7 +202,7 @@ impl Database {
 }
 
 async fn store_binary_in_transaction(
-    conn: &turso::Connection,
+    conn: &crate::db::sqlite::Connection,
     namespace: &str,
     repo: &str,
     version: &str,
@@ -212,7 +214,7 @@ async fn store_binary_in_transaction(
         .query(
             "SELECT 1 FROM repository_binaries
              WHERE namespace = ?1 AND repo = ?2 AND version = ?3 AND filename = ?4",
-            turso::params![namespace, repo, version, filename],
+            crate::db::sqlite::params![namespace, repo, version, filename],
         )
         .await
         .map_err(|error| error.to_string())?;
@@ -231,7 +233,7 @@ async fn store_binary_in_transaction(
         .query(
             "SELECT DISTINCT version FROM repository_binaries
              WHERE namespace = ?1 AND repo = ?2",
-            turso::params![namespace, repo],
+            crate::db::sqlite::params![namespace, repo],
         )
         .await
         .map_err(|error| error.to_string())?;
@@ -268,12 +270,12 @@ async fn store_binary_in_transaction(
              content = excluded.content,
              size_bytes = excluded.size_bytes,
              uploaded_at = excluded.uploaded_at",
-        turso::params![
+        crate::db::sqlite::params![
             namespace,
             repo,
             version,
             filename,
-            turso::Value::Blob(bytes),
+            crate::db::sqlite::Value::Blob(bytes),
             size_bytes,
             chrono::Utc::now().to_rfc3339()
         ],
@@ -285,7 +287,7 @@ async fn store_binary_in_transaction(
         conn.execute(
             "DELETE FROM repository_binaries
              WHERE namespace = ?1 AND repo = ?2 AND version = ?3",
-            turso::params![namespace, repo, old_version.as_str()],
+            crate::db::sqlite::params![namespace, repo, old_version.as_str()],
         )
         .await
         .map_err(|error| error.to_string())?;

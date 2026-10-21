@@ -18,7 +18,7 @@ pub struct NewPersonalAccessToken<'a> {
 }
 
 pub(crate) async fn insert_personal_access_token(
-    connection: &turso::Connection,
+    connection: &crate::db::sqlite::Connection,
     token: NewPersonalAccessToken<'_>,
 ) -> Result<(), String> {
     let NewPersonalAccessToken {
@@ -37,7 +37,7 @@ pub(crate) async fn insert_personal_access_token(
             "INSERT INTO personal_access_tokens
                 (id, user_id, name, token_hash, token_hint, created_at, expires_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            turso::params![
+            crate::db::sqlite::params![
                 id,
                 user_id,
                 name,
@@ -57,7 +57,7 @@ pub(crate) async fn insert_personal_access_token(
                     "INSERT INTO personal_access_token_permissions
                         (token_id, namespace_id, permission)
                      VALUES (?1, ?2, ?3)",
-                    turso::params![id, namespace_id.clone(), permission.as_str()],
+                    crate::db::sqlite::params![id, namespace_id.clone(), permission.as_str()],
                 )
                 .await
                 .map_err(|error| error.to_string())?;
@@ -111,7 +111,7 @@ impl Database {
                  LEFT JOIN namespaces n ON n.id = p.namespace_id
                  WHERE t.user_id = ?1
                  ORDER BY t.created_at DESC, t.id, n.name, p.permission",
-                turso::params![user_id],
+                crate::db::sqlite::params![user_id],
             )
             .await
             .map_err(|error| error.to_string())?;
@@ -178,7 +178,7 @@ impl Database {
                  WHERE t.token_hash = ?1
                    AND (t.expires_at IS NULL OR datetime(t.expires_at) > datetime('now'))
                  ORDER BY n.name, p.permission",
-                turso::params![token_hash],
+                crate::db::sqlite::params![token_hash],
             )
             .await
             .map_err(|error| error.to_string())?;
@@ -225,7 +225,7 @@ impl Database {
             "UPDATE personal_access_tokens SET last_used_at = ?2
              WHERE token_hash = ?1
                AND (expires_at IS NULL OR datetime(expires_at) > datetime('now'))",
-            turso::params![token_hash, chrono::Utc::now().to_rfc3339()],
+            crate::db::sqlite::params![token_hash, chrono::Utc::now().to_rfc3339()],
         )
         .await
         .map_err(|error| error.to_string())?;
@@ -247,7 +247,7 @@ impl Database {
             let mut rows = conn
                 .query(
                     "SELECT 1 FROM personal_access_tokens WHERE id = ?1 AND user_id = ?2",
-                    turso::params![token_id, user_id],
+                    crate::db::sqlite::params![token_id, user_id],
                 )
                 .await
                 .map_err(|error| error.to_string())?;
@@ -263,13 +263,13 @@ impl Database {
 
             conn.execute(
                 "DELETE FROM personal_access_token_permissions WHERE token_id = ?1",
-                turso::params![token_id],
+                crate::db::sqlite::params![token_id],
             )
             .await
             .map_err(|error| error.to_string())?;
             conn.execute(
                 "DELETE FROM personal_access_tokens WHERE id = ?1 AND user_id = ?2",
-                turso::params![token_id, user_id],
+                crate::db::sqlite::params![token_id, user_id],
             )
             .await
             .map_err(|error| error.to_string())?;
@@ -517,7 +517,7 @@ mod tests {
             .execute(
                 "INSERT INTO personal_access_token_permissions (token_id, namespace_id, permission)
                  VALUES (?1, ?2, ?3)",
-                turso::params!["token-row-3", namespace_ids[0].clone(), "unknown"],
+                crate::db::sqlite::params!["token-row-3", namespace_ids[0].clone(), "unknown"],
             )
             .await;
         assert!(result.is_err(), "unknown permissions must not be stored");

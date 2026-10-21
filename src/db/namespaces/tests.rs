@@ -157,7 +157,7 @@ async fn namespace_roles_control_owner_scopes_and_creation_permissions() {
         .execute(
             "INSERT INTO namespace_members (namespace_id, user_id, role, added_at)
              VALUES (?1, ?2, 'contributor', ?3)",
-            turso::params![
+            crate::db::sqlite::params![
                 namespace.id.clone(),
                 contributor_id.clone(),
                 chrono::Utc::now().to_rfc3339()

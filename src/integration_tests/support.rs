@@ -47,9 +47,8 @@ pub(super) async fn create_test_service_with_db_and_body_limits(
     >,
     Database,
 ) {
-    // A distinct database per call: nextest runs each test in its own
-    // process, and turso takes an exclusive file lock, so a shared path
-    // would make concurrent tests fail to open the database.
+    // A distinct database per call keeps test state isolated across parallel
+    // nextest processes.
     let config = config::Server::new(
         ("127.0.0.1".to_string(), 8080),
         "debug".to_string(),
@@ -124,7 +123,7 @@ async fn seed_admin_test_users(db: &Database) -> (auth::User, auth::User, auth::
         .execute(
             "INSERT INTO namespace_members (namespace_id, user_id, role, added_at)
                  VALUES (?1, ?2, 'contributor', ?3)",
-            turso::params![
+            crate::db::sqlite::params![
                 namespace.id.clone(),
                 contributor.id.clone(),
                 chrono::Utc::now().to_rfc3339()
