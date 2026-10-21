@@ -1,32 +1,11 @@
 [package]
 name = "twig"
-version = "0.3.12"
+version = "0.3.11"
 edition = "2024"
 
 [workspace]
+members = ["crates/twig-highlight", "crates/twig-git", "crates/twig-http"]
 resolver = "3"
-members = ["crates/twig-git", "crates/twig-highlight", "crates/twig-http"]
-exclude = ["local/turso_core"]
-
-[workspace.lints]
-[workspace.lints.clippy]
-allow_attributes = "deny"
-cargo = { level = "deny", priority = -1 }
-complexity = { level = "deny", priority = -1 }
-correctness = { level = "deny", priority = -1 }
-no_effect_underscore_binding = "deny"
-nursery = { level = "deny", priority = -1 }
-pedantic = { level = "deny", priority = -1 }
-perf = { level = "deny", priority = -1 }
-restriction = { level = "deny", priority = -1 }
-style = { level = "deny", priority = -1 }
-suspicious = { level = "deny", priority = -1 }
-
-[workspace.lints.rust]
-warnings = "deny"
-
-[workspace.lints.rustdoc]
-all = "warn"
 
 [dependencies]
 actix-identity = "0.9"
@@ -75,15 +54,6 @@ default-features = false
 version = "0.27.0"
 features = ["actix-web"]
 
-[dependencies.mermaid-rs-renderer]
-version = "0.3.1"
-default-features = false
-
-[dependencies.rand]
-version = "0.10"
-default-features = false
-features = ["sys_rng"]
-
 [dependencies.reqwest]
 version = "0.13.5"
 default-features = false
@@ -93,6 +63,15 @@ features = ["json", "rustls-no-provider"]
 version = "0.23"
 default-features = false
 features = ["ring", "std", "tls12"]
+
+[dependencies.mermaid-rs-renderer]
+version = "0.3.1"
+default-features = false
+
+[dependencies.rand]
+version = "0.10"
+default-features = false
+features = ["sys_rng"]
 
 [dependencies.serde]
 version = "1.0"
@@ -135,6 +114,3 @@ strip = true
 lto = "fat"
 panic = "abort"
 codegen-units = 1
-
-[patch.crates-io]
-turso_core = { path = "local/turso_core" }
