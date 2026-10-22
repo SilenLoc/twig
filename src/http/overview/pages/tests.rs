@@ -285,6 +285,10 @@ fn test_active_search_swaps_the_results_region_as_the_user_types() {
         "the indicator element that hx-indicator points at is rendered: {html}"
     );
     assert!(
+        html.contains("placeholder=\"Search namespaces and repositories...\" hx-get=\"/\""),
+        "the input itself issues the request: htmx does not inherit hx-get from the form: {html}"
+    );
+    assert!(
         html.contains("<div id=\"index-results\" class=\"twig-panel-body\" aria-live=\"polite\">"),
         "the swap target is the live results region: {html}"
     );

@@ -46,6 +46,11 @@ fn render_index(
                     name="q"
                     value=(search_query)
                     placeholder="Search namespaces and repositories..."
+                    hx-get="/"
+                    hx-target="#index-results"
+                    hx-swap="innerHTML"
+                    hx-push-url="true"
+                    hx-indicator="#index-search-status"
                     hx-trigger="input changed delay:200ms";
                 span id="index-search-status" class="twig-search-status" aria-hidden="true" {}
                 button type="submit" class="twig-btn twig-btn--ghost" { "Search" }
