@@ -30,93 +30,186 @@ fn tree_hub_only_renders_enabled_sections() {
 }
 
 #[test]
-fn namespace_page_lists_repositories_with_confirmed_namespace_buttons() {
-    let html = render_namespaces_page(
-        &[(
-            "acme".to_string(),
-            vec![git::bare::RepoInfo {
-                name: "twig".to_string(),
-                last_commit_date: None,
-                is_private: false,
-            }],
-        )],
-        &["acme".to_string(), "solo".to_string()],
+fn namespace_list_is_one_searchable_scrollable_panel() {
+    let html = render_namespaces_page(&["acme".to_string(), "solo".to_string()]).into_string();
+
+    assert_eq!(
+        html.matches("<section class=\"twig-panel\"").count(),
+        1,
+        "{html}"
+    );
+    assert!(html.contains(">Namespaces</h2>"), "{html}");
+    assert!(
+        html.contains(
+            "<input class=\"twig-input twig-input--mono\" type=\"search\" id=\"namespace-search\""
+        ),
+        "the list is searchable: {html}"
+    );
+    assert!(
+        html.contains("<div class=\"twig-list twig-list--scroll\">"),
+        "the list scrolls: {html}"
+    );
+    assert!(html.contains("data-namespace-row=\"acme\""), "{html}");
+    assert!(html.contains("data-namespace-row=\"solo\""), "{html}");
+    assert!(
+        html.contains("getElementById('namespace-search')"),
+        "{html}"
+    );
+    assert!(html.contains("class=\"twig-empty-body\" hidden"), "{html}");
+}
+
+#[test]
+fn namespace_list_rows_link_to_their_settings_page_only() {
+    let html = render_namespaces_page(&["acme".to_string()]).into_string();
+
+    assert!(
+        html.contains(
+            "<a class=\"twig-btn\" href=\"/manage/namespaces/acme/settings\">Settings</a>"
+        ),
+        "{html}"
+    );
+    assert!(!html.contains("hx-post"), "{html}");
+    assert!(!html.contains("Delete"), "{html}");
+    assert!(!html.contains("Rename"), "{html}");
+}
+
+#[test]
+fn namespace_list_empty_state_offers_no_targets() {
+    let html = render_namespaces_page(&[]).into_string();
+
+    assert_eq!(
+        html.matches("<div class=\"twig-empty\">").count(),
+        1,
+        "{html}"
+    );
+    assert!(html.contains(">NO NAMESPACES<"), "{html}");
+    assert!(
+        html.contains("You don't have any namespaces to manage."),
+        "{html}"
+    );
+    assert!(!html.contains("<input"), "{html}");
+    assert!(!html.contains("hx-post"), "{html}");
+}
+
+#[test]
+fn namespace_settings_has_rename_move_and_delete_panels() {
+    let html = render_namespace_settings(
+        "acme",
+        &[git::bare::RepoInfo {
+            name: "twig".to_string(),
+            last_commit_date: None,
+            is_private: false,
+        }],
+        true,
         &["solo".to_string()],
-        &["solo".to_string()],
+        true,
     )
     .into_string();
 
-    assert!(html.contains("<span class=\"twig-row-id\">acme/twig</span>"));
+    assert!(
+        html.contains("href=\"/manage/namespaces\">Namespaces</a>"),
+        "{html}"
+    );
+    assert!(
+        html.contains("<span class=\"twig-row-id\">acme/twig</span>"),
+        "{html}"
+    );
+    assert!(
+        html.contains("<button class=\"twig-btn twig-btn--ghost\" type=\"submit\">solo</button>"),
+        "{html}"
+    );
+    assert!(
+        html.contains("hx-post=\"/settings/rename-namespace\""),
+        "{html}"
+    );
+    assert!(
+        html.contains("hx-target=\"#rename-namespace-result\""),
+        "{html}"
+    );
+    assert!(
+        html.contains(
+            "hx-confirm=\"Rename namespace 'acme'? Every repository URL inside it will change.\""
+        ),
+        "{html}"
+    );
+    assert!(
+        html.contains("<input type=\"hidden\" name=\"namespace\" value=\"acme\">"),
+        "{html}"
+    );
+    assert!(html.contains("hx-post=\"/settings/move-repo\""), "{html}");
     assert!(
         html.contains(
             "hx-confirm=\"Move 'acme/twig' to the 'solo' namespace? Its URL will change.\""
-        )
+        ),
+        "{html}"
     );
     assert!(
-        html.contains("<button class=\"twig-btn twig-btn--ghost\" type=\"submit\">solo</button>")
+        html.contains("hx-post=\"/settings/delete-namespace/\""),
+        "{html}"
     );
-    assert!(html.contains("name=\"target_namespace\" value=\"solo\""));
-    assert!(!html.contains("<select"));
-    assert!(html.contains("Delete Namespace"));
-    assert!(!html.contains("NO NAMESPACES"));
-    assert!(html.contains("hx-post=\"/settings/delete-namespace/\""));
-    assert!(html.contains("hx-confirm=\"Are you sure you want to permanently delete the namespace 'solo'? This cannot be undone.\""));
-    assert!(html.contains("<span class=\"twig-row-id\">solo</span>"));
+    assert!(
+        html.contains("hx-confirm=\"Are you sure you want to permanently delete the namespace 'acme'? This cannot be undone.\""),
+        "{html}"
+    );
+    assert!(!html.contains("<select"), "{html}");
 }
 
 #[test]
-fn namespace_page_explains_when_no_namespace_can_be_deleted() {
-    let html = render_namespaces_page(&[], &[], &[], &[]).into_string();
-
-    assert!(html.contains("Delete Namespace"));
-    assert!(html.contains(">NO NAMESPACES<"));
-    assert!(html.contains(
-        "No namespaces available for deletion. You can only delete namespaces you own that have no repositories."
-    ));
-    assert!(!html.contains("hx-confirm"));
-    assert!(!html.contains("twig-btn--danger"));
-}
-
-#[test]
-fn namespace_page_lists_owned_namespaces_for_rename_with_the_htmx_contract() {
+fn namespace_settings_hides_moves_without_repository_rights() {
     let html =
-        render_namespace_rename_panel(&["acme".to_string(), "solo".to_string()]).into_string();
+        render_namespace_settings("acme", &[], false, &["solo".to_string()], true).into_string();
 
-    assert!(html.contains(
-        "<h2 class=\"twig-eyebrow\" id=\"namespace-rename-heading\">Rename Namespace</h2>"
-    ));
-    assert!(html.contains("hx-post=\"/settings/rename-namespace\""));
-    assert!(html.contains("hx-target=\"#rename-namespace-result\""));
-    assert!(html.contains(
-        "hx-confirm=\"Rename namespace 'acme'? Every repository URL inside it will change.\""
-    ));
-    assert!(html.contains("<span class=\"twig-row-id\">acme</span>"));
-    assert!(html.contains("<span class=\"twig-row-id\">solo</span>"));
-    assert!(html.contains("<input type=\"hidden\" name=\"namespace\" value=\"acme\">"));
-    assert!(html.contains(
-        "<input class=\"twig-input twig-input--mono\" type=\"text\" name=\"new_name\" required minlength=\"2\" autocomplete=\"off\" spellcheck=\"false\" value=\"acme\">"
-    ));
+    assert!(!html.contains("Move Repositories"), "{html}");
+    assert!(!html.contains("/settings/move-repo"), "{html}");
     assert!(
-        html.contains(
-            "<button class=\"twig-btn twig-btn--primary\" type=\"submit\">Rename</button>"
-        )
+        html.contains("hx-post=\"/settings/rename-namespace\""),
+        "{html}"
     );
-    assert_eq!(
-        html.matches("hx-post=\"/settings/rename-namespace\"")
-            .count(),
-        2
+    assert!(
+        html.contains("hx-post=\"/settings/delete-namespace/\""),
+        "{html}"
     );
 }
 
 #[test]
-fn namespace_rename_panel_empty_state_offers_no_targets() {
-    let html = render_namespace_rename_panel(&[]).into_string();
+fn namespace_settings_explains_move_empty_states() {
+    let no_repos =
+        render_namespace_settings("acme", &[], true, &["solo".to_string()], true).into_string();
+    assert!(
+        no_repos.contains("This namespace has no repositories to move."),
+        "{no_repos}"
+    );
+    assert!(!no_repos.contains("/settings/move-repo"), "{no_repos}");
 
-    assert!(html.contains("Rename Namespace"));
-    assert!(html.contains(">NO NAMESPACES<"));
-    assert!(html.contains("You don't have any namespaces to rename."));
-    assert!(!html.contains("hx-confirm"));
-    assert!(!html.contains("twig-btn--primary"));
+    let no_targets = render_namespace_settings(
+        "acme",
+        &[git::bare::RepoInfo {
+            name: "twig".to_string(),
+            last_commit_date: None,
+            is_private: false,
+        }],
+        true,
+        &[],
+        true,
+    )
+    .into_string();
+    assert!(
+        no_targets.contains("There is no other namespace you can move repositories to."),
+        "{no_targets}"
+    );
+}
+
+#[test]
+fn namespace_settings_offers_delete_only_when_empty() {
+    let html = render_namespace_settings("acme", &[], true, &[], false).into_string();
+
+    assert!(html.contains("Delete Namespace"), "{html}");
+    assert!(
+        html.contains("Delete every repository in this namespace before deleting it."),
+        "{html}"
+    );
+    assert!(!html.contains("delete-namespace"), "{html}");
+    assert!(!html.contains("twig-btn--danger"), "{html}");
 }
 
 #[test]

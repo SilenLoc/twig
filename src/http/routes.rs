@@ -49,6 +49,7 @@ fn configure_tree_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(overview::pages::index)
         .service(tree::pages::tree_page)
         .service(tree::pages::namespaces_page)
+        .service(tree::pages::namespace_settings_page)
         .service(tree::pages::repositories_page)
         .service(tree::user_management::user_management_page)
         .service(tree::user_management::create_namespace_invitation)

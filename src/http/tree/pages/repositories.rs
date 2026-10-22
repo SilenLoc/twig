@@ -52,13 +52,6 @@ pub(super) async fn load_namespace_page_data(
             false
         }
     };
-    let deletable_namespaces = manageable_namespaces
-        .iter()
-        .filter(|namespace| {
-            !git::bare::namespace::has_any_repository(server.project_root(), namespace)
-        })
-        .cloned()
-        .collect();
     let repos_by_namespace = repository_namespace_names
         .iter()
         .filter_map(|namespace| {
@@ -74,7 +67,6 @@ pub(super) async fn load_namespace_page_data(
         user_management_enabled,
         repository_namespace_names,
         manageable_namespaces,
-        deletable_namespaces,
         repos_by_namespace,
     })
 }

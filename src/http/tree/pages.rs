@@ -15,7 +15,6 @@ struct NamespacePageData {
     user_management_enabled: bool,
     repository_namespace_names: Vec<String>,
     manageable_namespaces: Vec<String>,
-    deletable_namespaces: Vec<String>,
     repos_by_namespace: Vec<(String, Vec<crate::git::bare::RepoInfo>)>,
 }
 
@@ -28,9 +27,9 @@ mod repositories;
 use data::{DATA_PAGE_SIZE, render_data_page};
 pub use data::{data_page, data_rows};
 pub(crate) use hub::{render_tree_hub, tree_page};
-pub use namespaces::namespaces_page;
+pub use namespaces::{namespace_settings_page, namespaces_page};
 #[cfg(test)]
-use namespaces::{render_namespace_rename_panel, render_namespaces_page};
+use namespaces::{render_namespace_settings, render_namespaces_page};
 pub use repositories::repositories_page;
 
 #[cfg(test)]

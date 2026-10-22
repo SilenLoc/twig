@@ -140,6 +140,51 @@ async fn test_rename_repo_rejects_foreign_namespace_and_existing_name() {
     let _ = std::fs::remove_dir_all(&root);
 }
 #[actix_web::test]
+async fn test_namespace_settings_page_requires_namespace_management() {
+    let root = format!("/tmp/test_twig_ns_settings_{}", uuid::Uuid::new_v4());
+    let app = create_test_service_in(&root).await;
+    let owner = signup_and_login(&app, "nssettingsowner").await;
+    let outsider = signup_and_login(&app, "nssettingsoutsider").await;
+    create_namespace(&app, owner.clone(), "settingsns").await;
+
+    let req = test::TestRequest::get()
+        .uri("/manage/namespaces/settingsns/settings")
+        .cookie(owner.clone())
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = String::from_utf8(test::read_body(resp).await.to_vec()).unwrap();
+    assert!(body.contains("Rename Namespace"), "{body}");
+    assert!(body.contains("Delete Namespace"), "{body}");
+    assert!(
+        body.contains("aria-current=\"page\">Settings</span>"),
+        "{body}"
+    );
+
+    let req = test::TestRequest::get()
+        .uri("/manage/namespaces/settingsns/settings")
+        .cookie(outsider)
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    let req = test::TestRequest::get()
+        .uri("/manage/namespaces/settingsns/settings")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::FOUND);
+
+    let req = test::TestRequest::get()
+        .uri("/manage/namespaces/missingns/settings")
+        .cookie(owner)
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[actix_web::test]
 async fn test_rename_namespace_moves_directory_and_record() {
     let root = format!("/tmp/test_twig_rename_ns_{}", uuid::Uuid::new_v4());
     let app = create_test_service_in(&root).await;

@@ -96,9 +96,18 @@ rest of the UI keeps working with default settings.
 Available to signed-in users:
 
 - Update the account email.
-- Move an owned repository to another namespace you own.
-- Delete repositories explicitly marked `deleteable = true` in `.twig.toml`.
-- Delete an owned namespace only after its repositories have been removed.
+- Access tokens (`/settings/tokens`).
+
+### Manage repositories and namespaces
+
+- **Repository** (`/manage/repositories`) — search the repositories you manage,
+  rename them, and delete those explicitly marked `deleteable = true` in
+  `.twig.toml`.
+- **Namespace** (`/manage/namespaces`) — search the namespaces you manage. Each
+  row opens its settings page.
+- **Namespace settings** (`/manage/namespaces/{namespace}/settings`) — rename the
+  namespace, move its repositories to other namespaces you manage repositories
+  in, and delete the namespace once it holds no repositories.
 
 ### Manage and admin tools
 
