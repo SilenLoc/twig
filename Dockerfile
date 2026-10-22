@@ -31,10 +31,19 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends mold cmake \
     && rm -rf /var/lib/apt/lists/*
 
+# sccache caches rustc outputs across builds and across projects that share the
+# same BuildKit cache, so cold `target/` rebuilds and dependency recompiles hit
+# the cache. Pinned to a version and built without cloud backends: only the
+# local disk cache is used.
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    cargo install sccache --version 0.18.0 --locked --no-default-features --root /usr/local
+
 ENV RUSTFLAGS="-C link-arg=-fuse-ld=mold" \
     CARGO_INCREMENTAL=0 \
     CARGO_NET_RETRY=10 \
-    CARGO_TERM_COLOR=always
+    CARGO_TERM_COLOR=always \
+    RUSTC_WRAPPER=sccache \
+    SCCACHE_DIR=/sccache
 
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
@@ -46,8 +55,10 @@ COPY src ./src
 # the binary has to be copied out before the mount is unmounted.
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/app/target,sharing=locked \
+    --mount=type=cache,target=/sccache,sharing=locked \
     cargo build --release --locked \
-    && cp target/release/twig /usr/local/bin/twig
+    && cp target/release/twig /usr/local/bin/twig \
+    && sccache --show-stats
 
 # Runtime stage
 FROM debian:bookworm-slim
