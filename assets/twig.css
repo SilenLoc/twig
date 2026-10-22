@@ -2116,6 +2116,28 @@ body.twig-workspace-shell {
     flex: 0 0 auto;
 }
 
+/* htmx adds htmx-request to the hx-indicator target while a request is in flight. */
+.twig-search-status {
+    display: none;
+    flex: 0 0 auto;
+    inline-size: 14px;
+    block-size: 14px;
+    border: 2px solid var(--twig-accent-300);
+    border-block-start-color: var(--twig-accent-700);
+    border-radius: 50%;
+    animation: twig-spin 0.8s linear infinite;
+}
+
+.twig-search-status.htmx-request {
+    display: inline-block;
+}
+
+@keyframes twig-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 /* ---- 11. Rail ------------------------------------------------------------ */
 
 .twig-rail-shell {

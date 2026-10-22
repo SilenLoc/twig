@@ -32,7 +32,12 @@ fn render_index(
 
 
         div class="twig-stack" {
-            form class="twig-search" role="search" method="GET" action="/" {
+            form class="twig-search" role="search" method="GET" action="/"
+                hx-get="/"
+                hx-target="#index-results"
+                hx-swap="innerHTML"
+                hx-push-url="true"
+                hx-indicator="#index-search-status" {
                 label class="twig-sr" for="index-search" { "Search namespaces and repositories" }
                 input
                     class="twig-input twig-input--mono"
@@ -40,66 +45,89 @@ fn render_index(
                     type="search"
                     name="q"
                     value=(search_query)
-                    placeholder="Search namespaces and repositories...";
+                    placeholder="Search namespaces and repositories..."
+                    hx-trigger="input changed delay:200ms";
+                span id="index-search-status" class="twig-search-status" aria-hidden="true" {}
                 button type="submit" class="twig-btn twig-btn--ghost" { "Search" }
-                @if !search_query.is_empty() {
-                    a class="twig-btn twig-btn--quiet" href="/" { "Clear" }
-                }
+                (render_clear(search_query, false))
             }
 
             section class="twig-panel twig-panel--flush" {
-                div class="twig-panel-body" aria-live="polite" {
-                    @if namespaces.is_empty() && repo_hits.is_empty() {
-                        @if search_query.is_empty() {
-                            div class="twig-empty" {
-                                p class="twig-eyebrow" { "NO NAMESPACES" }
-                                p class="twig-empty-body" { "No namespaces yet. Create one to get started!" }
-                            }
-                        } @else {
-                            div class="twig-empty" {
-                                p class="twig-eyebrow" { "NO MATCHES" }
-                                p class="twig-empty-body" {
-                                    "No namespaces or repositories found matching your search."
-                                }
-                            }
-                        }
-                    } @else {
-                        @if !namespaces.is_empty() {
-                            div class="twig-colhead" {
-                                span { "Namespace" }
-                                span { "Owner" }
-                            }
-                            nav class="twig-list" aria-label="Namespaces" {
-                                @for (namespace, owner) in namespaces {
-                                    a class="twig-row" href=(namespace.name) {
-                                        span class="twig-row-id" { (namespace.name) }
-                                        span class="twig-row-meta" {
-                                            span class="twig-sr" { "Owner: " }
-                                            (owner)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        @if !repo_hits.is_empty() {
-                            div class="twig-colhead" {
-                                span { "Repository" }
-                                span { "Namespace" }
-                            }
-                            nav class="twig-list" aria-label="Repository matches" {
-                                @for (namespace, repo) in repo_hits {
-                                    a class="twig-row" href=(format!("{namespace}/{repo}")) {
-                                        span class="twig-row-id" { (repo) }
-                                        span class="twig-row-meta" {
-                                            span class="twig-sr" { "Namespace: " }
-                                            (namespace)
-                                        }
-                                    }
-                                }
+                div id="index-results" class="twig-panel-body" aria-live="polite" {
+                    (render_results(search_query, namespaces, repo_hits))
+                }
+            }
+        }
+    }
+}
+
+/// The results region that htmx swaps as the query changes.
+fn render_results(
+    search_query: &str,
+    namespaces: &[(crate::auth::Namespace, String)],
+    repo_hits: &[(String, String)],
+) -> maud::Markup {
+    maud::html! {
+        @if namespaces.is_empty() && repo_hits.is_empty() {
+            @if search_query.is_empty() {
+                div class="twig-empty" {
+                    p class="twig-eyebrow" { "NO NAMESPACES" }
+                    p class="twig-empty-body" { "No namespaces yet. Create one to get started!" }
+                }
+            } @else {
+                div class="twig-empty" {
+                    p class="twig-eyebrow" { "NO MATCHES" }
+                    p class="twig-empty-body" {
+                        "No namespaces or repositories found matching your search."
+                    }
+                }
+            }
+        } @else {
+            @if !namespaces.is_empty() {
+                div class="twig-colhead" {
+                    span { "Namespace" }
+                    span { "Owner" }
+                }
+                nav class="twig-list" aria-label="Namespaces" {
+                    @for (namespace, owner) in namespaces {
+                        a class="twig-row" href=(namespace.name) {
+                            span class="twig-row-id" { (namespace.name) }
+                            span class="twig-row-meta" {
+                                span class="twig-sr" { "Owner: " }
+                                (owner)
                             }
                         }
                     }
                 }
+            }
+            @if !repo_hits.is_empty() {
+                div class="twig-colhead" {
+                    span { "Repository" }
+                    span { "Namespace" }
+                }
+                nav class="twig-list" aria-label="Repository matches" {
+                    @for (namespace, repo) in repo_hits {
+                        a class="twig-row" href=(format!("{namespace}/{repo}")) {
+                            span class="twig-row-id" { (repo) }
+                            span class="twig-row-meta" {
+                                span class="twig-sr" { "Namespace: " }
+                                (namespace)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The clear control sits outside the results region, so HTMX responses
+/// replace it out-of-band whenever the query changes.
+fn render_clear(search_query: &str, oob: bool) -> maud::Markup {
+    maud::html! {
+        span id="index-clear" hidden[search_query.is_empty()] hx-swap-oob=[oob.then_some("outerHTML")] {
+            @if !search_query.is_empty() {
+                a class="twig-btn twig-btn--quiet" href="/" { "Clear" }
             }
         }
     }
@@ -180,17 +208,19 @@ pub async fn index(
         }
     };
 
-    let content = render_index(search_query, username.as_deref(), &namespaces, &repo_hits);
-
     if req.headers().get("HX-Request").is_some() {
-        Ok(content)
-    } else {
-        Ok(crate::http::view::render_layout(
-            &content,
-            username.as_deref(),
-            Some("Namespaces"),
-        ))
+        return Ok(maud::html! {
+            (render_results(search_query, &namespaces, &repo_hits))
+            (render_clear(search_query, true))
+        });
     }
+
+    let content = render_index(search_query, username.as_deref(), &namespaces, &repo_hits);
+    Ok(crate::http::view::render_layout(
+        &content,
+        username.as_deref(),
+        Some("Namespaces"),
+    ))
 }
 
 #[cfg(test)]

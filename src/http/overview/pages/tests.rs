@@ -266,6 +266,69 @@ fn test_empty_states_name_their_condition_and_keep_their_copy() {
 }
 
 #[test]
+fn test_active_search_swaps_the_results_region_as_the_user_types() {
+    let html = render("acme", None, &[namespace("acme", "silen")]);
+    for attribute in [
+        "hx-get=\"/\"",
+        "hx-target=\"#index-results\"",
+        "hx-swap=\"innerHTML\"",
+        "hx-trigger=\"input changed delay:200ms\"",
+        "hx-indicator=\"#index-search-status\"",
+    ] {
+        assert!(
+            html.contains(attribute),
+            "active search wiring is missing ({attribute}): {html}"
+        );
+    }
+    assert!(
+        html.contains("<span id=\"index-search-status\" class=\"twig-search-status\""),
+        "the indicator element that hx-indicator points at is rendered: {html}"
+    );
+    assert!(
+        html.contains("<div id=\"index-results\" class=\"twig-panel-body\" aria-live=\"polite\">"),
+        "the swap target is the live results region: {html}"
+    );
+}
+
+#[test]
+fn test_htmx_fragment_is_only_the_results_and_the_out_of_band_clear() {
+    let fragment = render_results(
+        "acme",
+        &[namespace("acme", "silen")],
+        &[("acme".to_owned(), "twig-api".to_owned())],
+    )
+    .into_string();
+    assert!(
+        !fragment.contains("<form") && !fragment.contains("index-search"),
+        "the input keeps focus, so the form is never part of a swap: {fragment}"
+    );
+    assert!(
+        !fragment.contains("twig-search-status"),
+        "the indicator stays outside the swap so htmx can clear its request class: {fragment}"
+    );
+    assert!(
+        fragment.contains("twig-row-id"),
+        "the fragment carries the matching rows: {fragment}"
+    );
+
+    let clear = render_clear("acme", true).into_string();
+    assert!(
+        clear.contains("id=\"index-clear\"") && clear.contains("hx-swap-oob=\"outerHTML\""),
+        "clear is replaced out-of-band: {clear}"
+    );
+    assert!(
+        clear.contains("<a class=\"twig-btn twig-btn--quiet\" href=\"/\">Clear</a>"),
+        "clear is offered while a query is active: {clear}"
+    );
+
+    let cleared = render_clear("", true).into_string();
+    assert!(
+        cleared.contains("hidden") && !cleared.contains("<a"),
+        "clear disappears out-of-band once the query is empty: {cleared}"
+    );
+}
+
+#[test]
 fn test_index_uses_only_design_system_classes_and_no_inline_style() {
     let cases = [
         ("", None, Vec::new()),
