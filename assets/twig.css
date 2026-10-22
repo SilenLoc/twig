@@ -731,6 +731,44 @@ body.twig-workspace-shell {
     min-inline-size: 0;
 }
 
+.twig-list--scroll {
+    max-block-size: min(60vh, 36rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.twig-row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--twig-space-2);
+}
+
+.twig-row-actions form {
+    margin: 0;
+}
+
+.twig-repo-rename > summary {
+    cursor: pointer;
+    list-style: none;
+}
+
+.twig-repo-rename > summary::-webkit-details-marker {
+    display: none;
+}
+
+.twig-repo-rename-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--twig-space-2);
+    margin-block-start: var(--twig-space-2);
+}
+
+.twig-row[hidden] {
+    display: none;
+}
+
 .twig-row {
     display: flex;
     flex-direction: column;

@@ -28,20 +28,28 @@ fn empty_html() -> String {
     render_settings(&user_fixture(None)).into_string()
 }
 
+fn repo_manage_html(repos: &[(&str, &str, bool)]) -> String {
+    let managed: Vec<ManagedRepo> = repos
+        .iter()
+        .map(|(namespace, name, deletable)| ManagedRepo {
+            namespace: namespace.to_string(),
+            repo: repo_fixture(name),
+            deletable: *deletable,
+        })
+        .collect();
+    render_repo_manage_panel(&managed).into_string()
+}
+
 fn repo_panel_html() -> String {
-    render_repo_deletion_panel(&[("acme".to_string(), vec![repo_fixture("twig")])]).into_string()
+    repo_manage_html(&[("acme", "twig", true)])
 }
 
 fn empty_repo_panel_html() -> String {
-    render_repo_deletion_panel(&[]).into_string()
+    repo_manage_html(&[])
 }
 
-fn rename_panel_html() -> String {
-    render_repo_rename_panel(&[("acme".to_string(), vec![repo_fixture("twig")])]).into_string()
-}
-
-fn empty_rename_panel_html() -> String {
-    render_repo_rename_panel(&[]).into_string()
+fn rename_only_html() -> String {
+    repo_manage_html(&[("acme", "docs", false)])
 }
 
 #[test]
@@ -107,125 +115,85 @@ fn test_settings_does_not_render_repository_moves() {
 }
 
 #[test]
-fn test_settings_deletion_panels_carry_danger_and_caution_affordances() {
+fn test_repo_manage_panel_is_one_searchable_scrollable_list() {
     let html = repo_panel_html();
     assert_eq!(
-        html.matches("twig-panel twig-panel--danger").count(),
+        html.matches("<section class=\"twig-panel\"").count(),
         1,
-        "the repository panel takes the danger variant: {html}"
+        "rename and delete share one panel: {html}"
     );
-    assert_eq!(
-        html.matches("<div class=\"twig-notice twig-notice--warning\" role=\"alert\">")
-            .count(),
-        1,
-        "the deletion panel warns before it lists targets: {html}"
-    );
-    assert_eq!(
-        html.matches(">CAUTION<").count(),
-        1,
-        "the signal word carries the meaning, not the colour: {html}"
+    assert!(
+        !html.contains("twig-panel--danger") && !html.contains("Delete Repository"),
+        "{html}"
     );
     assert!(
         html.contains(
-            "Select a repository to permanently delete it. This action cannot be undone."
+            "<input class=\"twig-input twig-input--mono\" type=\"search\" id=\"repo-search\""
         ),
-        "{html}"
+        "the list is searchable: {html}"
     );
-    assert_eq!(
-        html.matches("<button class=\"twig-btn twig-btn--danger\" type=\"submit\">Delete</button>")
-            .count(),
-        1,
-        "repository deletion uses a full-height danger button: {html}"
+    assert!(
+        html.contains("<div class=\"twig-list twig-list--scroll\">"),
+        "the list scrolls: {html}"
     );
+    assert!(html.contains("data-repo-row=\"acme/twig\""), "{html}");
+    assert!(html.contains("class=\"twig-empty-body\" hidden"), "{html}");
+    assert!(html.contains("getElementById('repo-search')"), "{html}");
 }
 
 #[test]
-fn test_settings_delete_repo_rows_preserve_the_htmx_contract() {
+fn test_repo_manage_rows_offer_delete_only_when_deletable() {
     let html = repo_panel_html();
     for attribute in [
         "hx-post=\"/settings/delete-repo\"",
-        "hx-target=\"#delete-repo-result\"",
-        "hx-swap=\"innerHTML\"",
+        "hx-target=\"#repo-manage-result\"",
         "hx-confirm=\"Are you sure you want to permanently delete 'acme/twig'?\"",
-    ] {
-        assert!(
-            html.contains(attribute),
-            "missing exact attribute {attribute}: {html}"
-        );
-    }
-    assert!(
-        html.contains("<form class=\"twig-row twig-row--form\""),
-        "deletion targets are technical form rows: {html}"
-    );
-    assert!(
-        html.contains("<span class=\"twig-row-id\">acme/twig</span>"),
-        "the row identifier names the same object as the confirm text: {html}"
-    );
-    for hidden in [
         "<input type=\"hidden\" name=\"namespace\" value=\"acme\">",
         "<input type=\"hidden\" name=\"repo_name\" value=\"twig\">",
+        "<button class=\"twig-btn twig-btn--danger\" type=\"submit\">Delete</button>",
     ] {
-        assert!(html.contains(hidden), "missing payload {hidden}: {html}");
+        assert!(html.contains(attribute), "missing {attribute}: {html}");
     }
+
+    let rename_only = rename_only_html();
+    assert!(
+        !rename_only.contains("hx-post=\"/settings/delete-repo\""),
+        "non-deletable rows get no delete control: {rename_only}"
+    );
+    assert!(!rename_only.contains("twig-btn--danger"), "{rename_only}");
 }
 
 #[test]
-fn test_settings_rename_repo_rows_preserve_the_htmx_contract() {
-    let html = rename_panel_html();
+fn test_repo_manage_rows_preserve_the_rename_htmx_contract() {
+    let html = repo_panel_html();
     for attribute in [
+        "<details class=\"twig-repo-rename\">",
+        "<summary class=\"twig-btn\">Rename</summary>",
         "hx-post=\"/settings/rename-repo\"",
-        "hx-target=\"#rename-repo-result\"",
-        "hx-swap=\"innerHTML\"",
         "hx-confirm=\"Rename 'acme/twig'? Its URL will change.\"",
+        "<input class=\"twig-input twig-input--mono\" type=\"text\" name=\"new_name\" required autocomplete=\"off\" spellcheck=\"false\" aria-label=\"New name\" value=\"twig\">",
+        "<button class=\"twig-btn twig-btn--primary\" type=\"submit\">Rename</button>",
+        "<span class=\"twig-row-id\">acme/twig</span>",
     ] {
-        assert!(
-            html.contains(attribute),
-            "missing exact attribute {attribute}: {html}"
-        );
+        assert!(html.contains(attribute), "missing {attribute}: {html}");
     }
-    assert!(
-        html.contains("<form class=\"twig-row twig-row--form\""),
-        "rename targets are technical form rows: {html}"
-    );
-    assert!(
-        html.contains("<span class=\"twig-row-id\">acme/twig</span>"),
-        "the row identifier names the repository being renamed: {html}"
-    );
-    for hidden in [
-        "<input type=\"hidden\" name=\"namespace\" value=\"acme\">",
-        "<input type=\"hidden\" name=\"repo_name\" value=\"twig\">",
-    ] {
-        assert!(html.contains(hidden), "missing payload {hidden}: {html}");
-    }
-    assert!(
-        html.contains(
-            "<input class=\"twig-input twig-input--mono\" type=\"text\" name=\"new_name\" required autocomplete=\"off\" spellcheck=\"false\" value=\"twig\">"
-        ),
-        "the new-name input is labelled, required and prefilled: {html}"
-    );
-    assert!(
-        html.contains(
-            "<button class=\"twig-btn twig-btn--primary\" type=\"submit\">Rename</button>"
-        ),
-        "{html}"
-    );
-    assert!(
-        html.contains("Renaming a repository changes its web and Git URLs."),
-        "{html}"
-    );
 }
 
 #[test]
-fn test_settings_rename_panel_empty_state_offers_no_targets() {
-    let html = empty_rename_panel_html();
-    assert!(html.contains("Rename Repository"), "{html}");
+fn test_repo_manage_empty_state_offers_no_targets() {
+    let html = empty_repo_panel_html();
+    assert_eq!(
+        html.matches("<div class=\"twig-empty\">").count(),
+        1,
+        "{html}"
+    );
     assert!(html.contains(">NO REPOSITORIES<"), "{html}");
     assert!(
-        html.contains("You don't have any repositories to rename."),
+        html.contains("You don't have any repositories to manage."),
         "{html}"
     );
-    assert!(!html.contains("hx-confirm"), "{html}");
-    assert!(!html.contains("twig-btn--primary"), "{html}");
+    assert!(!html.contains("hx-post"), "{html}");
+    assert!(!html.contains("<input"), "{html}");
 }
 
 #[test]
@@ -309,7 +277,7 @@ fn test_settings_empty_states_name_their_condition_and_offer_no_targets() {
     );
     assert!(html.contains(">NO REPOSITORIES<"), "{html}");
     assert!(
-        html.contains("You don't have any repositories to delete."),
+        html.contains("You don't have any repositories to manage."),
         "{html}"
     );
     assert!(
@@ -329,8 +297,7 @@ fn test_settings_uses_only_twig_design_system_classes() {
         empty_html(),
         repo_panel_html(),
         empty_repo_panel_html(),
-        rename_panel_html(),
-        empty_rename_panel_html(),
+        rename_only_html(),
     ] {
         let classes = classes_in(&html);
         assert!(!classes.is_empty(), "settings should carry classes: {html}");

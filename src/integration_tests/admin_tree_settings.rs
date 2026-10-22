@@ -103,7 +103,7 @@ async fn test_tree_hub_and_admin_data_view_are_gated_and_paginated() {
     let body = test::read_body(response).await;
     let html = String::from_utf8(body.to_vec()).unwrap();
     assert!(html.contains("aria-current=\"page\" href=\"/manage/repositories\">Repository</a>"));
-    assert!(html.contains("You don't have any repositories to delete."));
+    assert!(html.contains("You don't have any repositories to manage."));
 
     let response = test::call_service(
         &app,

@@ -131,28 +131,20 @@ pub async fn repositories_page(
             false
         }
     };
-    let mut renameable_repos_by_namespace: Vec<(String, Vec<git::bare::RepoInfo>)> = Vec::new();
-    let mut deletable_repos_by_namespace: Vec<(String, Vec<git::bare::RepoInfo>)> = Vec::new();
+    let mut managed_repos = Vec::new();
     for namespace in namespaces {
-        let renameable_repos: Vec<_> =
-            git::bare::get_repos_with_info(server.project_root(), &namespace.name)
-                .into_iter()
-                .filter(|repo| git::reserved::validate_repo_name(&repo.name).is_ok())
-                .collect();
-        if !renameable_repos.is_empty() {
-            renameable_repos_by_namespace.push((namespace.name.clone(), renameable_repos));
-        }
-
-        let deletable_repos: Vec<_> =
-            git::bare::get_repos_with_info(server.project_root(), &namespace.name)
-                .into_iter()
-                .filter(|repo| {
-                    git::bare::TwigConfig::load(server.project_root(), &namespace.name, &repo.name)
-                        .deleteable
-                })
-                .collect();
-        if !deletable_repos.is_empty() {
-            deletable_repos_by_namespace.push((namespace.name, deletable_repos));
+        for repo in git::bare::get_repos_with_info(server.project_root(), &namespace.name)
+            .into_iter()
+            .filter(|repo| git::reserved::validate_repo_name(&repo.name).is_ok())
+        {
+            let deletable =
+                git::bare::TwigConfig::load(server.project_root(), &namespace.name, &repo.name)
+                    .deleteable;
+            managed_repos.push(crate::http::settings::pages::ManagedRepo {
+                namespace: namespace.name.clone(),
+                repo,
+                deletable,
+            });
         }
     }
 
@@ -164,8 +156,7 @@ pub async fn repositories_page(
             Some("repositories"),
         ))
         div class="twig-bento" {
-            (crate::http::settings::pages::render_repo_rename_panel(&renameable_repos_by_namespace))
-            (crate::http::settings::pages::render_repo_deletion_panel(&deletable_repos_by_namespace))
+            (crate::http::settings::pages::render_repo_manage_panel(&managed_repos))
         }
     };
     let content = if req.headers().get("HX-Request").is_some() {

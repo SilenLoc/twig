@@ -50,98 +50,77 @@ async fn require_move_namespace_permissions(
     Ok(())
 }
 
-pub(crate) fn render_repo_deletion_panel(
-    repos_by_namespace: &[(String, Vec<git::bare::RepoInfo>)],
-) -> maud::Markup {
-    maud::html! {
-        section
-            class="twig-panel twig-panel--danger"
-            aria-labelledby="settings-delete-repo-heading"
-        {
-            header class="twig-panel-head" {
-                h2 class="twig-eyebrow" id="settings-delete-repo-heading" { "Delete Repository" }
-            }
-
-            @if repos_by_namespace.is_empty() {
-                div class="twig-empty" {
-                    p class="twig-eyebrow" { "NO REPOSITORIES" }
-                    p class="twig-empty-body" { "You don't have any repositories to delete." }
-                }
-            } @else {
-                div class="twig-panel-body" {
-                    div class="twig-notice twig-notice--warning" role="alert" {
-                        p class="twig-eyebrow" { "CAUTION" }
-                        p class="twig-notice-body" { "Select a repository to permanently delete it. This action cannot be undone." }
-                    }
-                    div id="delete-repo-result" aria-live="polite" {}
-                }
-
-                div class="twig-list" {
-                    @for (ns, repos) in repos_by_namespace {
-                        @for repo in repos {
-                            form
-                                class="twig-row twig-row--form"
-                                hx-post="/settings/delete-repo"
-                                hx-target="#delete-repo-result"
-                                hx-swap="innerHTML"
-                                hx-confirm=(format!("Are you sure you want to permanently delete '{}/{}'?", ns, repo.name))
-                            {
-                                input type="hidden" name="namespace" value=(ns);
-                                input type="hidden" name="repo_name" value=(repo.name);
-                                span class="twig-row-id" { (ns) "/" (repo.name) }
-                                button class="twig-btn twig-btn--danger" type="submit" { "Delete" }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+/// A repository listed on the manage page. `deletable` mirrors the
+/// `deleteable` flag in its `.twig.toml`; only those rows get a Delete control.
+pub(crate) struct ManagedRepo {
+    pub(crate) namespace: String,
+    pub(crate) repo: git::bare::RepoInfo,
+    pub(crate) deletable: bool,
 }
 
-/// Repositories the user may rename, one technical form row each. Renaming
-/// keeps the repository in its namespace and preserves its history and
-/// configuration; only its web and Git URLs change.
-pub(crate) fn render_repo_rename_panel(
-    repos_by_namespace: &[(String, Vec<git::bare::RepoInfo>)],
-) -> maud::Markup {
+const REPO_SEARCH_SCRIPT: &str = r#"
+(() => {
+  const input = document.getElementById('repo-search');
+  if (!input) return;
+  const rows = Array.from(document.querySelectorAll('[data-repo-row]'));
+  const empty = document.getElementById('repo-search-empty');
+  input.addEventListener('input', () => {
+    const query = input.value.trim().toLowerCase();
+    let shown = 0;
+    for (const row of rows) {
+      const match = row.dataset.repoRow.includes(query);
+      row.hidden = !match;
+      if (match) shown++;
+    }
+    empty.hidden = shown > 0;
+  });
+})();
+"#;
+
+/// One searchable, scrollable list of the user's repositories. Each row offers
+/// Rename, and Delete when the repository is marked deletable.
+pub(crate) fn render_repo_manage_panel(repos: &[ManagedRepo]) -> maud::Markup {
     maud::html! {
-        section class="twig-panel" aria-labelledby="settings-rename-repo-heading" {
+        section class="twig-panel" aria-labelledby="manage-repo-heading" {
             header class="twig-panel-head" {
-                h2 class="twig-eyebrow" id="settings-rename-repo-heading" { "Rename Repository" }
+                h2 class="twig-eyebrow" id="manage-repo-heading" { "Repositories" }
             }
 
-            @if repos_by_namespace.is_empty() {
+            @if repos.is_empty() {
                 div class="twig-empty" {
                     p class="twig-eyebrow" { "NO REPOSITORIES" }
-                    p class="twig-empty-body" { "You don't have any repositories to rename." }
+                    p class="twig-empty-body" { "You don't have any repositories to manage." }
                 }
             } @else {
                 div class="twig-panel-body twig-stack twig-stack--tight" {
-                    p class="twig-body-sm twig-ink-secondary" {
-                        "Renaming a repository changes its web and Git URLs. Its history and configuration are preserved."
-                    }
-                    div id="rename-repo-result" aria-live="polite" {}
+                    input
+                        class="twig-input twig-input--mono"
+                        type="search"
+                        id="repo-search"
+                        placeholder="Search repositories"
+                        aria-label="Search repositories"
+                        autocomplete="off"
+                        spellcheck="false";
+                    div id="repo-manage-result" aria-live="polite" {}
                 }
 
-                div class="twig-list" {
-                    @for (ns, repos) in repos_by_namespace {
-                        @for repo in repos {
-                            form
-                                class="twig-row twig-row--form"
-                                hx-post="/settings/rename-repo"
-                                hx-target="#rename-repo-result"
-                                hx-swap="innerHTML"
-                                "hx-status:4xx"="swap:innerHTML target:#rename-repo-result"
-                                "hx-status:5xx"="swap:innerHTML target:#rename-repo-result"
-                                hx-confirm=(format!("Rename '{}/{}'? Its URL will change.", ns, repo.name))
-                            {
-                                input type="hidden" name="namespace" value=(ns);
-                                input type="hidden" name="repo_name" value=(repo.name);
-                                span class="twig-row-id" { (ns) "/" (repo.name) }
-                                div class="twig-field" {
-                                    label class="twig-label" {
-                                        "New name"
+                div class="twig-list twig-list--scroll" {
+                    @for item in repos {
+                        @let full = format!("{}/{}", item.namespace, item.repo.name);
+                        div class="twig-row twig-row--form" data-repo-row=(full.to_lowercase()) {
+                            span class="twig-row-id" { (full) }
+                            div class="twig-row-actions" {
+                                details class="twig-repo-rename" {
+                                    summary class="twig-btn" { "Rename" }
+                                    form
+                                        class="twig-repo-rename-form"
+                                        hx-post="/settings/rename-repo"
+                                        hx-target="#repo-manage-result"
+                                        hx-swap="innerHTML"
+                                        hx-confirm=(format!("Rename '{}'? Its URL will change.", full))
+                                    {
+                                        input type="hidden" name="namespace" value=(item.namespace);
+                                        input type="hidden" name="repo_name" value=(item.repo.name);
                                         input
                                             class="twig-input twig-input--mono"
                                             type="text"
@@ -149,14 +128,29 @@ pub(crate) fn render_repo_rename_panel(
                                             required
                                             autocomplete="off"
                                             spellcheck="false"
-                                            value=(repo.name);
+                                            aria-label="New name"
+                                            value=(item.repo.name);
+                                        button class="twig-btn twig-btn--primary" type="submit" { "Rename" }
                                     }
                                 }
-                                button class="twig-btn twig-btn--primary" type="submit" { "Rename" }
+                                @if item.deletable {
+                                    form
+                                        hx-post="/settings/delete-repo"
+                                        hx-target="#repo-manage-result"
+                                        hx-swap="innerHTML"
+                                        hx-confirm=(format!("Are you sure you want to permanently delete '{}'?", full))
+                                    {
+                                        input type="hidden" name="namespace" value=(item.namespace);
+                                        input type="hidden" name="repo_name" value=(item.repo.name);
+                                        button class="twig-btn twig-btn--danger" type="submit" { "Delete" }
+                                    }
+                                }
                             }
                         }
                     }
                 }
+                p id="repo-search-empty" class="twig-empty-body" hidden { "No repositories match your search." }
+                script { (maud::PreEscaped(REPO_SEARCH_SCRIPT)) }
             }
         }
     }
