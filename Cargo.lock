@@ -2522,7 +2522,7 @@ dependencies = [
 
 [[package]]
 name = "twig"
-version = "0.3.22"
+version = "0.3.23"
 dependencies = [
  "actix-http",
  "actix-identity",

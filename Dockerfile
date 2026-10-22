@@ -46,7 +46,7 @@ COPY src ./src
 # the binary has to be copied out before the mount is unmounted.
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/app/target,sharing=locked \
-    cargo build --release \
+    cargo build --release --locked \
     && cp target/release/twig /usr/local/bin/twig
 
 # Runtime stage
