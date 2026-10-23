@@ -40,6 +40,10 @@ Lists public namespaces and their owners.
   namespace named. Results update as you type. Private repositories stay hidden
   from anonymous visitors.
 - Signed-in users can create namespaces.
+- Signed-in users can pin namespaces. Pinned namespaces are listed first under
+  a Pinned heading; the others stay hidden behind a "Show N more" toggle until
+  expanded or a search is active. Pins are personal to each account and
+  unpinning returns a namespace to the full list.
 - Select a namespace to view its repositories.
 
 ### Namespace (`/{namespace}`)

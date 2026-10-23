@@ -232,6 +232,17 @@ const MIGRATIONS: &[Migration] = &[
         sql: r"CREATE INDEX IF NOT EXISTS idx_device_authorizations_expires_at
             ON device_authorizations(expires_at);",
     },
+    Migration {
+        name: "create_namespace_pins_table",
+        sql: r"CREATE TABLE IF NOT EXISTS namespace_pins (
+            user_id TEXT NOT NULL,
+            namespace_id TEXT NOT NULL,
+            pinned_at TEXT NOT NULL,
+            PRIMARY KEY (user_id, namespace_id),
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (namespace_id) REFERENCES namespaces(id)
+        );",
+    },
 ];
 
 async fn prepare_migrations(conn: &crate::db::sqlite::Connection) -> Result<Vec<String>, String> {
@@ -382,6 +393,7 @@ mod tests {
         assert!(tables.contains(&"personal_access_token_permissions".to_string()));
         assert!(tables.contains(&"device_authorizations".to_string()));
         assert!(tables.contains(&"device_authorization_permissions".to_string()));
+        assert!(tables.contains(&"namespace_pins".to_string()));
         assert!(tables.contains(&"test_pins".to_string()));
         assert!(tables.contains(&"repository_binaries".to_string()));
         assert!(tables.contains(&"_migrations".to_string()));

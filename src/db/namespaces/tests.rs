@@ -317,3 +317,75 @@ async fn test_delete_namespace_with_invitations_and_token_grants() {
     // Cleanup
     let _ = std::fs::remove_file(&db_path);
 }
+
+#[tokio::test]
+async fn test_namespace_pins_are_per_user_and_idempotent() {
+    let (db, db_path, user_id) = setup_db_with_user().await;
+    let namespace = test_namespace(&user_id);
+    db.create_namespace(&namespace)
+        .await
+        .expect("create namespace");
+
+    db.set_namespace_pinned(&user_id, &namespace.id, true)
+        .await
+        .expect("pin namespace");
+    db.set_namespace_pinned(&user_id, &namespace.id, true)
+        .await
+        .expect("pin namespace again");
+
+    let pinned = db
+        .get_pinned_namespace_ids(&user_id)
+        .await
+        .expect("load pins");
+    assert_eq!(pinned.len(), 1);
+    assert!(pinned.contains(&namespace.id));
+
+    let other_user = uuid::Uuid::new_v4().to_string();
+    assert!(
+        db.get_pinned_namespace_ids(&other_user)
+            .await
+            .expect("load other user's pins")
+            .is_empty(),
+        "pins belong to the user who made them"
+    );
+
+    db.set_namespace_pinned(&user_id, &namespace.id, false)
+        .await
+        .expect("unpin namespace");
+    assert!(
+        db.get_pinned_namespace_ids(&user_id)
+            .await
+            .expect("load pins")
+            .is_empty()
+    );
+
+    // Cleanup
+    let _ = std::fs::remove_file(&db_path);
+}
+
+#[tokio::test]
+async fn test_delete_namespace_removes_its_pins() {
+    let (db, db_path, user_id) = setup_db_with_user().await;
+    let namespace = test_namespace(&user_id);
+    db.create_namespace(&namespace)
+        .await
+        .expect("create namespace");
+    db.set_namespace_pinned(&user_id, &namespace.id, true)
+        .await
+        .expect("pin namespace");
+
+    db.delete_namespace(&namespace.id)
+        .await
+        .expect("delete namespace");
+
+    assert!(
+        db.get_pinned_namespace_ids(&user_id)
+            .await
+            .expect("load pins")
+            .is_empty(),
+        "a deleted namespace leaves no pin behind"
+    );
+
+    // Cleanup
+    let _ = std::fs::remove_file(&db_path);
+}

@@ -12,6 +12,8 @@ mod tests {
     mod device_authorization;
     #[path = "../namespace_permissions.rs"]
     mod namespace_permissions;
+    #[path = "../namespace_pins.rs"]
+    mod namespace_pins;
     #[path = "../personal_access_tokens.rs"]
     mod personal_access_tokens;
     #[path = "../repo_access_and_routes.rs"]

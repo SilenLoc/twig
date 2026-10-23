@@ -11,12 +11,20 @@ fn namespace(name: &str, owner: &str) -> (crate::auth::Namespace, String) {
     (namespace, owner.to_owned())
 }
 
+fn view(search_query: &str) -> ListView<'_> {
+    ListView {
+        search_query,
+        more: false,
+        pinned: None,
+    }
+}
+
 fn render(
     search_query: &str,
     username: Option<&str>,
     namespaces: &[(crate::auth::Namespace, String)],
 ) -> String {
-    render_index(search_query, username, namespaces, &[]).into_string()
+    render_index(&view(search_query), username, namespaces, &[]).into_string()
 }
 
 fn render_with_repo_hits(
@@ -25,7 +33,7 @@ fn render_with_repo_hits(
     namespaces: &[(crate::auth::Namespace, String)],
     repo_hits: &[(String, String)],
 ) -> String {
-    render_index(search_query, username, namespaces, repo_hits).into_string()
+    render_index(&view(search_query), username, namespaces, repo_hits).into_string()
 }
 
 #[test]
@@ -297,7 +305,7 @@ fn test_active_search_swaps_the_results_region_as_the_user_types() {
 #[test]
 fn test_htmx_fragment_is_only_the_results_and_the_out_of_band_clear() {
     let fragment = render_results(
-        "acme",
+        &view("acme"),
         &[namespace("acme", "silen")],
         &[("acme".to_owned(), "twig-api".to_owned())],
     )
@@ -353,4 +361,161 @@ fn test_index_uses_only_design_system_classes_and_no_inline_style() {
             );
         }
     }
+}
+
+fn pinned_ids(ids: &[&str]) -> std::collections::HashSet<String> {
+    ids.iter().map(|id| (*id).to_owned()).collect()
+}
+
+#[test]
+fn test_signed_in_home_leads_with_pinned_and_hides_the_rest_behind_more() {
+    let namespaces = [namespace("acme", "silen"), namespace("hooli", "gavin")];
+    let pinned = pinned_ids(&["id-hooli"]);
+    let view = ListView {
+        search_query: "",
+        more: false,
+        pinned: Some(&pinned),
+    };
+    let html = render_results(&view, &namespaces, &[]).into_string();
+
+    assert!(
+        html.contains("<nav class=\"twig-list\" aria-label=\"Pinned namespaces\">")
+            && html.contains("href=\"hooli\""),
+        "pinned namespaces get their own list at the top: {html}"
+    );
+    assert!(
+        !html.contains("href=\"acme\""),
+        "unpinned namespaces stay hidden until More is pressed: {html}"
+    );
+    assert!(
+        index_of(&html, "Pinned namespaces") < index_of(&html, "Show 1 more"),
+        "the toggle follows the pinned section: {html}"
+    );
+}
+
+#[test]
+fn test_expanded_home_lists_the_others_and_offers_to_collapse() {
+    let namespaces = [namespace("acme", "silen"), namespace("hooli", "gavin")];
+    let pinned = pinned_ids(&["id-hooli"]);
+    let view = ListView {
+        search_query: "",
+        more: true,
+        pinned: Some(&pinned),
+    };
+    let html = render_results(&view, &namespaces, &[]).into_string();
+
+    assert!(
+        html.contains("<nav class=\"twig-list\" aria-label=\"Other namespaces\">")
+            && html.contains("href=\"acme\""),
+        "expanding shows the unpinned namespaces: {html}"
+    );
+    assert!(
+        html.contains(
+            "hx-get=\"/\" hx-target=\"#index-results\" hx-swap=\"innerHTML\" hx-push-url=\"true\">Show fewer</button>"
+        ),
+        "the expanded list collapses back to the plain index: {html}"
+    );
+}
+
+#[test]
+fn test_pin_control_offers_the_opposite_of_the_current_state() {
+    let namespaces = [namespace("acme", "silen"), namespace("hooli", "gavin")];
+    let pinned = pinned_ids(&["id-hooli"]);
+    let view = ListView {
+        search_query: "",
+        more: true,
+        pinned: Some(&pinned),
+    };
+    let html = render_results(&view, &namespaces, &[]).into_string();
+
+    assert!(
+        html.contains("name=\"namespace\" value=\"hooli\"")
+            && html.contains("name=\"pinned\" value=\"false\"")
+            && html.contains(">Unpin</button>"),
+        "a pinned row offers to unpin: {html}"
+    );
+    assert!(
+        html.contains("name=\"namespace\" value=\"acme\"")
+            && html.contains("name=\"pinned\" value=\"true\"")
+            && html.contains(">Pin</button>"),
+        "an unpinned row offers to pin: {html}"
+    );
+    assert_eq!(
+        html.matches("hx-post=\"/settings/pin-namespace\"").count(),
+        2,
+        "every row posts its pin change to the one endpoint: {html}"
+    );
+    assert!(
+        html.contains("name=\"more\" value=\"true\""),
+        "the expanded state survives a pin change: {html}"
+    );
+}
+
+#[test]
+fn test_pin_form_carries_the_active_search_back_to_the_results() {
+    let namespaces = [namespace("acme", "silen")];
+    let pinned = pinned_ids(&[]);
+    let view = ListView {
+        search_query: "ac",
+        more: false,
+        pinned: Some(&pinned),
+    };
+    let html = render_results(&view, &namespaces, &[]).into_string();
+
+    assert!(
+        html.contains("name=\"q\" value=\"ac\""),
+        "a pin during search keeps the query: {html}"
+    );
+    assert!(
+        !html.contains("PINNED") && !html.contains("Show "),
+        "searching shows one flat list, not the home grouping: {html}"
+    );
+    assert!(
+        html.contains("aria-label=\"Namespaces\""),
+        "the search result list keeps its plain label: {html}"
+    );
+}
+
+#[test]
+fn test_signed_in_home_with_no_pins_explains_how_to_pin() {
+    let namespaces = [namespace("acme", "silen"), namespace("hooli", "gavin")];
+    let pinned = pinned_ids(&[]);
+    let view = ListView {
+        search_query: "",
+        more: false,
+        pinned: Some(&pinned),
+    };
+    let html = render_results(&view, &namespaces, &[]).into_string();
+
+    assert!(
+        html.contains("Pin a namespace to keep it at the top."),
+        "without pins the home page says how pinning works: {html}"
+    );
+    assert!(
+        html.contains("Show 2 more"),
+        "every namespace waits behind More when nothing is pinned: {html}"
+    );
+}
+
+#[test]
+fn test_anonymous_visitors_see_the_full_list_without_pin_controls() {
+    let html = render_results(
+        &ListView {
+            search_query: "",
+            more: false,
+            pinned: None,
+        },
+        &[namespace("acme", "silen"), namespace("hooli", "gavin")],
+        &[],
+    )
+    .into_string();
+
+    assert!(
+        html.contains("href=\"acme\"") && html.contains("href=\"hooli\""),
+        "anonymous visitors are not held back behind More: {html}"
+    );
+    assert!(
+        !html.contains("pin-namespace") && !html.contains("Show "),
+        "pinning and its toggle need a session: {html}"
+    );
 }

@@ -805,6 +805,38 @@ body.twig-workspace-shell {
     border-inline-start-color: transparent;
 }
 
+.twig-row-pin {
+    display: flex;
+    align-items: stretch;
+    border-block-end: 1px solid var(--twig-rule);
+}
+
+.twig-row-pin:last-child {
+    border-block-end: 0;
+}
+
+.twig-row-pin > .twig-row {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    border-block-end: 0;
+}
+
+.twig-row-pin-form {
+    display: flex;
+    align-items: center;
+    margin: 0;
+    padding-inline-end: var(--twig-space-4);
+}
+
+.twig-list-label,
+.twig-list-note {
+    padding: var(--twig-space-3) var(--twig-space-4) 0;
+}
+
+.twig-list-more {
+    padding: var(--twig-space-3) var(--twig-space-4);
+}
+
 .twig-row[aria-busy="true"] {
     color: var(--twig-ink-tertiary);
     cursor: progress;

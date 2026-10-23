@@ -279,6 +279,60 @@ impl Database {
         Ok(result)
     }
 
+    /// Pins or unpins a namespace for one user. Pinning twice is a no-op.
+    pub async fn set_namespace_pinned(
+        &self,
+        user_id: &str,
+        namespace_id: &str,
+        pinned: bool,
+    ) -> Result<(), String> {
+        let conn = self.conn().await?;
+
+        if pinned {
+            conn.execute(
+                "INSERT OR IGNORE INTO namespace_pins (user_id, namespace_id, pinned_at) VALUES (?1, ?2, ?3)",
+                crate::db::sqlite::params![
+                    user_id,
+                    namespace_id,
+                    chrono::Utc::now().to_rfc3339()
+                ],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+        } else {
+            conn.execute(
+                "DELETE FROM namespace_pins WHERE user_id = ?1 AND namespace_id = ?2",
+                crate::db::sqlite::params![user_id, namespace_id],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn get_pinned_namespace_ids(
+        &self,
+        user_id: &str,
+    ) -> Result<std::collections::HashSet<String>, String> {
+        let mut rows = self
+            .conn()
+            .await?
+            .query(
+                "SELECT namespace_id FROM namespace_pins WHERE user_id = ?1",
+                crate::db::sqlite::params![user_id],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let mut ids = std::collections::HashSet::new();
+        while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
+            let id: String = row.get(0).map_err(|e| e.to_string())?;
+            ids.insert(id);
+        }
+        Ok(ids)
+    }
+
     pub async fn rename_namespace(&self, namespace_id: &str, new_name: &str) -> Result<(), String> {
         let conn = self.conn().await?;
 
@@ -314,6 +368,13 @@ impl Database {
 
             conn.execute(
                 "DELETE FROM namespace_invitations WHERE namespace_id = ?1",
+                crate::db::sqlite::params![namespace_id],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+
+            conn.execute(
+                "DELETE FROM namespace_pins WHERE namespace_id = ?1",
                 crate::db::sqlite::params![namespace_id],
             )
             .await
