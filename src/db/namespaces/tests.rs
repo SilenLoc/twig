@@ -274,3 +274,46 @@ async fn test_delete_namespace() {
     // Cleanup
     let _ = std::fs::remove_file(&db_path);
 }
+
+#[tokio::test]
+async fn test_delete_namespace_with_invitations_and_token_grants() {
+    let (db, db_path, user_id) = setup_db_with_user().await;
+    let namespace = test_namespace(&user_id);
+
+    db.create_namespace(&namespace)
+        .await
+        .expect("create namespace");
+
+    let conn = db.conn().await.expect("connection");
+    conn.execute(
+        "INSERT INTO namespace_invitations (token, email, namespace_id, role, created_at) VALUES (?1, ?2, ?3, 'contributor', ?4)",
+        crate::db::sqlite::params!["invite-token", "guest@example.com", namespace.id.as_str(), chrono::Utc::now().to_rfc3339()],
+    )
+    .await
+    .expect("insert invitation");
+    conn.execute(
+        "INSERT INTO personal_access_tokens (id, user_id, name, token_hash, token_hint, created_at) VALUES ('tok-1', ?1, 'ci', 'hash-1', 'hint', ?2)",
+        crate::db::sqlite::params![user_id.as_str(), chrono::Utc::now().to_rfc3339()],
+    )
+    .await
+    .expect("insert token");
+    conn.execute(
+        "INSERT INTO personal_access_token_permissions (token_id, namespace_id, permission) VALUES ('tok-1', ?1, 'view_namespace')",
+        crate::db::sqlite::params![namespace.id.as_str()],
+    )
+    .await
+    .expect("insert token permission");
+
+    db.delete_namespace(&namespace.id)
+        .await
+        .expect("delete namespace");
+
+    let retrieved = db
+        .get_namespace_by_name(&namespace.name)
+        .await
+        .expect("get namespace");
+    assert!(retrieved.is_none());
+
+    // Cleanup
+    let _ = std::fs::remove_file(&db_path);
+}

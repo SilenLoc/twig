@@ -299,6 +299,27 @@ impl Database {
 
         let result: Result<(), String> = async {
             conn.execute(
+                "DELETE FROM personal_access_token_permissions WHERE namespace_id = ?1",
+                crate::db::sqlite::params![namespace_id],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+
+            conn.execute(
+                "DELETE FROM device_authorization_permissions WHERE namespace_id = ?1",
+                crate::db::sqlite::params![namespace_id],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+
+            conn.execute(
+                "DELETE FROM namespace_invitations WHERE namespace_id = ?1",
+                crate::db::sqlite::params![namespace_id],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+
+            conn.execute(
                 "DELETE FROM namespace_members WHERE namespace_id = ?1",
                 crate::db::sqlite::params![namespace_id],
             )
