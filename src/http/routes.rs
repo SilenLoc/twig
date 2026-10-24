@@ -47,7 +47,6 @@ fn configure_auth_routes(cfg: &mut web::ServiceConfig) {
 
 fn configure_tree_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(overview::pages::index)
-        .service(overview::pages::pin_namespace)
         .service(tree::pages::tree_page)
         .service(tree::pages::namespaces_page)
         .service(tree::pages::namespace_settings_page)
@@ -80,6 +79,7 @@ fn configure_repository_routes(cfg: &mut web::ServiceConfig) {
         .service(settings::pages::delete_repo)
         .service(settings::pages::rename_namespace)
         .service(settings::pages::delete_namespace)
+        .service(settings::pages::pin_namespace)
         .service(namespace::pages::handler)
         .service(namespace::pages::create_repo_form_handler)
         .service(namespace::pages::create_repo_handler)

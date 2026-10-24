@@ -36,13 +36,20 @@ pub struct NamespaceForm {
     pub namespace: String,
 }
 
+#[derive(Deserialize)]
+struct PinNamespaceForm {
+    namespace: String,
+    pinned: bool,
+}
+
 mod namespaces;
 mod profile;
 mod repositories;
 mod shared;
 mod tokens;
 
-pub use namespaces::{delete_namespace, rename_namespace};
+pub(crate) use namespaces::render_namespace_pin_panel;
+pub use namespaces::{delete_namespace, pin_namespace, rename_namespace};
 #[cfg(test)]
 use profile::render_settings;
 pub use profile::{settings_page, update_email};

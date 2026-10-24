@@ -22,10 +22,25 @@ async fn pinned_namespaces_lead_the_home_page_until_more_is_chosen() {
     let body = test::read_body(response).await;
     let home = String::from_utf8_lossy(&body);
     assert!(
-        home.contains("Pin a namespace to keep it at the top.")
+        home.contains("Pin a namespace from its settings to keep it at the top.")
             && home.contains("Show 3 more")
-            && !home.contains("href=\"pinalpha\""),
-        "with nothing pinned, every namespace waits behind More: {home}"
+            && !home.contains("href=\"pinalpha\"")
+            && !home.contains("pin-namespace"),
+        "with nothing pinned, every namespace waits behind More and the rows carry no pin controls: {home}"
+    );
+
+    let request = test::TestRequest::get()
+        .uri("/manage/namespaces/pinbeta/settings")
+        .cookie(session.clone())
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = test::read_body(response).await;
+    let settings = String::from_utf8_lossy(&body);
+    assert!(
+        settings.contains("Pin to home")
+            && settings.contains("hx-post=\"/settings/pin-namespace\""),
+        "namespace settings offers to pin the namespace: {settings}"
     );
 
     let request = test::TestRequest::post()
@@ -39,12 +54,9 @@ async fn pinned_namespaces_lead_the_home_page_until_more_is_chosen() {
     let body = test::read_body(response).await;
     let fragment = String::from_utf8_lossy(&body);
     assert!(
-        fragment.contains("aria-label=\"Unpin pinbeta\"") && fragment.contains("Show 2 more"),
-        "the pin response reflects the new state inside the results region: {fragment}"
-    );
-    assert!(
-        !fragment.contains("href=\"pinalpha\""),
-        "pinning one namespace does not reveal the others: {fragment}"
+        fragment.contains("Unpin from home")
+            && fragment.contains("name=\"pinned\" value=\"false\""),
+        "the pin response flips the settings control: {fragment}"
     );
 
     let request = test::TestRequest::get()
@@ -55,8 +67,11 @@ async fn pinned_namespaces_lead_the_home_page_until_more_is_chosen() {
     let body = test::read_body(response).await;
     let home = String::from_utf8_lossy(&body);
     assert!(
-        home.contains("aria-label=\"Pinned namespaces\"") && home.contains("href=\"pinbeta\""),
-        "the pinned namespace is listed first after a reload: {home}"
+        home.contains("aria-label=\"Pinned namespaces\"")
+            && home.contains("href=\"pinbeta\"")
+            && home.contains("Show 2 more")
+            && !home.contains("href=\"pinalpha\""),
+        "the pinned namespace is listed first after a reload, the rest stay behind More: {home}"
     );
 
     let request = test::TestRequest::get()
@@ -75,19 +90,15 @@ async fn pinned_namespaces_lead_the_home_page_until_more_is_chosen() {
         .uri("/settings/pin-namespace")
         .cookie(session.clone())
         .insert_header(("HX-Request", "true"))
-        .set_form([
-            ("namespace", "pinbeta"),
-            ("pinned", "false"),
-            ("more", "true"),
-        ])
+        .set_form([("namespace", "pinbeta"), ("pinned", "false")])
         .to_request();
     let response = test::call_service(&app, request).await;
     assert_eq!(response.status(), StatusCode::OK);
     let body = test::read_body(response).await;
     let fragment = String::from_utf8_lossy(&body);
     assert!(
-        fragment.contains("href=\"pinbeta\"") && fragment.contains("aria-label=\"Pin pinbeta\""),
-        "unpinning keeps the expanded list and offers to pin again: {fragment}"
+        fragment.contains("Pin to home") && fragment.contains("name=\"pinned\" value=\"true\""),
+        "unpinning offers to pin again: {fragment}"
     );
 
     let request = test::TestRequest::post()

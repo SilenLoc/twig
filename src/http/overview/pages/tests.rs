@@ -418,7 +418,7 @@ fn test_expanded_home_lists_the_others_and_offers_to_collapse() {
 }
 
 #[test]
-fn test_pin_control_offers_the_opposite_of_the_current_state() {
+fn test_home_rows_have_no_pin_controls() {
     let namespaces = [namespace("acme", "silen"), namespace("hooli", "gavin")];
     let pinned = pinned_ids(&["id-hooli"]);
     let view = ListView {
@@ -429,30 +429,13 @@ fn test_pin_control_offers_the_opposite_of_the_current_state() {
     let html = render_results(&view, &namespaces, &[]).into_string();
 
     assert!(
-        html.contains("name=\"namespace\" value=\"hooli\"")
-            && html.contains("name=\"pinned\" value=\"false\"")
-            && html.contains(">Unpin</button>"),
-        "a pinned row offers to unpin: {html}"
-    );
-    assert!(
-        html.contains("name=\"namespace\" value=\"acme\"")
-            && html.contains("name=\"pinned\" value=\"true\"")
-            && html.contains(">Pin</button>"),
-        "an unpinned row offers to pin: {html}"
-    );
-    assert_eq!(
-        html.matches("hx-post=\"/settings/pin-namespace\"").count(),
-        2,
-        "every row posts its pin change to the one endpoint: {html}"
-    );
-    assert!(
-        html.contains("name=\"more\" value=\"true\""),
-        "the expanded state survives a pin change: {html}"
+        !html.contains("pin-namespace") && !html.contains(">Pin</button>"),
+        "pinning lives in namespace settings, not on the home list: {html}"
     );
 }
 
 #[test]
-fn test_pin_form_carries_the_active_search_back_to_the_results() {
+fn test_search_shows_one_flat_list_without_the_home_grouping() {
     let namespaces = [namespace("acme", "silen")];
     let pinned = pinned_ids(&[]);
     let view = ListView {
@@ -462,10 +445,6 @@ fn test_pin_form_carries_the_active_search_back_to_the_results() {
     };
     let html = render_results(&view, &namespaces, &[]).into_string();
 
-    assert!(
-        html.contains("name=\"q\" value=\"ac\""),
-        "a pin during search keeps the query: {html}"
-    );
     assert!(
         !html.contains("PINNED") && !html.contains("Show "),
         "searching shows one flat list, not the home grouping: {html}"
@@ -488,7 +467,7 @@ fn test_signed_in_home_with_no_pins_explains_how_to_pin() {
     let html = render_results(&view, &namespaces, &[]).into_string();
 
     assert!(
-        html.contains("Pin a namespace to keep it at the top."),
+        html.contains("Pin a namespace from its settings to keep it at the top."),
         "without pins the home page says how pinning works: {html}"
     );
     assert!(

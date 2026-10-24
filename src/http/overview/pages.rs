@@ -2,13 +2,12 @@ use std::collections::HashSet;
 
 use actix_web::HttpRequest;
 use actix_web::Result as AwResult;
-use actix_web::{HttpResponse, get, post, web};
+use actix_web::{get, web};
 use serde::Deserialize;
 
 use crate::auth::TwigContext;
 use crate::config;
 use crate::db::Database;
-use crate::http::view::render_error;
 use twig_git as git;
 
 #[derive(Deserialize)]
@@ -18,19 +17,9 @@ struct SearchQuery {
     more: bool,
 }
 
-#[derive(Deserialize)]
-struct PinForm {
-    namespace: String,
-    pinned: bool,
-    #[serde(default)]
-    q: String,
-    #[serde(default)]
-    more: bool,
-}
-
 /// The viewer's place in the index: the active search, whether the full list
 /// is expanded, and the namespace ids they have pinned. `pinned` is `None` for
-/// anonymous visitors, who cannot pin and always see the full list.
+/// anonymous visitors, who always see the full list.
 struct ListView<'a> {
     search_query: &'a str,
     more: bool,
@@ -123,7 +112,7 @@ fn render_results(
             @if let Some(pinned) = grouped {
                 (render_pinned_sections(view, pinned, namespaces))
             } @else if !namespaces.is_empty() {
-                (render_namespace_list(view, "Namespaces", namespaces.iter()))
+                (render_namespace_list("Namespaces", namespaces.iter()))
             }
             @if !repo_hits.is_empty() {
                 div class="twig-colhead" {
@@ -158,11 +147,10 @@ fn render_pinned_sections(
     let other_count = namespaces.len() - pinned_count;
     maud::html! {
         @if pinned_count == 0 {
-            p class="twig-empty-body twig-list-note" { "Pin a namespace to keep it at the top." }
+            p class="twig-empty-body twig-list-note" { "Pin a namespace from its settings to keep it at the top." }
         } @else {
             p class="twig-eyebrow twig-list-label" { "PINNED" }
             (render_namespace_list(
-                view,
                 "Pinned namespaces",
                 namespaces.iter().filter(|entry| is_pinned(entry)),
             ))
@@ -170,7 +158,6 @@ fn render_pinned_sections(
         @if view.more {
             p class="twig-eyebrow twig-list-label" { "OTHERS" }
             (render_namespace_list(
-                view,
                 "Other namespaces",
                 namespaces.iter().filter(|entry| !is_pinned(entry)),
             ))
@@ -208,7 +195,6 @@ fn render_more_toggle(expanded: bool, other_count: usize) -> maud::Markup {
 /// One column-headed list of namespace rows. `label` names the list for
 /// assistive technology.
 fn render_namespace_list<'a>(
-    view: &ListView<'_>,
     label: &str,
     rows: impl Iterator<Item = &'a (crate::auth::Namespace, String)>,
 ) -> maud::Markup {
@@ -219,56 +205,11 @@ fn render_namespace_list<'a>(
         }
         nav class="twig-list" aria-label=(label) {
             @for (namespace, owner) in rows {
-                (render_namespace_row(view, namespace, owner))
-            }
-        }
-    }
-}
-
-/// The link stays a plain anchor; the pin control sits beside it, because a
-/// button nested inside the link would be invalid markup.
-fn render_namespace_row(
-    view: &ListView<'_>,
-    namespace: &crate::auth::Namespace,
-    owner: &str,
-) -> maud::Markup {
-    let pin_state = view.pinned.map(|pinned| pinned.contains(&namespace.id));
-    maud::html! {
-        div class="twig-row-pin" {
-            a class="twig-row" href=(namespace.name) {
-                span class="twig-row-id" { (namespace.name) }
-                span class="twig-row-meta" {
-                    span class="twig-sr" { "Owner: " }
-                    (owner)
-                }
-            }
-            @if let Some(is_pinned) = pin_state {
-                form
-                    class="twig-row-pin-form"
-                    hx-post="/settings/pin-namespace"
-                    hx-target="#index-results"
-                    hx-swap="innerHTML"
-                    "hx-status:4xx"="swap:innerHTML target:#index-results"
-                    "hx-status:5xx"="swap:innerHTML target:#index-results"
-                {
-                    input type="hidden" name="namespace" value=(namespace.name);
-                    input type="hidden" name="pinned" value=(if is_pinned { "false" } else { "true" });
-                    @if !view.search_query.is_empty() {
-                        input type="hidden" name="q" value=(view.search_query);
-                    }
-                    @if view.more {
-                        input type="hidden" name="more" value="true";
-                    }
-                    @if is_pinned {
-                        button
-                            class="twig-btn twig-btn--quiet"
-                            type="submit"
-                            aria-label=(format!("Unpin {}", namespace.name)) { "Unpin" }
-                    } @else {
-                        button
-                            class="twig-btn twig-btn--quiet"
-                            type="submit"
-                            aria-label=(format!("Pin {}", namespace.name)) { "Pin" }
+                a class="twig-row" href=(namespace.name) {
+                    span class="twig-row-id" { (namespace.name) }
+                    span class="twig-row-meta" {
+                        span class="twig-sr" { "Owner: " }
+                        (owner)
                     }
                 }
             }
@@ -416,54 +357,6 @@ pub async fn index(
         username.as_deref(),
         Some("Namespaces"),
     ))
-}
-
-/// Pins or unpins a namespace for the signed-in user, then returns the
-/// refreshed results so the list reorders in place.
-#[post("/settings/pin-namespace")]
-pub async fn pin_namespace(
-    req: HttpRequest,
-    server: web::Data<config::Server>,
-    auth_state: web::Data<TwigContext>,
-    form: web::Form<PinForm>,
-) -> HttpResponse {
-    let Some(user_id) = auth_state.user_id_from_request(&req).await else {
-        return HttpResponse::Unauthorized()
-            .body(render_error("Not logged in. Please log in first.").into_string());
-    };
-
-    let db = auth_state.db();
-    let namespace = match db.get_namespace_by_name(&form.namespace).await {
-        Ok(Some(namespace)) => namespace,
-        Ok(None) => {
-            return HttpResponse::NotFound()
-                .body(render_error("Namespace not found").into_string());
-        }
-        Err(e) => {
-            log::error!("Failed to load namespace for pinning: {e}");
-            return HttpResponse::InternalServerError()
-                .body(render_error("Database error").into_string());
-        }
-    };
-
-    if let Err(e) = db
-        .set_namespace_pinned(&user_id, &namespace.id, form.pinned)
-        .await
-    {
-        log::error!("Failed to update namespace pin: {e}");
-        return HttpResponse::InternalServerError()
-            .body(render_error("Failed to update pin").into_string());
-    }
-
-    let listing = load_listing(db, server.project_root(), &form.q, Some(&user_id)).await;
-    let view = ListView {
-        search_query: &form.q,
-        more: form.more,
-        pinned: listing.pinned.as_ref(),
-    };
-    HttpResponse::Ok()
-        .content_type("text/html")
-        .body(render_results(&view, &listing.namespaces, &listing.repo_hits).into_string())
 }
 
 #[cfg(test)]

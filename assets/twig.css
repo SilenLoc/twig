@@ -805,36 +805,21 @@ body.twig-workspace-shell {
     border-inline-start-color: transparent;
 }
 
-.twig-row-pin {
-    display: flex;
-    align-items: stretch;
-    border-block-end: 1px solid var(--twig-rule);
-}
-
-.twig-row-pin:last-child {
-    border-block-end: 0;
-}
-
-.twig-row-pin > .twig-row {
-    flex: 1 1 auto;
-    min-inline-size: 0;
-    border-block-end: 0;
-}
-
-.twig-row-pin-form {
-    display: flex;
-    align-items: center;
-    margin: 0;
-    padding-inline-end: var(--twig-space-4);
-}
-
 .twig-list-label,
 .twig-list-note {
     padding: var(--twig-space-3) var(--twig-space-4) 0;
 }
 
 .twig-list-more {
-    padding: var(--twig-space-3) var(--twig-space-4);
+    border-block-start: 1px solid var(--twig-rule);
+}
+
+.twig-list-more > .twig-btn {
+    inline-size: 100%;
+    min-block-size: var(--twig-row-h);
+    justify-content: flex-start;
+    padding-inline: var(--twig-space-4);
+    border-radius: 0;
 }
 
 .twig-row[aria-busy="true"] {

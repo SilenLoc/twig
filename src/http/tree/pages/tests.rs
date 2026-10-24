@@ -92,9 +92,31 @@ fn namespace_list_empty_state_offers_no_targets() {
 }
 
 #[test]
+fn namespace_settings_offers_the_opposite_pin_action() {
+    let unpinned = render_namespace_settings("acme", false, &[], true, &[], false).into_string();
+    assert!(unpinned.contains("Pin to home"), "{unpinned}");
+    assert!(
+        unpinned.contains("name=\"pinned\" value=\"true\""),
+        "{unpinned}"
+    );
+
+    let pinned = render_namespace_settings("acme", true, &[], true, &[], false).into_string();
+    assert!(pinned.contains("Unpin from home"), "{pinned}");
+    assert!(
+        pinned.contains("name=\"pinned\" value=\"false\""),
+        "{pinned}"
+    );
+    assert!(
+        pinned.contains("hx-post=\"/settings/pin-namespace\""),
+        "{pinned}"
+    );
+}
+
+#[test]
 fn namespace_settings_has_rename_move_and_delete_panels() {
     let html = render_namespace_settings(
         "acme",
+        false,
         &[git::bare::RepoInfo {
             name: "twig".to_string(),
             last_commit_date: None,
@@ -156,8 +178,8 @@ fn namespace_settings_has_rename_move_and_delete_panels() {
 
 #[test]
 fn namespace_settings_hides_moves_without_repository_rights() {
-    let html =
-        render_namespace_settings("acme", &[], false, &["solo".to_string()], true).into_string();
+    let html = render_namespace_settings("acme", false, &[], false, &["solo".to_string()], true)
+        .into_string();
 
     assert!(!html.contains("Move Repositories"), "{html}");
     assert!(!html.contains("/settings/move-repo"), "{html}");
@@ -173,8 +195,8 @@ fn namespace_settings_hides_moves_without_repository_rights() {
 
 #[test]
 fn namespace_settings_explains_move_empty_states() {
-    let no_repos =
-        render_namespace_settings("acme", &[], true, &["solo".to_string()], true).into_string();
+    let no_repos = render_namespace_settings("acme", false, &[], true, &["solo".to_string()], true)
+        .into_string();
     assert!(
         no_repos.contains("This namespace has no repositories to move."),
         "{no_repos}"
@@ -183,6 +205,7 @@ fn namespace_settings_explains_move_empty_states() {
 
     let no_targets = render_namespace_settings(
         "acme",
+        false,
         &[git::bare::RepoInfo {
             name: "twig".to_string(),
             last_commit_date: None,
@@ -201,7 +224,7 @@ fn namespace_settings_explains_move_empty_states() {
 
 #[test]
 fn namespace_settings_offers_delete_only_when_empty() {
-    let html = render_namespace_settings("acme", &[], true, &[], false).into_string();
+    let html = render_namespace_settings("acme", false, &[], true, &[], false).into_string();
 
     assert!(html.contains("Delete Namespace"), "{html}");
     assert!(

@@ -69,9 +69,11 @@ pub(super) fn render_namespaces_page(manageable_namespaces: &[String]) -> maud::
     }
 }
 
-/// Settings for one namespace: rename, move its repositories, and delete it.
+/// Settings for one namespace: the viewer's home-page pin, rename, move its
+/// repositories, and delete it.
 pub(super) fn render_namespace_settings(
     namespace: &str,
+    pinned: bool,
     repos: &[git::bare::RepoInfo],
     repo_manageable: bool,
     move_targets: &[String],
@@ -89,6 +91,7 @@ pub(super) fn render_namespace_settings(
         }
 
         div class="twig-bento" {
+            (crate::http::settings::pages::render_namespace_pin_panel(namespace, pinned))
             (render_namespace_rename_panel(namespace))
             @if repo_manageable {
                 (render_namespace_move_panel(namespace, repos, move_targets))
@@ -328,8 +331,8 @@ pub async fn namespace_settings_page(
     };
     let is_site_admin = server.is_configured_admin(&user.username);
 
-    match db.get_namespace_by_name(&namespace).await {
-        Ok(Some(_)) => {}
+    let namespace_id = match db.get_namespace_by_name(&namespace).await {
+        Ok(Some(record)) => record.id,
         Ok(None) => {
             return HttpResponse::NotFound()
                 .content_type("text/html")
@@ -339,7 +342,7 @@ pub async fn namespace_settings_page(
             log::error!("Failed to load namespace for settings: {error}");
             return HttpResponse::InternalServerError().finish();
         }
-    }
+    };
     match permissions::has(
         db,
         &user_id,
@@ -383,6 +386,13 @@ pub async fn namespace_settings_page(
         .cloned()
         .collect();
     let deletable = !git::bare::namespace::has_any_repository(server.project_root(), &namespace);
+    let pinned = match db.get_pinned_namespace_ids(&user_id).await {
+        Ok(ids) => ids.contains(&namespace_id),
+        Err(error) => {
+            log::error!("Failed to load namespace pins for settings: {error}");
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
 
     let content = maud::html! {
         (render_tree_hub(
@@ -391,7 +401,7 @@ pub async fn namespace_settings_page(
             page_data.user_management_enabled,
             Some("namespaces"),
         ))
-        (render_namespace_settings(&namespace, repos, repo_manageable, &move_targets, deletable))
+        (render_namespace_settings(&namespace, pinned, repos, repo_manageable, &move_targets, deletable))
     };
     let content = if req.headers().get("HX-Request").is_some() {
         content
