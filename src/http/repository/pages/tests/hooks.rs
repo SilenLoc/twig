@@ -38,7 +38,7 @@ fn hooks_view_shows_real_status_and_escapes_script_source() {
         "enabled hooks offer a disable action: {html}"
     );
     assert!(
-        html.contains("Confirm permanent deletion"),
+        html.contains("name=\"confirm\"") && html.contains("value=\"yes\""),
         "permanent removal requires confirmation: {html}"
     );
 }

@@ -152,7 +152,7 @@ mod tests {
         for section in [
             "ignore_for_view",
             "tabs",
-            "deleteable",
+            "deletable",
             "private",
             "[present]",
             "[paper]",

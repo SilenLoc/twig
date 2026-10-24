@@ -199,7 +199,7 @@ pub fn bare_init(
 #tabs = []
 
 # Whether the repository can be deleted from the UI.
-#deleteable = false
+#deletable = false
 
 # Whether the repository is private (read operations require authentication).
 #private = false

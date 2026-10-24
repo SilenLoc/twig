@@ -29,7 +29,7 @@ struct ListView<'a> {
 /// What the index lists for one viewer.
 struct Listing {
     namespaces: Vec<(crate::auth::Namespace, String)>,
-    repo_hits: Vec<(String, String)>,
+    repo_hits: Vec<(String, String, bool)>,
     pinned: Option<HashSet<String>>,
 }
 
@@ -38,7 +38,7 @@ fn render_index(
     view: &ListView<'_>,
     username: Option<&str>,
     namespaces: &[(crate::auth::Namespace, String)],
-    repo_hits: &[(String, String)],
+    repo_hits: &[(String, String, bool)],
 ) -> maud::Markup {
     maud::html! {
         section class="twig-pagehead" {
@@ -72,13 +72,12 @@ fn render_index(
                     hx-indicator="#index-search-status"
                     hx-trigger="input changed delay:200ms";
                 span id="index-search-status" class="twig-search-status" aria-hidden="true" {}
-                button type="submit" class="twig-btn twig-btn--ghost" { "Search" }
                 (render_clear(view.search_query, false))
             }
 
             section class="twig-panel twig-panel--flush" {
                 div id="index-results" class="twig-panel-body" aria-live="polite" {
-                    (render_results(view, namespaces, repo_hits))
+                    (render_results(view, username, namespaces, repo_hits))
                 }
             }
         }
@@ -88,8 +87,9 @@ fn render_index(
 /// The results region that htmx swaps as the query changes.
 fn render_results(
     view: &ListView<'_>,
+    username: Option<&str>,
     namespaces: &[(crate::auth::Namespace, String)],
-    repo_hits: &[(String, String)],
+    repo_hits: &[(String, String, bool)],
 ) -> maud::Markup {
     let search_query = view.search_query;
     let grouped = view.pinned.filter(|_| search_query.is_empty());
@@ -98,7 +98,13 @@ fn render_results(
             @if search_query.is_empty() {
                 div class="twig-empty" {
                     p class="twig-eyebrow" { "NO NAMESPACES" }
-                    p class="twig-empty-body" { "No namespaces yet. Create one to get started!" }
+                    p class="twig-empty-body" {
+                        @if username.is_some() {
+                            "No namespaces yet. Create one to get started!"
+                        } @else {
+                            "No namespaces yet."
+                        }
+                    }
                 }
             } @else {
                 div class="twig-empty" {
@@ -112,18 +118,27 @@ fn render_results(
             @if let Some(pinned) = grouped {
                 (render_pinned_sections(view, pinned, namespaces))
             } @else if !namespaces.is_empty() {
+                @if !repo_hits.is_empty() {
+                    p class="twig-eyebrow twig-list-label" { "NAMESPACES" }
+                }
                 (render_namespace_list("Namespaces", namespaces.iter()))
             }
             @if !repo_hits.is_empty() {
+                @if !namespaces.is_empty() {
+                    p class="twig-eyebrow twig-list-label" { "REPOSITORIES" }
+                }
                 div class="twig-colhead" {
                     span { "Repository" }
                     span { "Namespace" }
                 }
                 nav class="twig-list" aria-label="Repository matches" {
-                    @for (namespace, repo) in repo_hits {
+                    @for (namespace, repo, private) in repo_hits {
                         a class="twig-row" href=(format!("{namespace}/{repo}")) {
                             span class="twig-row-id" { (repo) }
                             span class="twig-row-meta" {
+                                @if *private {
+                                    span class="twig-tag" { "Private" }
+                                }
                                 span class="twig-sr" { "Namespace: " }
                                 (namespace)
                             }
@@ -231,7 +246,8 @@ fn render_clear(search_query: &str, oob: bool) -> maud::Markup {
 
 /// Repositories matched by the index search, across every namespace on disk.
 /// Private repositories stay hidden from anonymous visitors. Returns
-/// `(namespace, repository)` pairs sorted by namespace, then repository.
+/// `(namespace, repository, is_private)` triples sorted by namespace, then
+/// repository.
 ///
 /// The scan matches repository *names* only; opening a repository is needed
 /// just for the anonymous private check on names that already matched.
@@ -240,16 +256,17 @@ fn search_repo_hits(
     namespaces: &[(crate::auth::Namespace, String)],
     query: &str,
     signed_in: bool,
-) -> Vec<(String, String)> {
-    let mut hits: Vec<(String, String)> = namespaces
+) -> Vec<(String, String, bool)> {
+    let mut hits: Vec<(String, String, bool)> = namespaces
         .iter()
         .flat_map(|(namespace, _)| {
             git::bare::search_repo_names(root, &namespace.name, query)
                 .into_iter()
-                .filter(|repo| {
-                    signed_in || !git::bare::is_repo_private(root, &namespace.name, repo)
+                .filter_map(|repo| {
+                    let private = git::bare::is_repo_private(root, &namespace.name, &repo);
+                    (signed_in || !private).then(|| (namespace.name.clone(), repo, private))
                 })
-                .map(move |repo| (namespace.name.clone(), repo))
+                .collect::<Vec<_>>()
         })
         .collect();
     hits.sort();
@@ -341,7 +358,7 @@ pub async fn index(
 
     if req.headers().get("HX-Request").is_some() {
         return Ok(maud::html! {
-            (render_results(&view, &listing.namespaces, &listing.repo_hits))
+            (render_results(&view, username.as_deref(), &listing.namespaces, &listing.repo_hits))
             (render_clear(search_query, true))
         });
     }

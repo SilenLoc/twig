@@ -154,7 +154,7 @@ pub async fn data_page(
         selected,
         page.as_ref(),
         0,
-        server.is_test_user_enabled(),
+        server.is_test_user(&username),
     );
     let content = if req.headers().get("HX-Request").is_some() {
         content

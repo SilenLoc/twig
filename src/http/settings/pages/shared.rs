@@ -9,6 +9,7 @@ pub(super) async fn render_settings_navigation(
     server: &config::Server,
     db: &Database,
     user: &crate::auth::User,
+    active: &str,
 ) -> maud::Markup {
     let is_site_admin = server.is_configured_admin(&user.username);
     let user_management_enabled = match permissions::namespaces_for_user(
@@ -27,28 +28,11 @@ pub(super) async fn render_settings_navigation(
     };
 
     crate::http::tree::pages::render_tree_hub(
-        server.is_test_user_enabled(),
+        server.is_test_user(&user.username),
         is_site_admin,
         user_management_enabled,
-        Some("account"),
+        Some(active),
     )
-}
-
-pub(super) fn render_account_tabs(active: &str) -> maud::Markup {
-    maud::html! {
-        nav class="twig-tabs twig-tabs--nested" aria-label="Account sections" {
-            a
-                class="twig-tab"
-                aria-current=[(active == "profile").then_some("page")]
-                href="/settings"
-            { "Profile" }
-            a
-                class="twig-tab"
-                aria-current=[(active == "tokens").then_some("page")]
-                href="/settings/tokens"
-            { "Access Tokens" }
-        }
-    }
 }
 
 pub(super) async fn require_namespace_permission(

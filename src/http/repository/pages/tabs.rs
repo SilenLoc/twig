@@ -134,7 +134,7 @@ pub(super) fn tab_nav(frame: &TabFrame<'_>, active: &str) -> Markup {
 /// The full tab page body, without the document layout.
 pub(super) fn render_tab_shell(frame: &TabFrame<'_>, active: &str, body: &Markup) -> Markup {
     maud::html! {
-        (render_repo_crumbs(frame.namespace, frame.repo))
+        (render_repo_crumbs(frame.namespace, frame.repo, frame.can_edit))
         (tab_nav(frame, active))
         // A broken configuration is shown on every tab, outside #tab-content, so
         // it survives htmx swaps until the file is fixed.
@@ -241,7 +241,9 @@ pub async fn handler(
 
 /// The page head: the trail is the whole heading zone, with the repository
 /// name as its highlighted final segment, so the tabs follow it directly.
-pub(super) fn render_repo_crumbs(namespace: &str, repo: &str) -> Markup {
+/// The workspace action appears only for viewers allowed to push changes;
+/// everyone else sees the repository without a control they cannot use.
+pub(super) fn render_repo_crumbs(namespace: &str, repo: &str, can_edit: bool) -> Markup {
     maud::html! {
         div class="twig-pagehead" {
             nav class="twig-crumbs twig-crumbs--page" aria-label="Breadcrumb" {
@@ -251,8 +253,10 @@ pub(super) fn render_repo_crumbs(namespace: &str, repo: &str) -> Markup {
                 span class="twig-crumb-sep" aria-hidden="true" { "/" }
                 h1 class="twig-crumb-current" aria-current="page" { (repo) }
             }
-            a class="twig-btn twig-btn--primary" href=(format!("/{namespace}/{repo}/edit")) {
-                "Open workspace"
+            @if can_edit {
+                a class="twig-btn twig-btn--primary" href=(format!("/{namespace}/{repo}/edit")) {
+                    "Open workspace"
+                }
             }
         }
     }
@@ -390,6 +394,11 @@ pub(super) fn render_commits_view(commits: &[Commit]) -> Markup {
                         (render_commit(commit))
                     }
                 }
+                @if commits.len() >= MAX_COMMITS {
+                    p class="twig-hint" {
+                        "Showing the latest " (MAX_COMMITS) " commits."
+                    }
+                }
             }
         }
     }
@@ -458,7 +467,7 @@ pub(super) fn render_license_view(license_content: Option<&str>) -> Markup {
     }
 }
 
-/// Returns (href, push-url) pair for a path inside the content tab
+/// One row of the Commits tab.
 pub(super) fn render_commit(commit: &Commit) -> Markup {
     let hash = commit.hash();
     let author = commit.author();
@@ -472,7 +481,7 @@ pub(super) fn render_commit(commit: &Commit) -> Markup {
                 }
                 span class="twig-commit-author" { (author) }
                 time class="twig-commit-date" datetime=(date.to_rfc3339()) {
-                    (date.format("%Y-%m-%d %H:%M"))
+                    (date.format("%Y-%m-%d %H:%M")) " UTC"
                 }
             }
             p class="twig-commit-msg" { (commit_message) }

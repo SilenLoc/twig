@@ -66,7 +66,7 @@ curl -X POST https://twig.example/api/v1/namespaces/acme/repositories \
   -d '{"name":"tooling","default_branch":"main"}'
 ```
 
-Repository creation requires an email address on the account, matching Twig's web workflow. A repository can be deleted only when its `.twig.toml` configuration has `deleteable = true`.
+Repository creation requires an email address on the account, matching Twig's web workflow. A repository can be deleted only when its `.twig.toml` configuration has `deletable = true`.
 
 ## Branches, commits, trees, and files
 

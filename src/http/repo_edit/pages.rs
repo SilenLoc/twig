@@ -167,7 +167,7 @@ fn workspace_changes_panel(
                         name="message"
                         maxlength="200"
                         required
-                        value="Update repository";
+                        placeholder="Describe this change, e.g. Fix typo in intro";
                     @if !has_email {
                         p class="twig-editor-status" role="alert" {
                             "Set an email address in " a href="/settings" { "account settings" }
@@ -331,7 +331,7 @@ pub(super) fn file_editor(
                         input type="hidden" name="kind" value="delete";
                         input type="hidden" name="path" value=(path);
                         input type="hidden" name="draft" value="";
-                        button class="twig-btn twig-btn--quiet" type="submit" { "Delete" }
+                        button class="twig-btn twig-btn--danger" type="submit" { "Delete" }
                     }
                     @if markdown {
                         nav class="twig-editor-modes" aria-label="Editing mode" {
@@ -373,7 +373,7 @@ pub(super) fn file_editor(
             }
             footer class="twig-repo-file-foot" {
                 span class="twig-row-meta" { @if markdown { "Markdown" } @else { "UTF-8 text" } }
-                span class="twig-row-meta" data-repo-edit-save-state { "Draft saved in this tab" }
+                span class="twig-row-meta" data-repo-edit-save-state { "Unsaved until committed · kept in this tab" }
             }
         }
     }

@@ -4,7 +4,7 @@ use log::info;
 use serde::Deserialize;
 
 use crate::http::auth::session::get_username_from_request;
-use crate::http::view::{render_error, render_error_with_action, render_success};
+use crate::http::view::{render_error, render_error_with_action};
 use crate::{
     auth::{
         TwigContext,
@@ -93,6 +93,11 @@ struct SearchQuery {
     q: Option<String>,
 }
 
+/// The exact UTC time behind a relative date, shown on hover.
+pub(crate) fn absolute_date(date: &chrono::DateTime<chrono::Utc>) -> String {
+    format!("{} UTC", date.format("%Y-%m-%d %H:%M"))
+}
+
 fn format_date(date: &chrono::DateTime<chrono::Utc>) -> String {
     let now = chrono::Utc::now();
     let duration = now.signed_duration_since(*date);
@@ -161,8 +166,13 @@ fn render_namespace(
                     type="search"
                     name="q"
                     value=(search_query)
-                    placeholder="Search repositories...";
-                button type="submit" class="twig-btn twig-btn--ghost" { "Search" }
+                    placeholder="Search repositories..."
+                    hx-get=(namespace_href)
+                    hx-target="#repo-results"
+                    hx-select="#repo-results"
+                    hx-swap="outerHTML"
+                    hx-push-url="true"
+                    hx-trigger="input changed delay:200ms";
                 @if !search_query.is_empty() {
                     a class="twig-btn twig-btn--quiet" href=(namespace_href) { "Clear" }
                 }
@@ -172,7 +182,7 @@ fn render_namespace(
                 div id="create-repo-container" {}
             }
 
-            section class="twig-panel twig-panel--flush" {
+            section id="repo-results" class="twig-panel twig-panel--flush" {
                 div class="twig-panel-body" {
                     @if repos.is_empty() {
                         @if search_query.is_empty() {
@@ -198,16 +208,23 @@ fn render_namespace(
                     } @else {
                         div class="twig-colhead" {
                             span { "Repository" }
-                            span { "Last Commit" }
+                            span { "Last commit" }
                         }
                         div class="twig-list" {
                             @for repo in repos {
                                 a class="twig-row" href=(format!("{namespace}/{}", repo.name)) {
                                     span class="twig-row-id" { (repo.name) }
                                     span class="twig-row-meta" {
+                                        @if repo.is_private {
+                                            span class="twig-tag" { "Private" }
+                                        }
                                         span class="twig-sr" { "Last commit: " }
                                         @match repo.last_commit_date {
-                                            Some(date) => { (format_date(&date)) }
+                                            Some(date) => {
+                                                time datetime=(date.to_rfc3339()) title=(absolute_date(&date)) {
+                                                    (format_date(&date))
+                                                }
+                                            }
                                             None => { "No commits" }
                                         }
                                     }
@@ -271,6 +288,37 @@ pub async fn handler(
     }
 }
 
+/// The origin shown in clone and push instructions: `PUBLIC_BASE_URL` when the
+/// server is configured with one, otherwise the scheme and host of this request.
+fn clone_base_url(req: &HttpRequest, server: &config::Server) -> String {
+    if let Some(base) = server.public_base_url() {
+        return base.trim_end_matches('/').to_string();
+    }
+    let info = req.connection_info();
+    format!("{}://{}", info.scheme(), info.host())
+}
+
+/// The result of a successful create, kept on screen so the push instructions
+/// can be read and copied.
+fn render_repo_created(namespace: &str, repo: &str, branch: &str, base: &str) -> maud::Markup {
+    let remote = format!("{base}/{namespace}/{repo}");
+    let commands = format!("git remote add origin {remote}\ngit push -u origin {branch}");
+    maud::html! {
+        div class="twig-notice twig-notice--success" role="status" {
+            p class="twig-eyebrow" { "DONE" }
+            p class="twig-notice-body" {
+                "Created " (namespace) "/" (repo) ". Push an existing project to it with:"
+            }
+            pre class="twig-code" tabindex="0" aria-label="Push commands" {
+                code { (commands) }
+            }
+            div class="twig-notice-actions" {
+                a class="twig-btn twig-btn--primary" href=(format!("/{namespace}/{repo}")) { "Open repository" }
+            }
+        }
+    }
+}
+
 /// Renders the create-repository panel swapped into `#create-repo-container`.
 fn render_create_repo_form(namespace: &str) -> maud::Markup {
     maud::html! {
@@ -295,7 +343,6 @@ fn render_create_repo_form(namespace: &str) -> maud::Markup {
                     "hx-status:4xx"="swap:innerHTML target:#create-repo-result"
                     "hx-status:5xx"="swap:innerHTML target:#create-repo-result"
                     hx-swap="innerHTML"
-                    "hx-on:htmx:after:request"="if(ctx.response.status >= 200 && ctx.response.status < 300) { setTimeout(() => { document.getElementById('create-repo-container').innerHTML = ''; window.location.reload(); }, 1500); }"
                 {
                     div class="twig-field" {
                         label class="twig-label" for="repo_name" { "Repository Name" }
@@ -431,13 +478,10 @@ pub async fn create_repo_handler(
                 "Created repository '{}/{}' via UI for user: {}",
                 namespace, form.repo_name, user_id
             );
-            let success_msg = format!(
-                "Repository '{}' created successfully! You can now push to it using:\n\ngit remote add origin <url>\ngit push -u origin {}",
-                form.repo_name, form.branch
-            );
+            let base = clone_base_url(&req, &server);
             HttpResponse::Ok()
                 .content_type("text/html")
-                .body(render_success(&success_msg).into_string())
+                .body(render_repo_created(namespace, &form.repo_name, &form.branch, &base).into_string())
         }
         Err(e) => {
             log::error!("Failed to initialize bare repository: {e}");

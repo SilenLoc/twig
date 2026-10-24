@@ -7,25 +7,30 @@ fn tree_hub_only_renders_enabled_sections() {
     let minimal = render_tree_hub(false, false, false, None).into_string();
     assert!(minimal.contains("aria-label=\"Manage sections\""));
     assert!(minimal.contains(">Account</a>"));
-    assert!(minimal.contains("href=\"/manage/repositories\">Repository</a>"));
-    assert!(minimal.contains("href=\"/manage/namespaces\""));
+    assert!(minimal.contains("href=\"/settings/tokens\">Access tokens</a>"));
+    assert!(minimal.contains("href=\"/manage/repositories\">Repositories</a>"));
+    assert!(minimal.contains("href=\"/manage/namespaces\">Namespaces</a>"));
+    assert!(!minimal.contains(">Users</a>"));
     assert!(!minimal.contains(">Test</a>"));
     assert!(!minimal.contains(">Data</a>"));
 
     let enabled = render_tree_hub(true, true, true, Some("data")).into_string();
-    assert!(enabled.contains("href=\"/_test\""));
-    assert!(enabled.contains("href=\"/manage/namespaces\""));
+    assert!(enabled.contains("href=\"/_test\">Test</a>"));
     assert!(
-        !enabled.contains("aria-current=\"page\" href=\"/manage/repositories\">Repository</a>")
+        !enabled.contains("aria-current=\"page\" href=\"/manage/repositories\">Repositories</a>")
     );
-    assert!(enabled.contains("href=\"/manage/data\""));
-    assert!(enabled.contains("aria-current=\"page\" href=\"/manage/data\""));
-    assert!(enabled.contains("href=\"/manage/users\">User Management</a>"));
+    assert!(enabled.contains("aria-current=\"page\" href=\"/manage/data\">Data</a>"));
+    assert!(enabled.contains("href=\"/manage/users\">Users</a>"));
     let repository_active =
         render_tree_hub(false, false, false, Some("repositories")).into_string();
     assert!(
         repository_active
-            .contains("aria-current=\"page\" href=\"/manage/repositories\">Repository</a>")
+            .contains("aria-current=\"page\" href=\"/manage/repositories\">Repositories</a>")
+    );
+    let tokens_active = render_tree_hub(false, false, false, Some("tokens")).into_string();
+    assert!(
+        tokens_active
+            .contains("aria-current=\"page\" href=\"/settings/tokens\">Access tokens</a>")
     );
 }
 

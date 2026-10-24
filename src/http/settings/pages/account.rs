@@ -116,7 +116,7 @@ pub async fn settings_page(
 
     let content = maud::html! {
         (crate::http::tree::pages::render_tree_hub(
-            server.is_test_user_enabled(),
+            server.is_test_user(&user.username),
             server.is_configured_admin(&user.username),
             user_management_enabled,
             Some("account"),

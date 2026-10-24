@@ -4,12 +4,18 @@ use super::*;
 fn test_twig_config_parse() {
     let toml_content = r#"
 ignore_for_view = ["skills/", "temp", "drafts/"]
-deleteable = true
+deletable = true
 "#;
     let config = TwigConfig::parse(toml_content).expect("valid config");
     assert_eq!(config.ignore_for_view.len(), 3);
-    assert!(config.deleteable);
+    assert!(config.deletable);
     assert!(!config.private);
+}
+
+#[test]
+fn test_legacy_deleteable_spelling_still_parses() {
+    let config = TwigConfig::parse("deleteable = true\n").expect("valid config");
+    assert!(config.deletable);
 }
 
 #[test]
@@ -143,7 +149,7 @@ fn test_config_parse_errors_are_reported_not_swallowed() {
     let parsed = TwigConfigWithRaw::from_source("not = = valid\n", ".twig.toml");
     assert!(parsed.error.is_some(), "the parse error must be kept");
     assert!(
-        parsed.config.paper.is_none() && !parsed.config.deleteable,
+        parsed.config.paper.is_none() && !parsed.config.deletable,
         "a broken file falls back to defaults so the UI keeps rendering"
     );
     assert_eq!(parsed.filename.as_deref(), Some(".twig.toml"));
@@ -162,7 +168,7 @@ fn test_twig_config_should_ignore_folder() {
     let config = TwigConfig {
         ignore_for_view: vec!["skills".to_string()],
         tabs: vec![],
-        deleteable: false,
+        deletable: false,
         private: false,
         present: PresentConfig::default(),
         paper: None,
@@ -179,7 +185,7 @@ fn test_twig_config_should_ignore_with_slash_pattern() {
     let config = TwigConfig {
         ignore_for_view: vec!["docs/temp".to_string()],
         tabs: vec![],
-        deleteable: false,
+        deletable: false,
         private: false,
         present: PresentConfig::default(),
         paper: None,
@@ -196,7 +202,7 @@ fn test_twig_config_should_ignore_multiple_patterns() {
     let config = TwigConfig {
         ignore_for_view: vec!["node_modules/".to_string(), "temp".to_string()],
         tabs: vec![],
-        deleteable: false,
+        deletable: false,
         private: false,
         present: PresentConfig::default(),
         paper: None,
@@ -221,7 +227,7 @@ fn test_twig_config_should_ignore_folder_with_trailing_slash() {
     let config = TwigConfig {
         ignore_for_view: vec!["build/".to_string()],
         tabs: vec![],
-        deleteable: false,
+        deletable: false,
         private: false,
         present: PresentConfig::default(),
         paper: None,
@@ -238,7 +244,7 @@ fn test_twig_config_should_ignore_exact_file() {
     let config = TwigConfig {
         ignore_for_view: vec!["SECRET.md".to_string()],
         tabs: vec![],
-        deleteable: false,
+        deletable: false,
         private: false,
         present: PresentConfig::default(),
         paper: None,
@@ -254,11 +260,11 @@ fn test_twig_config_should_ignore_exact_file() {
 fn test_twig_config_toml_format_parsing() {
     let toml_content = r#"
 ignore_for_view = ["temp", "scratch/"]
-deleteable = false
+deletable = false
 "#;
     let config = TwigConfig::parse(toml_content).expect("valid config");
     assert_eq!(config.ignore_for_view, vec!["temp", "scratch/"]);
-    assert!(!config.deleteable);
+    assert!(!config.deletable);
 }
 
 #[test]

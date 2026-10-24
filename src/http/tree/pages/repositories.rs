@@ -131,7 +131,7 @@ pub async fn repositories_page(
         {
             let deletable =
                 git::bare::TwigConfig::load(server.project_root(), &namespace.name, &repo.name)
-                    .deleteable;
+                    .deletable;
             managed_repos.push(crate::http::settings::pages::ManagedRepo {
                 namespace: namespace.name.clone(),
                 repo,
@@ -142,7 +142,7 @@ pub async fn repositories_page(
 
     let content = maud::html! {
         (render_tree_hub(
-            server.is_test_user_enabled(),
+            server.is_test_user(&user.username),
             is_site_admin,
             user_management_enabled,
             Some("repositories"),

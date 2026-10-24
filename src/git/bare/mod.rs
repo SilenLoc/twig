@@ -217,7 +217,7 @@ mod tests {
         commit_files(
             &repo_path,
             &[
-                (".twig.toml", "deleteable = true\n"),
+                (".twig.toml", "deletable = true\n"),
                 (".fig.toml", "private = true\n"),
                 ("fig.toml", "private = true\n"),
             ],
@@ -226,7 +226,7 @@ mod tests {
         let handle = RepoHandle::open(temp.to_str().unwrap(), "ns", "both").unwrap();
         let loaded = handle.load_config_with_raw();
         assert_eq!(loaded.filename.as_deref(), Some(".twig.toml"));
-        assert!(loaded.config.deleteable);
+        assert!(loaded.config.deletable);
         assert!(!loaded.config.private, "the .twig.toml file must win");
     }
 
@@ -240,7 +240,7 @@ mod tests {
         commit_files(
             &repo_path,
             &[
-                (".twig", "deleteable = true\n"),
+                (".twig", "deletable = true\n"),
                 (".fig.toml", "private = true\n"),
             ],
         );
@@ -248,7 +248,7 @@ mod tests {
         let handle = RepoHandle::open(temp.to_str().unwrap(), "ns", "short").unwrap();
         let loaded = handle.load_config_with_raw();
         assert_eq!(loaded.filename.as_deref(), Some(".twig"));
-        assert!(loaded.config.deleteable);
+        assert!(loaded.config.deletable);
         assert!(!loaded.config.private, "the .twig file must win");
     }
 

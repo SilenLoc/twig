@@ -10,6 +10,7 @@ fn base_frame() -> TabFrame<'static> {
         username: None,
         page_title: "acme/my-project",
         can_manage_hooks: false,
+        can_edit: true,
         twig_error: None,
         twig_filename: None,
         tabs_config: &[],

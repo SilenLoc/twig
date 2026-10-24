@@ -338,7 +338,7 @@
     persistDraft();
     renderWorkspaceState();
     var saveState = editor.querySelector("[data-repo-edit-save-state]");
-    if (saveState) saveState.textContent = "Draft saved in this tab";
+    if (saveState) saveState.textContent = "Unsaved until committed · kept in this tab";
   }
 
   function setMode(editor, mode) {
@@ -590,7 +590,7 @@
     var saved = document.createElement("span");
     saved.className = "twig-row-meta";
     saved.dataset.repoEditSaveState = "";
-    saved.textContent = "Draft saved in this tab";
+    saved.textContent = "Unsaved until committed · kept in this tab";
     footer.appendChild(type);
     footer.appendChild(saved);
     editor.appendChild(footer);
@@ -956,6 +956,11 @@
       bound = true;
       document.addEventListener("htmx:config:request", beforeRequest);
       document.addEventListener("htmx:after:swap", responseAfterSwap);
+      window.addEventListener("beforeunload", function (event) {
+        if (!draft || !draft.changes || !draft.changes.length) return;
+        event.preventDefault();
+        event.returnValue = "";
+      });
       document.addEventListener("input", function (event) {
         if (
           event.target.matches &&

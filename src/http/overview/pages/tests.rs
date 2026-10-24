@@ -31,7 +31,7 @@ fn render_with_repo_hits(
     search_query: &str,
     username: Option<&str>,
     namespaces: &[(crate::auth::Namespace, String)],
-    repo_hits: &[(String, String)],
+    repo_hits: &[(String, String, bool)],
 ) -> String {
     render_index(&view(search_query), username, namespaces, repo_hits).into_string()
 }
@@ -106,7 +106,7 @@ fn test_search_cluster_preserves_the_get_form_contract() {
         "namespace names are identifiers, so the field is mono: {html}"
     );
     assert!(
-        html.contains("class=\"twig-btn twig-btn--ghost\"") && html.contains(">Search</button>"),
+        html.contains("hx-trigger=\"input changed delay:200ms\""),
         "search is the secondary action: {html}"
     );
 }
@@ -195,7 +195,7 @@ fn test_repo_hits_render_the_namespace_beneath_the_repository() {
         "api",
         None,
         &[],
-        &[("acme".to_owned(), "twig-api".to_owned())],
+        &[("acme".to_owned(), "twig-api".to_owned(), false)],
     );
     assert!(
         html.contains(
@@ -235,7 +235,7 @@ fn test_repo_hits_respect_the_private_filter_and_missing_roots() {
 
 #[test]
 fn test_empty_states_name_their_condition_and_keep_their_copy() {
-    let void = render("", None, &[]);
+    let void = render("", Some("silen"), &[]);
     assert!(
         void.contains("<div class=\"twig-empty\">"),
         "an empty list renders an empty state, not zero rows: {void}"
@@ -306,8 +306,9 @@ fn test_active_search_swaps_the_results_region_as_the_user_types() {
 fn test_htmx_fragment_is_only_the_results_and_the_out_of_band_clear() {
     let fragment = render_results(
         &view("acme"),
+        None,
         &[namespace("acme", "silen")],
-        &[("acme".to_owned(), "twig-api".to_owned())],
+        &[("acme".to_owned(), "twig-api".to_owned(), false)],
     )
     .into_string();
     assert!(
@@ -376,7 +377,7 @@ fn test_signed_in_home_leads_with_pinned_and_hides_the_rest_behind_more() {
         more: false,
         pinned: Some(&pinned),
     };
-    let html = render_results(&view, &namespaces, &[]).into_string();
+    let html = render_results(&view, None, &namespaces, &[]).into_string();
 
     assert!(
         html.contains("<nav class=\"twig-list\" aria-label=\"Pinned namespaces\">")
@@ -402,7 +403,7 @@ fn test_expanded_home_lists_the_others_and_offers_to_collapse() {
         more: true,
         pinned: Some(&pinned),
     };
-    let html = render_results(&view, &namespaces, &[]).into_string();
+    let html = render_results(&view, None, &namespaces, &[]).into_string();
 
     assert!(
         html.contains("<nav class=\"twig-list\" aria-label=\"Other namespaces\">")
@@ -426,7 +427,7 @@ fn test_home_rows_have_no_pin_controls() {
         more: true,
         pinned: Some(&pinned),
     };
-    let html = render_results(&view, &namespaces, &[]).into_string();
+    let html = render_results(&view, None, &namespaces, &[]).into_string();
 
     assert!(
         !html.contains("pin-namespace") && !html.contains(">Pin</button>"),
@@ -443,7 +444,7 @@ fn test_search_shows_one_flat_list_without_the_home_grouping() {
         more: false,
         pinned: Some(&pinned),
     };
-    let html = render_results(&view, &namespaces, &[]).into_string();
+    let html = render_results(&view, None, &namespaces, &[]).into_string();
 
     assert!(
         !html.contains("PINNED") && !html.contains("Show "),
@@ -464,7 +465,7 @@ fn test_signed_in_home_with_no_pins_explains_how_to_pin() {
         more: false,
         pinned: Some(&pinned),
     };
-    let html = render_results(&view, &namespaces, &[]).into_string();
+    let html = render_results(&view, None, &namespaces, &[]).into_string();
 
     assert!(
         html.contains("Pin a namespace from its settings to keep it at the top."),
@@ -484,6 +485,7 @@ fn test_anonymous_visitors_see_the_full_list_without_pin_controls() {
             more: false,
             pinned: None,
         },
+        None,
         &[namespace("acme", "silen"), namespace("hooli", "gavin")],
         &[],
     )

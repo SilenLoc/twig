@@ -171,9 +171,10 @@ pub struct TwigConfig {
     /// Tabs to display. If empty or not present, all tabs are shown.
     #[serde(default)]
     pub tabs: Vec<String>,
-    /// Whether the repository can be deleted from the UI.
-    #[serde(default)]
-    pub deleteable: bool,
+    /// Whether the repository can be deleted from the UI. `deleteable` is the
+    /// spelling older `.twig.toml` files use, and it still parses.
+    #[serde(default, alias = "deleteable")]
+    pub deletable: bool,
     /// Whether the repository is private (read operations require authentication).
     #[serde(default)]
     pub private: bool,

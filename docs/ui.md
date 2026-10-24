@@ -109,7 +109,7 @@ Available to signed-in users:
 ### Manage repositories and namespaces
 
 - **Repository** (`/manage/repositories`) — search the repositories you manage,
-  rename them, and delete those explicitly marked `deleteable = true` in
+  rename them, and delete those explicitly marked `deletable = true` in
   `.twig.toml`.
 - **Namespace** (`/manage/namespaces`) — search the namespaces you manage. Each
   row opens its settings page.

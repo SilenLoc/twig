@@ -26,7 +26,7 @@ ignore_for_view = ["secrets/", "notes.txt", "scratch"]
 tabs = ["markdown", "content", "commits"]
 
 # Whether the repository can be deleted from the Settings page.
-deleteable = false
+deletable = false
 
 # Whether reads (web UI, raw files, Git fetch) require authentication.
 private = false

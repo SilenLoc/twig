@@ -115,7 +115,7 @@ pub async fn user_management_page(
     } else {
         let page = maud::html! {
             (crate::http::tree::pages::render_tree_hub(
-                server.is_test_user_enabled(),
+                server.is_test_user(&scope.user.username),
                 scope.is_site_admin,
                 true,
                 Some("users"),

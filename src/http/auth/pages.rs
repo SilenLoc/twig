@@ -202,13 +202,13 @@ fn render_signup_page() -> maud::Markup {
         }
 
         div class="twig-stack twig-stack--tight" {
-            div class="twig-cluster" {
-                p class="twig-body-sm twig-ink-secondary" { "Need an invite?" }
-                a class="twig-btn twig-btn--ghost" href="/auth/invite" { "Get one here" }
+            p class="twig-body-sm twig-ink-secondary" {
+                "Need an invite? Ask the person running this Twig server."
             }
-            div class="twig-cluster" {
-                p class="twig-body-sm twig-ink-secondary" { "Already have an account?" }
-                a class="twig-btn twig-btn--ghost" href="/auth/login" { "Log in" }
+            p class="twig-body-sm twig-ink-secondary" {
+                "Already have an account? "
+                a href="/auth/login" { "Log in" }
+                "."
             }
         }
     };
@@ -274,9 +274,15 @@ fn render_login_page(return_to: Option<&str>) -> maud::Markup {
             }
         }
 
-        div class="twig-cluster" {
-            p class="twig-body-sm twig-ink-secondary" { "Don't have an account?" }
-            a class="twig-btn twig-btn--ghost" href="/auth/invite" { "Get an invite" }
+        div class="twig-stack twig-stack--tight" {
+            p class="twig-body-sm twig-ink-secondary" {
+                "No account? Ask the person running this Twig server for an invite."
+            }
+            p class="twig-body-sm twig-ink-secondary" {
+                "Have an invite? "
+                a href="/auth/signup" { "Create your account" }
+                "."
+            }
         }
     };
 
@@ -410,7 +416,7 @@ pub fn render_login_success(username: &str) -> maud::Markup {
         div class="twig-notice twig-notice--success" role="status" {
             p class="twig-eyebrow" { "DONE" }
             p class="twig-notice-body" {
-                "Welcome back, " (username) "! You are now logged in. You can create as many namespaces as you want."
+                "Welcome back, " (username) "! You are now logged in."
             }
             div class="twig-notice-actions" {
                 a class="twig-btn twig-btn--primary" href="/auth/namespace" { "Create namespace" }

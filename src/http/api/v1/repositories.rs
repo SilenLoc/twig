@@ -284,7 +284,7 @@ pub async fn delete_repository(
         Ok(path) => path,
         Err(error) => return json_error(error),
     };
-    if !git::bare::TwigConfig::load(server.project_root(), &path.namespace, &path.repo).deleteable {
+    if !git::bare::TwigConfig::load(server.project_root(), &path.namespace, &path.repo).deletable {
         return json_error(ApiError::Forbidden);
     }
     if let Err(error) = std::fs::remove_dir_all(&repo_path) {

@@ -7,12 +7,11 @@ use crate::config;
 use crate::http::view::{render_error, render_success};
 
 use super::UpdateEmailForm;
-use super::shared::{render_account_tabs, render_settings_auth_error, render_settings_navigation};
+use super::shared::{render_settings_auth_error, render_settings_navigation};
 
 /// Renders the settings page body shared by the full-page and HTMX responses.
 pub(super) fn render_settings(user: &crate::auth::User) -> maud::Markup {
     maud::html! {
-        (render_account_tabs("profile"))
         div class="twig-bento" {
             (render_profile_panel(user))
         }
@@ -94,7 +93,7 @@ pub async fn settings_page(
         return Ok(render_error("Failed to load user."));
     };
 
-    let navigation = render_settings_navigation(&server, db, &user).await;
+    let navigation = render_settings_navigation(&server, db, &user, "account").await;
     let content = render_settings(&user);
 
     let content = maud::html! {

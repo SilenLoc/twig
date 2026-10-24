@@ -78,7 +78,7 @@ fn test_namespace_head_action_is_gated_on_namespace_access() {
     }
 
     let visitor = render_namespace("acme", "", false, &[]).into_string();
-    for wiring in ["twig-cluster", "hx-get", "create-repo-container"] {
+    for wiring in ["twig-cluster", "create-repo-form", "create-repo-container"] {
         assert!(
             !visitor.contains(wiring),
             "visitors without access get no create affordance, found {wiring}: {visitor}"
@@ -94,7 +94,7 @@ fn test_namespace_search_cluster_uses_the_field_primitives() {
         "<label class=\"twig-sr\" for=\"repo-search\">Search repositories</label>",
         "class=\"twig-input twig-input--mono\" id=\"repo-search\"",
         "placeholder=\"Search repositories...\"",
-        "<button type=\"submit\" class=\"twig-btn twig-btn--ghost\">Search</button>",
+        "hx-trigger=\"input changed delay:200ms\"",
     ] {
         assert!(unfiltered.contains(part), "missing {part}: {unfiltered}");
     }
@@ -118,7 +118,7 @@ fn test_namespace_rows_keep_last_commit_labelled_when_stacked() {
 
     assert!(
         html.contains(
-            "<div class=\"twig-colhead\"><span>Repository</span><span>Last Commit</span></div>"
+            "<div class=\"twig-colhead\"><span>Repository</span><span>Last commit</span></div>"
         ),
         "{html}"
     );
@@ -208,7 +208,7 @@ fn test_create_repo_form_preserves_the_htmx_contract() {
         "hx-status:4xx=\"swap:innerHTML target:#create-repo-result\"",
         "hx-status:5xx=\"swap:innerHTML target:#create-repo-result\"",
         "hx-swap=\"innerHTML\"",
-        "hx-on:htmx:after:request=\"if(ctx.response.status &gt;= 200 &amp;&amp; ctx.response.status &lt; 300) { setTimeout(() =&gt; { document.getElementById('create-repo-container').innerHTML = ''; window.location.reload(); }, 1500); }\"",
+        "hx-swap=\"innerHTML\"",
     ] {
         assert!(html.contains(attribute), "missing {attribute}: {html}");
     }

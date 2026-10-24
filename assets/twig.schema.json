@@ -18,7 +18,7 @@
       "items": { "type": "string" },
       "default": []
     },
-    "deleteable": {
+    "deletable": {
       "type": "boolean",
       "description": "Whether the repository can be deleted from the UI.",
       "default": false

@@ -85,6 +85,7 @@ pub(super) struct RepoContext {
     pub(super) username: Option<String>,
     pub(super) page_title: String,
     pub(super) can_manage_hooks: bool,
+    pub(super) can_edit: bool,
     pub(super) paper_pages: Vec<String>,
     /// Absolute origin (`https://git.example.com`) the `curl` commands in the
     /// Scripts tab are built from.
@@ -110,6 +111,7 @@ pub(super) struct TabFrame<'a> {
     pub(super) username: Option<&'a str>,
     pub(super) page_title: &'a str,
     pub(super) can_manage_hooks: bool,
+    pub(super) can_edit: bool,
     pub(super) twig_error: Option<&'a str>,
     pub(super) twig_filename: Option<&'a str>,
     pub(super) tabs_config: &'a [String],
@@ -144,6 +146,7 @@ impl RepoContext {
             username: self.username.as_deref(),
             page_title: &self.page_title,
             can_manage_hooks: self.can_manage_hooks,
+            can_edit: self.can_edit,
             twig_error: self.twig_result.error.as_deref(),
             twig_filename: self.twig_result.filename.as_deref(),
             tabs_config: &self.twig_result.config.tabs,
@@ -215,6 +218,14 @@ pub(super) async fn open_repo(
         }
     };
 
+    let can_edit = match can_edit_repository(req, server, auth_state, namespace).await {
+        Ok(can_edit) => can_edit,
+        Err(error) => {
+            log::error!("Failed to resolve workspace permission: {error}");
+            false
+        }
+    };
+
     let paper_pages = super::paper::load_paper_pages(&handle, &twig_result.config);
     let script_groups = twig_result.config.script_groups();
 
@@ -226,6 +237,7 @@ pub(super) async fn open_repo(
         username,
         page_title,
         can_manage_hooks,
+        can_edit,
         paper_pages,
         base_url: super::scripts::script_base_url(req),
         script_groups,
@@ -250,6 +262,29 @@ pub(super) async fn can_manage_hooks(
         namespace,
         server.is_configured_admin(&user.username),
         NamespacePermission::ManageRepositories,
+    )
+    .await
+}
+
+/// Whether the viewer may open the workspace, which needs push access.
+pub(super) async fn can_edit_repository(
+    req: &HttpRequest,
+    server: &config::Server,
+    auth_state: &web::Data<TwigContext>,
+    namespace: &str,
+) -> Result<bool, String> {
+    let Some(user_id) = auth_state.user_id_from_request(req).await else {
+        return Ok(false);
+    };
+    let Some(user) = auth_state.db().get_user_by_id(&user_id).await? else {
+        return Ok(false);
+    };
+    permissions::has(
+        auth_state.db(),
+        &user_id,
+        namespace,
+        server.is_configured_admin(&user.username),
+        NamespacePermission::PushChanges,
     )
     .await
 }

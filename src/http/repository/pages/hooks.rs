@@ -357,11 +357,12 @@ fn render_custom_hook(namespace: &str, repo: &str, hook: &CustomHookInfo) -> Mar
                     }
                 }
                 @if hook.state != CustomHookState::Unsafe {
-                    form method="post" action=(format!("/{namespace}/{repo}/hooks/{}/delete", hook.name)) {
-                        label class="twig-label" {
-                            input type="checkbox" name="confirm" value="yes" required;
-                            "Confirm permanent deletion"
-                        }
+                    form
+                        method="post"
+                        action=(format!("/{namespace}/{repo}/hooks/{}/delete", hook.name))
+                        onsubmit="return confirm('Delete this hook permanently? This cannot be undone.')"
+                    {
+                        input type="hidden" name="confirm" value="yes";
                         button class="twig-btn twig-btn--danger" type="submit" { "Delete hook" }
                     }
                 }

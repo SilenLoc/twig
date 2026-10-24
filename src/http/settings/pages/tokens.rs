@@ -7,7 +7,7 @@ use crate::auth::{Namespace, PersonalAccessToken, TwigContext, User};
 use crate::config;
 use crate::http::view::render_error;
 
-use super::shared::{render_account_tabs, render_settings_auth_error, render_settings_navigation};
+use super::shared::{render_settings_auth_error, render_settings_navigation};
 
 fn render_permission_checkbox(permission: NamespacePermission) -> maud::Markup {
     let label = match permission {
@@ -324,10 +324,9 @@ pub async fn personal_access_tokens_page(
         }
     };
 
-    let navigation = render_settings_navigation(&server, db, &user).await;
+    let navigation = render_settings_navigation(&server, db, &user, "tokens").await;
     let content = maud::html! {
         (navigation)
-        (render_account_tabs("tokens"))
         (render_token_panel("existing", &render_token_list(&tokens, None)))
     };
 
@@ -354,10 +353,9 @@ pub async fn new_personal_access_token_page(
         }
     };
 
-    let navigation = render_settings_navigation(&server, db, &user).await;
+    let navigation = render_settings_navigation(&server, db, &user, "tokens").await;
     let content = maud::html! {
         (navigation)
-        (render_account_tabs("tokens"))
         (render_token_panel("create", &render_create_token_form(&namespaces)))
     };
 
@@ -388,10 +386,9 @@ pub async fn personal_access_token_details_page(
         return Ok(render_error("Token not found."));
     };
 
-    let navigation = render_settings_navigation(&server, db, &user).await;
+    let navigation = render_settings_navigation(&server, db, &user, "tokens").await;
     let content = maud::html! {
         (navigation)
-        (render_account_tabs("tokens"))
         (render_token_details(token))
     };
 

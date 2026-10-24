@@ -285,7 +285,7 @@ pub async fn namespaces_page(
     };
     let content = maud::html! {
         (render_tree_hub(
-            server.is_test_user_enabled(),
+            server.is_test_user(&user.username),
             is_site_admin,
             page_data.user_management_enabled,
             Some("namespaces"),
@@ -396,7 +396,7 @@ pub async fn namespace_settings_page(
 
     let content = maud::html! {
         (render_tree_hub(
-            server.is_test_user_enabled(),
+            server.is_test_user(&user.username),
             is_site_admin,
             page_data.user_management_enabled,
             Some("namespaces"),

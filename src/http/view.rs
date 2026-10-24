@@ -54,7 +54,11 @@ pub fn render_layout(
                         div class="twig-masthead-end" {
                             nav aria-label="Account" class="twig-nav twig-nav--account" {
                             @match username {
-                                Some(_) => {
+                                Some(name) => {
+                                    a class="twig-btn twig-btn--quiet twig-account-name" href="/settings" title="Account settings" {
+                                        span class="twig-sr" { "Signed in as " }
+                                        (name)
+                                    }
                                     form method="POST" action="/auth/logout" {
                                         button class="twig-btn twig-btn--quiet" type="submit" { "Logout" }
                                     }
@@ -98,9 +102,6 @@ pub fn render_workspace_layout(
                 }
                 link rel="icon" type="image/svg+xml" href=(crate::http::assets::url("twig.svg"));
                 script src=(crate::http::assets::url("theme.js")) {}
-                link rel="preconnect" href="https://fonts.googleapis.com";
-                link rel="preconnect" href="https://fonts.gstatic.com" crossorigin;
-                link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&display=swap";
                 link rel="stylesheet" href=(crate::http::assets::url("t.css"));
                 link rel="stylesheet" href=(crate::http::assets::url("twig.css"));
                 meta name="htmx-config" content=(r#"{"implicitInheritance":true,"noSwap":[204,304]}"#);
@@ -127,6 +128,7 @@ pub fn render_theme_toggle() -> maud::Markup {
             aria-label="Switch between E-ink Light and E-ink Dark"
             title="Switch between E-ink Light and E-ink Dark" {
             span class="twig-theme-icon" aria-hidden="true" { "☼" }
+            span class="twig-theme-label" { "Light" }
         }
     }
 }
@@ -295,7 +297,7 @@ mod tests {
                 "{html}"
             );
             assert!(html.contains("twig-theme-toggle"), "{html}");
-            assert!(!html.contains("twig-theme-label"), "{html}");
+            assert!(html.contains("twig-theme-label"), "{html}");
             assert!(
                 index_of(&html, "class=\"twig-masthead-end\"")
                     < index_of(&html, "twig-theme-toggle"),
@@ -394,8 +396,8 @@ mod tests {
             assert!(html.contains(label), "missing nav item {label}: {html}");
         }
         assert!(
-            !html.contains("testuser") && !html.contains("twig-nav-user"),
-            "authenticated nav does not display the account name: {html}"
+            html.contains("twig-account-name") && html.contains(">testuser</a>"),
+            "authenticated nav names the signed-in account and links to settings: {html}"
         );
         assert!(
             !html.contains("/manage/namespaces"),

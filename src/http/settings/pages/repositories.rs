@@ -51,7 +51,7 @@ async fn require_move_namespace_permissions(
 }
 
 /// A repository listed on the manage page. `deletable` mirrors the
-/// `deleteable` flag in its `.twig.toml`; only those rows get a Delete control.
+/// `deletable` flag in its `.twig.toml`; only those rows get a Delete control.
 pub(crate) struct ManagedRepo {
     pub(crate) namespace: String,
     pub(crate) repo: git::bare::RepoInfo,
@@ -93,6 +93,11 @@ pub(crate) fn render_repo_manage_panel(repos: &[ManagedRepo]) -> maud::Markup {
                 }
             } @else {
                 div class="twig-panel-body twig-stack twig-stack--tight" {
+                    p class="twig-hint" {
+                        "Delete appears only for repositories whose .twig.toml sets "
+                        code class="twig-mono" { "deletable = true" }
+                        "."
+                    }
                     input
                         class="twig-input twig-input--mono"
                         type="search"
@@ -108,7 +113,13 @@ pub(crate) fn render_repo_manage_panel(repos: &[ManagedRepo]) -> maud::Markup {
                     @for item in repos {
                         @let full = format!("{}/{}", item.namespace, item.repo.name);
                         div class="twig-row twig-row--form" data-repo-row=(full.to_lowercase()) {
-                            span class="twig-row-id" { (full) }
+                            span class="twig-row-id" {
+                                (full)
+                                @if item.repo.is_private {
+                                    " "
+                                    span class="twig-tag" { "Private" }
+                                }
+                            }
                             div class="twig-row-actions" {
                                 details class="twig-repo-rename" {
                                     summary class="twig-btn" { "Rename" }
@@ -211,9 +222,9 @@ pub async fn delete_repo(
     // Check if repository is marked as deletable in twig.toml
     let twig_config =
         git::bare::TwigConfig::load(server.project_root(), &form.namespace, &form.repo_name);
-    if !twig_config.deleteable {
+    if !twig_config.deletable {
         return HttpResponse::Forbidden()
-            .body(render_error("Repository is not marked as deletable. Set deleteable=true in .twig.toml to enable deletion.").into_string());
+            .body(render_error("Repository is not marked as deletable. Set deletable = true in .twig.toml to enable deletion.").into_string());
     }
 
     // Delete the repository

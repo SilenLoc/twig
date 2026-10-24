@@ -367,16 +367,25 @@ body.twig-workspace-shell {
 .twig-theme-toggle {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
+    gap: 0.4em;
     flex: 0 0 auto;
-    inline-size: var(--twig-control-h);
-    padding-inline: 0;
+    padding-inline: 0.6em;
     border-color: var(--twig-rule-strong);
     color: var(--twig-ink-primary);
 }
 
-.twig-nav--account .twig-nav-user {
-    max-inline-size: 8ch;
+.twig-theme-label {
+    font-family: var(--twig-mono);
+    font-size: var(--twig-t-data);
+}
+
+.twig-account-name {
+    max-inline-size: 16ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--twig-mono);
+    font-size: var(--twig-t-data);
 }
 
 .twig-theme-toggle:hover {
@@ -864,6 +873,17 @@ body.twig-workspace-shell {
     letter-spacing: 0.01em;
     font-variant-numeric: tabular-nums;
     overflow-wrap: anywhere;
+}
+
+.twig-tag {
+    display: inline-block;
+    margin-inline-end: 0.75em;
+    padding-inline: 0.4em;
+    border: 1px solid currentColor;
+    font-family: var(--twig-mono);
+    font-size: var(--twig-t-data);
+    letter-spacing: 0.04em;
+    text-transform: lowercase;
 }
 
 .twig-access-list {

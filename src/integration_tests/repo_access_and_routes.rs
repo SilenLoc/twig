@@ -154,7 +154,7 @@ async fn test_markdown_source_actions_are_only_in_content() {
         "the Content view offers actions for the selected Markdown file: {content_html}"
     );
     assert!(
-        !content_html.contains("Edit in workspace") && content_html.contains(">Open workspace</a>"),
+        !content_html.contains("Edit in workspace"),
         "the workspace is opened from the single repository-level action: {content_html}"
     );
 

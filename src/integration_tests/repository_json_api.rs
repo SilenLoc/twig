@@ -701,7 +701,7 @@ async fn api_namespace_and_repository_lifecycle_requires_scoped_management_right
         .commit_changes(
             &[crate::git::bare::RepoEditChange::Upsert {
                 path: ".twig.toml".to_string(),
-                content: b"deleteable = true\n".to_vec(),
+                content: b"deletable = true\n".to_vec(),
             }],
             expected_head,
             &user.username,

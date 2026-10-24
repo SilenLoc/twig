@@ -109,7 +109,7 @@ fn test_twig_schema_lists_every_config_key() {
     for key in [
         "ignore_for_view",
         "tabs",
-        "deleteable",
+        "deletable",
         "private",
         "present",
         "paper",
