@@ -30,13 +30,8 @@ const NAMESPACE_SEARCH_SCRIPT: &str = r"
 /// row links to that namespace's settings page.
 pub(super) fn render_namespaces_page(manageable_namespaces: &[String]) -> maud::Markup {
     maud::html! {
-        section class="twig-panel" aria-labelledby="manage-namespace-heading" {
-            header class="twig-panel-head" {
-                h2 class="twig-eyebrow" id="manage-namespace-heading" { "Namespaces" }
-            }
-
-            @if manageable_namespaces.is_empty() {
-                div class="twig-empty" {
+        section class="twig-panel" {
+            @if manageable_namespaces.is_empty() {                div class="twig-empty" {
                     p class="twig-eyebrow" { "NO NAMESPACES" }
                     p class="twig-empty-body" { "You don't have any namespaces to manage." }
                 }

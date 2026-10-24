@@ -29,8 +29,7 @@ fn tree_hub_only_renders_enabled_sections() {
     );
     let tokens_active = render_tree_hub(false, false, false, Some("tokens")).into_string();
     assert!(
-        tokens_active
-            .contains("aria-current=\"page\" href=\"/settings/tokens\">Access tokens</a>")
+        tokens_active.contains("aria-current=\"page\" href=\"/settings/tokens\">Access tokens</a>")
     );
 }
 
@@ -43,7 +42,7 @@ fn namespace_list_is_one_searchable_scrollable_panel() {
         1,
         "{html}"
     );
-    assert!(html.contains(">Namespaces</h2>"), "{html}");
+    assert!(!html.contains(">Namespaces</h2>"), "{html}");
     assert!(
         html.contains(
             "<input class=\"twig-input twig-input--mono\" type=\"search\" id=\"namespace-search\""

@@ -80,24 +80,13 @@ fn test_account_page_renders_account_panel_only() {
     );
     assert_eq!(
         html.matches("class=\"twig-panel-head\"").count(),
-        1,
-        "every panel declares a head: {html}"
+        0,
+        "the redundant Account title is removed: {html}"
     );
     assert_eq!(
         html.matches("<h2 class=\"twig-eyebrow\"").count(),
-        1,
-        "panel headings are h2 eyebrows under the page h1: {html}"
-    );
-    let heading_id = "settings-profile-heading";
-    assert!(
-        html.contains(&format!("aria-labelledby=\"{heading_id}\"")),
-        "panel {heading_id} must be named by its heading: {html}"
-    );
-    assert!(
-        html.contains(&format!(
-            "<h2 class=\"twig-eyebrow\" id=\"{heading_id}\">Account</h2>"
-        )),
-        "missing heading {heading_id}: {html}"
+        0,
+        "the redundant Account title is removed: {html}"
     );
     assert!(
         !html.contains("<h4"),

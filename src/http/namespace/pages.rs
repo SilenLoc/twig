@@ -479,9 +479,9 @@ pub async fn create_repo_handler(
                 namespace, form.repo_name, user_id
             );
             let base = clone_base_url(&req, &server);
-            HttpResponse::Ok()
-                .content_type("text/html")
-                .body(render_repo_created(namespace, &form.repo_name, &form.branch, &base).into_string())
+            HttpResponse::Ok().content_type("text/html").body(
+                render_repo_created(namespace, &form.repo_name, &form.branch, &base).into_string(),
+            )
         }
         Err(e) => {
             log::error!("Failed to initialize bare repository: {e}");

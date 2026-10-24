@@ -29,11 +29,7 @@ pub(super) fn render_settings(user: &crate::auth::User) -> maud::Markup {
 /// Identity values plus the email update form.
 pub(super) fn render_profile_panel(user: &crate::auth::User) -> maud::Markup {
     maud::html! {
-        section class="twig-panel" aria-labelledby="settings-profile-heading" {
-            header class="twig-panel-head" {
-                h2 class="twig-eyebrow" id="settings-profile-heading" { "Account" }
-            }
-            div class="twig-panel-body twig-stack" {
+        section class="twig-panel" {            div class="twig-panel-body twig-stack" {
                 div class="twig-field" {
                     span class="twig-label" { "Username" }
                     p class="twig-body twig-break" { (user.username) }

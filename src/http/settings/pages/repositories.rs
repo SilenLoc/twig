@@ -81,11 +81,7 @@ const REPO_SEARCH_SCRIPT: &str = r#"
 /// Rename, and Delete when the repository is marked deletable.
 pub(crate) fn render_repo_manage_panel(repos: &[ManagedRepo]) -> maud::Markup {
     maud::html! {
-        section class="twig-panel" aria-labelledby="manage-repo-heading" {
-            header class="twig-panel-head" {
-                h2 class="twig-eyebrow" id="manage-repo-heading" { "Repositories" }
-            }
-
+        section class="twig-panel" {
             @if repos.is_empty() {
                 div class="twig-empty" {
                     p class="twig-eyebrow" { "NO REPOSITORIES" }

@@ -99,11 +99,7 @@ pub(super) fn render_user_management_content(
             }
             (render_invitation_list(invitations, false))
         } @else {
-            section class="twig-panel" aria-labelledby="users-heading" {
-                header class="twig-panel-head" {
-                    h1 class="twig-eyebrow" id="users-heading" { "Users" }
-                }
-                div class="twig-panel-body" {
+            section class="twig-panel" {                div class="twig-panel-body" {
                     @if users.is_empty() {
                         p class="twig-empty-body" { "No users found." }
                     } @else {
