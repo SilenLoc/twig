@@ -101,7 +101,10 @@ rest of the UI keeps working with default settings.
 Available to signed-in users:
 
 - Update the account email.
-- Access tokens (`/settings/tokens`).
+- Access tokens (`/settings/tokens`): create a token on the "Create token" tab,
+  review tokens in a table on the "Existing tokens" tab, revoke from that table,
+  and open a token's details page (`/settings/tokens/{id}`) for its namespace
+  access.
 
 ### Manage repositories and namespaces
 

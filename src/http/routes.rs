@@ -71,7 +71,9 @@ fn configure_repository_routes(cfg: &mut web::ServiceConfig) {
     // Settings and the namespace UI must precede dynamic repository routes.
     cfg.service(settings::pages::settings_page)
         .service(settings::pages::personal_access_tokens_page)
+        .service(settings::pages::new_personal_access_token_page)
         .service(settings::pages::create_personal_access_token)
+        .service(settings::pages::personal_access_token_details_page)
         .service(settings::pages::revoke_personal_access_token)
         .service(settings::pages::update_email)
         .service(settings::pages::move_repo)

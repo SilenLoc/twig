@@ -56,7 +56,8 @@ pub use profile::{settings_page, update_email};
 pub(crate) use repositories::{ManagedRepo, render_repo_manage_panel};
 pub use repositories::{delete_repo, move_repo, rename_repo};
 pub use tokens::{
-    create_personal_access_token, personal_access_tokens_page, revoke_personal_access_token,
+    create_personal_access_token, new_personal_access_token_page,
+    personal_access_token_details_page, personal_access_tokens_page, revoke_personal_access_token,
 };
 
 #[cfg(test)]

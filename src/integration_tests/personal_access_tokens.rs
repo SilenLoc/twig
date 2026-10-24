@@ -63,8 +63,22 @@ async fn account_tokens_create_list_and_revoke_real_scoped_token() {
     .await;
     assert_eq!(page.status(), StatusCode::OK);
     let body = String::from_utf8_lossy(&test::read_body(page).await).into_owned();
+    for expected in ["Access Tokens", "Existing tokens", "NO TOKENS"] {
+        assert!(body.contains(expected), "missing {expected}: {body}");
+    }
+
+    let create_page = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri("/settings/tokens/new")
+            .cookie(actix_web::cookie::Cookie::new("session", session.clone()))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(create_page.status(), StatusCode::OK);
+    let body = String::from_utf8_lossy(&test::read_body(create_page).await).into_owned();
     for expected in [
-        "Access Tokens",
+        "Create token",
         "token-lifecycle-ns",
         "All namespaces I can access",
         "Select all read permissions",
@@ -91,7 +105,6 @@ async fn account_tokens_create_list_and_revoke_real_scoped_token() {
     let body = String::from_utf8_lossy(&test::read_body(created).await).into_owned();
     assert_eq!(created_status, StatusCode::OK, "{body}");
     assert!(body.contains("COPY THIS TOKEN NOW"), "{body}");
-    assert!(body.contains("Build server"), "{body}");
     let secret = extract_personal_access_token(&body);
     assert!(secret.starts_with("twigt_"));
 
@@ -139,16 +152,36 @@ async fn account_tokens_create_list_and_revoke_real_scoped_token() {
         !body.contains(&secret),
         "secret must not be shown again: {body}"
     );
+    assert!(body.contains("Build server"));
     assert!(body.contains(&tokens[0].token_hint));
+    assert!(body.contains(&format!("/settings/tokens/{}", tokens[0].id)));
+
+    let details = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri(&format!("/settings/tokens/{}", tokens[0].id))
+            .cookie(actix_web::cookie::Cookie::new("session", session.clone()))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(details.status(), StatusCode::OK);
+    let body = String::from_utf8_lossy(&test::read_body(details).await).into_owned();
+    assert!(body.contains("Build server"));
+    assert!(body.contains(&tokens[0].token_hint));
+    assert!(body.contains("token-lifecycle-ns"));
     assert!(body.contains("View namespace"));
     assert!(body.contains("Push changes"));
+    assert!(body.contains("Never"));
 
     let (other_user, other_session) = create_user_session(&db, "token-lifecycle-other").await;
     let other_listing = test::call_service(
         &app,
         test::TestRequest::get()
             .uri("/settings/tokens")
-            .cookie(actix_web::cookie::Cookie::new("session", other_session))
+            .cookie(actix_web::cookie::Cookie::new(
+                "session",
+                other_session.clone(),
+            ))
             .to_request(),
     )
     .await;
@@ -156,6 +189,21 @@ async fn account_tokens_create_list_and_revoke_real_scoped_token() {
     assert!(body.contains("NO TOKENS"));
     assert!(!body.contains(&tokens[0].token_hint));
     assert_ne!(user.id, other_user.id);
+
+    let foreign_details = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri(&format!("/settings/tokens/{}", tokens[0].id))
+            .cookie(actix_web::cookie::Cookie::new(
+                "session",
+                other_session.clone(),
+            ))
+            .to_request(),
+    )
+    .await;
+    let body = String::from_utf8_lossy(&test::read_body(foreign_details).await).into_owned();
+    assert!(body.contains("Token not found"));
+    assert!(!body.contains(&tokens[0].token_hint));
 
     let revoked = test::call_service(
         &app,

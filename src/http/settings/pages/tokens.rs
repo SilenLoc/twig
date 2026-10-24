@@ -47,6 +47,23 @@ fn render_permission_choices() -> maud::Markup {
     }
 }
 
+fn render_token_tabs(active: &str) -> maud::Markup {
+    maud::html! {
+        nav class="twig-tabs twig-tabs--nested" aria-label="Access token views" {
+            a
+                class="twig-tab"
+                aria-current=[(active == "create").then_some("page")]
+                href="/settings/tokens/new"
+            { "Create token" }
+            a
+                class="twig-tab"
+                aria-current=[(active == "existing").then_some("page")]
+                href="/settings/tokens"
+            { "Existing tokens" }
+        }
+    }
+}
+
 fn render_token_list_contents(
     tokens: &[PersonalAccessToken],
     notice: Option<&str>,
@@ -60,37 +77,44 @@ fn render_token_list_contents(
         @if tokens.is_empty() {
             div class="twig-empty" {
                 p class="twig-eyebrow" { "NO TOKENS" }
-                p class="twig-empty-body" { "You have not created any access tokens." }
+                p class="twig-empty-body" {
+                    "You have not created any access tokens. "
+                    a href="/settings/tokens/new" { "Create a token" }
+                    "."
+                }
             }
         } @else {
-            div class="twig-list" {
-                @for token in tokens {
-                    div class="twig-row" {
-                        div class="twig-row-id" { (token.name) }
-                        p class="twig-row-meta" { "twigt_••••" (token.token_hint) }
-                        p class="twig-row-meta" {
-                            "Created " (token.created_at)
-                            " · Last used " (token.last_used_at.as_deref().unwrap_or("Never"))
-                            " · Expires " (token.expires_at.as_deref().unwrap_or("Never"))
+            div class="twig-table-scroll" {
+                table class="twig-table" {
+                    thead {
+                        tr {
+                            th scope="col" { "Name" }
+                            th scope="col" { "Token" }
+                            th scope="col" { "Last used" }
+                            th scope="col" { "Actions" }
                         }
-                        @for scope in &token.scopes {
-                            p class="twig-row-meta" {
-                                (scope.namespace_name) ": "
-                                @for (index, permission) in scope.permissions.iter().enumerate() {
-                                    @if index > 0 { ", " }
-                                    (permission.display_name())
+                    }
+                    tbody {
+                        @for token in tokens {
+                            tr {
+                                td {
+                                    a href=(format!("/settings/tokens/{}", token.id)) { (token.name) }
+                                }
+                                td class="twig-data" { "twigt_••••" (token.token_hint) }
+                                td { (token.last_used_at.as_deref().unwrap_or("Never")) }
+                                td {
+                                    form
+                                        class="twig-form-actions"
+                                        hx-post=(format!("/settings/tokens/{}/revoke", token.id))
+                                        hx-target="#token-list"
+                                        hx-swap="outerHTML"
+                                        hx-confirm=(format!("Revoke '{}' permanently?", token.name))
+                                        "hx-status:4xx"="swap:innerHTML target:#token-list"
+                                    {
+                                        button class="twig-btn twig-btn--danger" type="submit" { "Revoke" }
+                                    }
                                 }
                             }
-                        }
-                        form
-                            class="twig-form-actions"
-                            hx-post=(format!("/settings/tokens/{}/revoke", token.id))
-                            hx-target="#token-list"
-                            hx-swap="outerHTML"
-                            hx-confirm=(format!("Revoke '{}' permanently?", token.name))
-                            "hx-status:4xx"="swap:innerHTML target:#token-list"
-                        {
-                            button class="twig-btn twig-btn--danger" type="submit" { "Revoke" }
                         }
                     }
                 }
@@ -117,11 +141,58 @@ fn render_created_secret(secret: &str) -> maud::Markup {
     }
 }
 
-fn render_token_panel(
-    namespaces: &[Namespace],
-    tokens: &[PersonalAccessToken],
-    created_secret: Option<&str>,
-) -> maud::Markup {
+fn render_create_token_form(namespaces: &[Namespace]) -> maud::Markup {
+    maud::html! {
+        form
+            class="twig-form"
+            hx-post="/settings/tokens"
+            hx-target="#token-create-result"
+            hx-swap="innerHTML"
+            "hx-status:4xx"="swap:innerHTML target:#token-create-result"
+        {
+            div class="twig-field" {
+                label class="twig-label" for="token-name" { "Token name" }
+                input
+                    class="twig-input"
+                    type="text"
+                    name="name"
+                    id="token-name"
+                    required
+                    maxlength="80"
+                    placeholder="e.g. Build server";
+            }
+
+            fieldset class="twig-stack twig-stack--tight" {
+                legend class="twig-subsection" { "1. Choose namespaces" }
+                p class="twig-body-sm twig-ink-tertiary" {
+                    "All namespaces selects the namespaces you can access now; namespaces you gain later are not added automatically."
+                }
+                label {
+                    input type="checkbox" name="all_namespaces" value="true";
+                    " All namespaces I can access"
+                }
+                @for namespace in namespaces {
+                    label {
+                        input
+                            type="checkbox"
+                            name=(format!("namespace_{}", namespace.id))
+                            value="true";
+                        " " (namespace.name)
+                    }
+                }
+            }
+
+            (render_permission_choices())
+
+            div class="twig-form-actions" {
+                button class="twig-btn twig-btn--primary" type="submit" { "Create token" }
+            }
+            div id="token-create-result" aria-live="polite" {}
+        }
+    }
+}
+
+fn render_token_panel(active: &str, content: &maud::Markup) -> maud::Markup {
     maud::html! {
         div class="twig-bento" {
             section class="twig-panel" aria-labelledby="settings-tokens-heading" {
@@ -132,66 +203,104 @@ fn render_token_panel(
                     p class="twig-body-sm twig-ink-secondary" {
                         "Create a token for Git and API access. Tokens do not expire and can be revoked at any time."
                     }
+                    (render_token_tabs(active))
+                    (content)
+                }
+            }
+        }
+    }
+}
 
-                    @if let Some(secret) = created_secret {
-                        (render_created_secret(secret))
+fn render_token_details(token: &PersonalAccessToken) -> maud::Markup {
+    maud::html! {
+        div class="twig-bento" {
+            section class="twig-panel" aria-labelledby="token-details-heading" {
+                header class="twig-panel-head" {
+                    a class="twig-btn twig-btn--quiet" href="/settings/tokens" { "Back to tokens" }
+                    h2 class="twig-eyebrow" id="token-details-heading" { (token.name) }
+                }
+                div class="twig-panel-body twig-stack" {
+                    div class="twig-field" {
+                        span class="twig-label" { "Token" }
+                        p class="twig-body twig-break" { "twigt_••••" (token.token_hint) }
+                    }
+                    div class="twig-field" {
+                        span class="twig-label" { "Created" }
+                        p class="twig-body" { (token.created_at) }
+                    }
+                    div class="twig-field" {
+                        span class="twig-label" { "Last used" }
+                        p class="twig-body" { (token.last_used_at.as_deref().unwrap_or("Never")) }
+                    }
+                    div class="twig-field" {
+                        span class="twig-label" { "Expires" }
+                        p class="twig-body" { (token.expires_at.as_deref().unwrap_or("Never")) }
                     }
 
-                    form
-                        class="twig-form"
-                        hx-post="/settings/tokens"
-                        hx-target="#token-create-result"
-                        hx-swap="innerHTML"
-                        "hx-status:4xx"="swap:innerHTML target:#token-create-result"
-                    {
-                        h3 class="twig-subsection" { "Create a token" }
-                        div class="twig-field" {
-                            label class="twig-label" for="token-name" { "Token name" }
-                            input
-                                class="twig-input"
-                                type="text"
-                                name="name"
-                                id="token-name"
-                                required
-                                maxlength="80"
-                                placeholder="e.g. Build server";
-                        }
-
-                        fieldset class="twig-stack twig-stack--tight" {
-                            legend class="twig-subsection" { "1. Choose namespaces" }
-                            p class="twig-body-sm twig-ink-tertiary" {
-                                "All namespaces selects the namespaces you can access now; namespaces you gain later are not added automatically."
-                            }
-                            label {
-                                input type="checkbox" name="all_namespaces" value="true";
-                                " All namespaces I can access"
-                            }
-                            @for namespace in namespaces {
-                                label {
-                                    input
-                                        type="checkbox"
-                                        name=(format!("namespace_{}", namespace.id))
-                                        value="true";
-                                    " " (namespace.name)
+                    section aria-labelledby="token-access-heading" {
+                        h3 class="twig-subsection" id="token-access-heading" { "Namespace access" }
+                        @if token.scopes.is_empty() {
+                            p class="twig-body-sm twig-ink-tertiary" { "This token has no namespace access." }
+                        } @else {
+                            div class="twig-table-scroll" {
+                                table class="twig-table" {
+                                    thead {
+                                        tr {
+                                            th scope="col" { "Namespace" }
+                                            th scope="col" { "Permissions" }
+                                        }
+                                    }
+                                    tbody {
+                                        @for scope in &token.scopes {
+                                            tr {
+                                                td { (scope.namespace_name) }
+                                                td {
+                                                    @for (index, permission) in scope.permissions.iter().enumerate() {
+                                                        @if index > 0 { ", " }
+                                                        (permission.display_name())
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
-
-                        (render_permission_choices())
-
-                        div class="twig-form-actions" {
-                            button class="twig-btn twig-btn--primary" type="submit" { "Create token" }
-                        }
-                        div id="token-create-result" aria-live="polite" {}
-                    }
-
-                    section aria-labelledby="existing-tokens-heading" {
-                        h3 class="twig-subsection" id="existing-tokens-heading" { "Existing tokens" }
-                        (render_token_list(tokens, None))
                     }
                 }
             }
         }
+    }
+}
+
+fn render_tokens_response(
+    req: &HttpRequest,
+    username: &str,
+    content: maud::Markup,
+) -> maud::Markup {
+    if req.headers().get("HX-Request").is_some() {
+        content
+    } else {
+        crate::http::view::render_layout(&content, Some(username), Some("Access Tokens"))
+    }
+}
+
+async fn load_signed_in_user(
+    req: &HttpRequest,
+    auth_state: &TwigContext,
+) -> Result<User, maud::Markup> {
+    let Some(user_id) = auth_state.user_id_from_request(req).await else {
+        let message = if req.cookie("session").is_some() {
+            "Session expired. Please log in again."
+        } else {
+            "Not logged in. Please log in first."
+        };
+        return Err(render_settings_auth_error(req, message));
+    };
+
+    match auth_state.db().get_user_by_id(&user_id).await {
+        Ok(Some(user)) => Ok(user),
+        _ => Err(render_error("Failed to load user.")),
     }
 }
 
@@ -201,27 +310,13 @@ pub async fn personal_access_tokens_page(
     server: web::Data<config::Server>,
     auth_state: web::Data<TwigContext>,
 ) -> actix_web::Result<maud::Markup> {
-    let Some(user_id) = auth_state.user_id_from_request(&req).await else {
-        let message = if req.cookie("session").is_some() {
-            "Session expired. Please log in again."
-        } else {
-            "Not logged in. Please log in first."
-        };
-        return Ok(render_settings_auth_error(&req, message));
+    let user = match load_signed_in_user(&req, &auth_state).await {
+        Ok(user) => user,
+        Err(markup) => return Ok(markup),
     };
 
     let db = auth_state.db();
-    let Ok(Some(user)) = db.get_user_by_id(&user_id).await else {
-        return Ok(render_error("Failed to load user."));
-    };
-    let namespaces = match accessible_namespaces(db, &server, &user).await {
-        Ok(namespaces) => namespaces,
-        Err(error) => {
-            log::error!("Failed to load accessible namespaces for token settings: {error}");
-            return Ok(render_error("Failed to load namespaces."));
-        }
-    };
-    let tokens = match db.list_personal_access_tokens(&user_id).await {
+    let tokens = match db.list_personal_access_tokens(&user.id).await {
         Ok(tokens) => tokens,
         Err(error) => {
             log::error!("Failed to list personal access tokens: {error}");
@@ -233,18 +328,74 @@ pub async fn personal_access_tokens_page(
     let content = maud::html! {
         (navigation)
         (render_account_tabs("tokens"))
-        (render_token_panel(&namespaces, &tokens, None))
+        (render_token_panel("existing", &render_token_list(&tokens, None)))
     };
 
-    if req.headers().get("HX-Request").is_some() {
-        Ok(content)
-    } else {
-        Ok(crate::http::view::render_layout(
-            &content,
-            Some(&user.username),
-            Some("Access Tokens"),
-        ))
-    }
+    Ok(render_tokens_response(&req, &user.username, content))
+}
+
+#[get("/settings/tokens/new")]
+pub async fn new_personal_access_token_page(
+    req: HttpRequest,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<TwigContext>,
+) -> actix_web::Result<maud::Markup> {
+    let user = match load_signed_in_user(&req, &auth_state).await {
+        Ok(user) => user,
+        Err(markup) => return Ok(markup),
+    };
+
+    let db = auth_state.db();
+    let namespaces = match accessible_namespaces(db, &server, &user).await {
+        Ok(namespaces) => namespaces,
+        Err(error) => {
+            log::error!("Failed to load accessible namespaces for token settings: {error}");
+            return Ok(render_error("Failed to load namespaces."));
+        }
+    };
+
+    let navigation = render_settings_navigation(&server, db, &user).await;
+    let content = maud::html! {
+        (navigation)
+        (render_account_tabs("tokens"))
+        (render_token_panel("create", &render_create_token_form(&namespaces)))
+    };
+
+    Ok(render_tokens_response(&req, &user.username, content))
+}
+
+#[get("/settings/tokens/{token_id}")]
+pub async fn personal_access_token_details_page(
+    req: HttpRequest,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<TwigContext>,
+    token_id: web::Path<String>,
+) -> actix_web::Result<maud::Markup> {
+    let user = match load_signed_in_user(&req, &auth_state).await {
+        Ok(user) => user,
+        Err(markup) => return Ok(markup),
+    };
+
+    let db = auth_state.db();
+    let tokens = match db.list_personal_access_tokens(&user.id).await {
+        Ok(tokens) => tokens,
+        Err(error) => {
+            log::error!("Failed to load personal access token details: {error}");
+            return Ok(render_error("Failed to load access tokens."));
+        }
+    };
+    let Some(token) = tokens.iter().find(|token| token.id == *token_id) else {
+        return Ok(render_error("Token not found."));
+    };
+
+    let navigation = render_settings_navigation(&server, db, &user).await;
+    let content = maud::html! {
+        (navigation)
+        (render_account_tabs("tokens"))
+        (render_token_details(token))
+    };
+
+    Ok(render_tokens_response(&req, &user.username, content))
 }
 
 #[post("/settings/tokens")]
@@ -314,15 +465,7 @@ pub async fn create_personal_access_token(
         .iter()
         .map(|namespace| namespace.id.clone())
         .collect::<Vec<_>>();
-    let mut tokens = match db.list_personal_access_tokens(&user_id).await {
-        Ok(tokens) => tokens,
-        Err(error) => {
-            log::error!("Failed to load current tokens before creation: {error}");
-            return HttpResponse::InternalServerError()
-                .body(render_error("Failed to load access tokens.").into_string());
-        }
-    };
-    let (token, secret) = match auth_state
+    let (_, secret) = match auth_state
         .issue_personal_access_token(&user_id, name, &namespace_ids, &selected_permissions, None)
         .await
     {
@@ -333,17 +476,10 @@ pub async fn create_personal_access_token(
                 .body(render_error("Failed to create access token.").into_string());
         }
     };
-    tokens.insert(0, token);
 
-    let content = maud::html! {
-        (render_created_secret(&secret))
-        div id="token-list" hx-swap-oob="outerHTML" {
-            (render_token_list_contents(&tokens, None))
-        }
-    };
     HttpResponse::Ok()
         .content_type("text/html")
-        .body(content.into_string())
+        .body(render_created_secret(&secret).into_string())
 }
 
 #[post("/settings/tokens/{token_id}/revoke")]
