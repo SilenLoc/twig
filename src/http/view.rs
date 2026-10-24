@@ -128,7 +128,6 @@ pub fn render_theme_toggle() -> maud::Markup {
             aria-label="Switch between E-ink Light and E-ink Dark"
             title="Switch between E-ink Light and E-ink Dark" {
             span class="twig-theme-icon" aria-hidden="true" { "☼" }
-            span class="twig-theme-label" { "Light" }
         }
     }
 }
@@ -297,7 +296,7 @@ mod tests {
                 "{html}"
             );
             assert!(html.contains("twig-theme-toggle"), "{html}");
-            assert!(html.contains("twig-theme-label"), "{html}");
+            assert!(!html.contains("twig-theme-label"), "{html}");
             assert!(
                 index_of(&html, "class=\"twig-masthead-end\"")
                     < index_of(&html, "twig-theme-toggle"),

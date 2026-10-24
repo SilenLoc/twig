@@ -17,8 +17,6 @@
             button.setAttribute("title", label);
             var icon = button.querySelector(".twig-theme-icon");
             if (icon) icon.textContent = theme === "light" ? "☾" : "☼";
-            var name = button.querySelector(".twig-theme-label");
-            if (name) name.textContent = theme === "light" ? "Dark" : "Light";
         });
     }
 
