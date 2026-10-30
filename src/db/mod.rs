@@ -9,6 +9,7 @@ pub mod invites;
 pub mod migration;
 pub mod namespaces;
 pub mod personal_access_tokens;
+pub mod pull_requests;
 pub mod sessions;
 pub mod sqlite;
 pub mod test_pins;

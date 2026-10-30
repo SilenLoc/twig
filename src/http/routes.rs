@@ -20,6 +20,7 @@ pub(crate) fn configure_routes(cfg: &mut web::ServiceConfig) {
         .service(assets::assets)
         .service(api::version_endpoint);
     configure_v1_api_routes(cfg);
+    api::compat::configure(cfg);
 
     cfg.service(info::pages::index);
     configure_auth_routes(cfg);
@@ -113,6 +114,23 @@ fn configure_repository_routes(cfg: &mut web::ServiceConfig) {
         .service(repository::pages::markdown_tab_handler)
         .service(repository::pages::content_tab_handler)
         .service(repository::pages::commits_tab_handler)
+        .service(repository::pages::pulls_tab_handler)
+        .service(repository::pages::new_pull_page_handler)
+        .service(repository::pages::create_pull_handler)
+        .service(repository::pages::pull_page_handler)
+        .service(repository::pages::comment_handler)
+        .service(repository::pages::edit_comment_handler)
+        .service(repository::pages::delete_comment_handler)
+        .service(repository::pages::state_handler)
+        .service(repository::pages::edit_form_handler)
+        .service(repository::pages::edit_handler)
+        .service(repository::pages::reaction_handler)
+        .service(repository::pages::review_handler)
+        .service(repository::pages::reviewer_handler)
+        .service(repository::pages::merge_handler)
+        .service(repository::pages::commits_handler)
+        .service(repository::pages::files_handler)
+        .service(repository::pages::inline_comment_handler)
         .service(repository::pages::config_tab_handler)
         .service(repository::pages::present_tab_handler)
         .service(repository::pages::present_print_handler)

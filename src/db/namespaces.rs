@@ -418,3 +418,38 @@ impl Database {
 #[cfg(test)]
 #[path = "namespaces/tests.rs"]
 mod tests;
+
+impl Database {
+    /// Everyone with a role in the namespace, by username. Owners and
+    /// contributors can both push, so each member is a valid assignee.
+    pub async fn list_namespace_members(
+        &self,
+        namespace: &str,
+    ) -> Result<Vec<crate::auth::User>, String> {
+        let mut rows = self
+            .conn()
+            .await?
+            .query(
+                "SELECT u.id, u.username, u.email, u.password_hash, u.created_at
+                 FROM namespace_members nm
+                 JOIN namespaces n ON n.id = nm.namespace_id
+                 JOIN users u ON u.id = nm.user_id
+                 WHERE n.name = ?1
+                 ORDER BY u.username ASC",
+                crate::db::sqlite::params![namespace],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+        let mut members = Vec::new();
+        while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
+            members.push(crate::auth::User {
+                id: row.get(0).map_err(|e| e.to_string())?,
+                username: row.get(1).map_err(|e| e.to_string())?,
+                email: row.get(2).map_err(|e| e.to_string())?,
+                password_hash: row.get(3).map_err(|e| e.to_string())?,
+                created_at: row.get(4).map_err(|e| e.to_string())?,
+            });
+        }
+        Ok(members)
+    }
+}

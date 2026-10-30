@@ -68,6 +68,7 @@ mod hooks;
 mod markdown;
 mod paper;
 mod presentation;
+mod pulls;
 mod scripts;
 mod tab_handlers;
 mod tabs;
@@ -87,6 +88,12 @@ use paper::*;
 #[cfg(test)]
 use presentation::*;
 pub use presentation::{present_print_handler, slide_handler};
+pub use pulls::{
+    comment_handler, commits_handler, create_pull_handler, delete_comment_handler,
+    edit_comment_handler, edit_form_handler, edit_handler, files_handler, inline_comment_handler,
+    merge_handler, new_pull_page_handler, pull_page_handler, pulls_tab_handler, reaction_handler,
+    review_handler, reviewer_handler, state_handler,
+};
 #[cfg(test)]
 use scripts::*;
 pub use tab_handlers::{

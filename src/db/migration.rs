@@ -243,6 +243,100 @@ const MIGRATIONS: &[Migration] = &[
             FOREIGN KEY (namespace_id) REFERENCES namespaces(id)
         );",
     },
+    Migration {
+        name: "create_pull_requests_table",
+        sql: r"CREATE TABLE IF NOT EXISTS pull_requests (
+            id TEXT PRIMARY KEY,
+            repo_id TEXT NOT NULL,
+            number INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            body TEXT NOT NULL DEFAULT '',
+            state TEXT NOT NULL,
+            author_user_id TEXT NOT NULL,
+            head_branch TEXT NOT NULL,
+            base_branch TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            closed_at TEXT,
+            merged_at TEXT,
+            merged_by_user_id TEXT,
+            merge_commit_oid TEXT,
+            UNIQUE (repo_id, number)
+        );",
+    },
+    Migration {
+        name: "create_pull_requests_repo_state_index",
+        sql: r"CREATE INDEX IF NOT EXISTS idx_pull_requests_repo_state
+            ON pull_requests(repo_id, state, updated_at);",
+    },
+    Migration {
+        name: "create_pull_request_comments_table",
+        sql: r"CREATE TABLE IF NOT EXISTS pull_request_comments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            pull_request_id TEXT NOT NULL,
+            author_user_id TEXT NOT NULL,
+            body TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT
+        );",
+    },
+    Migration {
+        name: "create_pull_request_comments_index",
+        sql: r"CREATE INDEX IF NOT EXISTS idx_pull_request_comments_pr
+            ON pull_request_comments(pull_request_id, created_at);",
+    },
+    Migration {
+        name: "create_pull_request_reviews_table",
+        sql: r"CREATE TABLE IF NOT EXISTS pull_request_reviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            pull_request_id TEXT NOT NULL,
+            author_user_id TEXT NOT NULL,
+            state TEXT NOT NULL,
+            body TEXT NOT NULL DEFAULT '',
+            commit_oid TEXT NOT NULL,
+            submitted_at TEXT NOT NULL
+        );",
+    },
+    Migration {
+        name: "add_review_id_to_pull_request_comments",
+        sql: "ALTER TABLE pull_request_comments ADD COLUMN review_id INTEGER;",
+    },
+    Migration {
+        name: "add_path_to_pull_request_comments",
+        sql: "ALTER TABLE pull_request_comments ADD COLUMN path TEXT;",
+    },
+    Migration {
+        name: "add_old_position_to_pull_request_comments",
+        sql: "ALTER TABLE pull_request_comments ADD COLUMN old_position INTEGER;",
+    },
+    Migration {
+        name: "add_new_position_to_pull_request_comments",
+        sql: "ALTER TABLE pull_request_comments ADD COLUMN new_position INTEGER;",
+    },
+    Migration {
+        name: "add_commit_oid_to_pull_request_comments",
+        sql: "ALTER TABLE pull_request_comments ADD COLUMN commit_oid TEXT;",
+    },
+    Migration {
+        name: "create_pull_request_reviewers_table",
+        sql: r"CREATE TABLE IF NOT EXISTS pull_request_reviewers (
+            pull_request_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            requested_at TEXT NOT NULL,
+            PRIMARY KEY (pull_request_id, user_id)
+        );",
+    },
+    Migration {
+        name: "create_pull_request_reactions_table",
+        sql: r"CREATE TABLE IF NOT EXISTS pull_request_reactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            target_key TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE (target_key, user_id, content)
+        );",
+    },
 ];
 
 async fn prepare_migrations(conn: &crate::db::sqlite::Connection) -> Result<Vec<String>, String> {

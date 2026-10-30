@@ -144,6 +144,59 @@ pub fn process_markdown(markdown: &str, vars: &HashMap<String, String>) -> Strin
     ast_to_html(events)
 }
 
+/// Renders Markdown written by someone who is not the repository owner, such as
+/// a pull request comment. Raw HTML is shown as escaped text, and links or images
+/// whose destination uses a script-capable scheme point nowhere.
+pub fn render_untrusted_markdown(markdown: &str) -> String {
+    let events = markdown_to_ast(markdown)
+        .into_iter()
+        .map(|event| match event {
+            Event::Html(text) | Event::InlineHtml(text) => Event::Text(text),
+            Event::Start(Tag::Link {
+                link_type,
+                dest_url,
+                title,
+                id,
+            }) => Event::Start(Tag::Link {
+                link_type,
+                dest_url: safe_destination(dest_url),
+                title,
+                id,
+            }),
+            Event::Start(Tag::Image {
+                link_type,
+                dest_url,
+                title,
+                id,
+            }) => Event::Start(Tag::Image {
+                link_type,
+                dest_url: safe_destination(dest_url),
+                title,
+                id,
+            }),
+            other => other,
+        });
+    let mut html_output = String::new();
+    html::push_html(&mut html_output, events);
+    html_output
+}
+
+fn safe_destination(destination: CowStr<'_>) -> CowStr<'_> {
+    let normalized: String = destination
+        .chars()
+        .filter(|character| !character.is_ascii_whitespace() && !character.is_ascii_control())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    if ["javascript:", "vbscript:", "data:"]
+        .iter()
+        .any(|scheme| normalized.starts_with(scheme))
+    {
+        CowStr::Borrowed("#")
+    } else {
+        destination
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -262,5 +315,47 @@ mod tests {
             html.contains("<pre><code class=\"language-text\">fn main() {}\n</code></pre>"),
             "{html}"
         );
+    }
+}
+
+#[cfg(test)]
+mod untrusted_tests {
+    use super::*;
+
+    #[test]
+    fn raw_html_is_shown_as_text_not_markup() {
+        let html = render_untrusted_markdown("hello <script>alert(1)</script> <b>bold</b>");
+        assert!(!html.contains("<script>"), "{html}");
+        assert!(!html.contains("<b>"), "{html}");
+        assert!(html.contains("&lt;script&gt;"), "{html}");
+    }
+
+    #[test]
+    fn script_schemes_in_links_and_images_are_neutralised() {
+        for markdown in [
+            "[x](javascript:alert(1))",
+            "[x](JaVa\tScRiPt:alert(1))",
+            "[x]( javascript:alert(1))",
+            "![x](data:text/html;base64,PHNjcmlwdD4=)",
+            "[x](vbscript:msgbox)",
+        ] {
+            let html = render_untrusted_markdown(markdown);
+            assert!(
+                !html.to_ascii_lowercase().contains("javascript:"),
+                "{markdown} -> {html}"
+            );
+            assert!(
+                !html.to_ascii_lowercase().contains("vbscript:"),
+                "{markdown} -> {html}"
+            );
+            assert!(!html.contains("data:"), "{markdown} -> {html}");
+        }
+    }
+
+    #[test]
+    fn ordinary_markdown_still_renders() {
+        let html = render_untrusted_markdown("**Retries** with [docs](https://example.com/a).");
+        assert!(html.contains("<strong>Retries</strong>"), "{html}");
+        assert!(html.contains("href=\"https://example.com/a\""), "{html}");
     }
 }

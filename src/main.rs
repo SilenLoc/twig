@@ -17,6 +17,7 @@ mod http;
 mod info;
 mod integration_tests;
 mod md;
+mod pulls;
 
 fn init_logging(config: &config::Server) {
     let log_filter = format!("{},tracing::span=warn", config.log_level());

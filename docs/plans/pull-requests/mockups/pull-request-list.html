@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mockup: repository pull requests tab</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; color: #1f2328; background: #fff; }
+  header { padding: 12px 24px; border-bottom: 1px solid #d0d7de; }
+  .crumbs { color: #57606a; font-size: 14px; }
+  .tabs { display: flex; gap: 4px; padding: 0 24px; border-bottom: 1px solid #d0d7de; }
+  .tabs a { padding: 10px 12px; color: #57606a; text-decoration: none; border-bottom: 2px solid transparent; font-size: 14px; }
+  .tabs a[aria-current="page"] { color: #1f2328; border-bottom-color: #fd8c73; font-weight: 600; }
+  main { padding: 16px 24px; }
+  .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .search { flex: 1; padding: 6px 10px; border: 1px solid #d0d7de; border-radius: 6px; }
+  .btn { padding: 6px 12px; border: 1px solid #d0d7de; border-radius: 6px; background: #f6f8fa; font-size: 14px; }
+  .btn-primary { background: #1f883d; border-color: #1f883d; color: #fff; }
+  .box { border: 1px solid #d0d7de; border-radius: 6px; overflow: hidden; }
+  .box-head { background: #f6f8fa; padding: 10px 16px; border-bottom: 1px solid #d0d7de; display: flex; gap: 16px; font-size: 14px; }
+  .box-head a { color: #57606a; text-decoration: none; }
+  .box-head a[aria-current="true"] { color: #1f2328; font-weight: 600; }
+  .row { display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #d0d7de; font-size: 14px; }
+  .row:last-child { border-bottom: 0; }
+  .state-open { color: #1a7f37; }
+  .state-merged { color: #8250df; }
+  .state-closed { color: #cf222e; }
+  .title { font-weight: 600; color: #1f2328; text-decoration: none; }
+  .meta { color: #57606a; font-size: 12px; margin-top: 4px; }
+  .branch { font-family: ui-monospace, monospace; background: #ddf4ff; padding: 0 4px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="crumbs">Namespaces / acme / <strong>tooling</strong></div>
+</header>
+<nav class="tabs">
+  <a href="#">Documentation</a>
+  <a href="#">Content</a>
+  <a href="#">Commits</a>
+  <a href="#" aria-current="page">Pull requests</a>
+  <a href="#">Config</a>
+  <a href="#">License</a>
+</nav>
+<main>
+  <div class="toolbar">
+    <input class="search" type="search" placeholder="Search pull requests..." value="">
+    <button class="btn btn-primary">New pull request</button>
+  </div>
+  <div class="box">
+    <div class="box-head">
+      <a href="#" aria-current="true">&#9675; 2 Open</a>
+      <a href="#">&#10003; 14 Closed</a>
+      <span style="margin-left:auto">Author &middot; Labels &middot; Sort</span>
+    </div>
+    <div class="row">
+      <span class="state-open" aria-label="Open">&#9675;</span>
+      <div>
+        <a class="title" href="#">Add retry to the release uploader</a>
+        <div class="meta">#42 opened 2 hours ago by silen &middot; <span class="branch">feature/retry</span> into <span class="branch">main</span> &middot; 3 comments</div>
+      </div>
+    </div>
+    <div class="row">
+      <span class="state-open" aria-label="Open">&#9675;</span>
+      <div>
+        <a class="title" href="#">WIP: installer for ARM builds</a>
+        <div class="meta">#41 opened yesterday by ci-bot &middot; <span class="branch">arm-installer</span> into <span class="branch">main</span></div>
+      </div>
+    </div>
+  </div>
+</main>
+</body>
+</html>

@@ -167,8 +167,8 @@ pub(super) fn render_tab_response(
 }
 
 /// Every tab a repository can show.
-pub(super) const TAB_IDS: [&str; 8] = [
-    "markdown", "paper", "content", "commits", "config", "present", "scripts", "license",
+pub(super) const TAB_IDS: [&str; 9] = [
+    "markdown", "paper", "content", "commits", "pulls", "config", "present", "scripts", "license",
 ];
 
 /// The tab the repository home shows: the first configured tab, else Markdown
@@ -264,11 +264,12 @@ pub(super) fn render_repo_crumbs(namespace: &str, repo: &str, can_edit: bool) ->
 
 /// Renders a tab navigation bar. `tabs_config` lists the only tabs to show
 /// when set; every tab additionally requires its content to exist.
-pub(super) const DEFAULT_TABS: [(&str, &str, Option<OptionalTab>); 8] = [
+pub(super) const DEFAULT_TABS: [(&str, &str, Option<OptionalTab>); 9] = [
     ("markdown", "Documentation", None),
     ("paper", "Paper", Some(OptionalTab::Paper)),
     ("content", "Content", None),
     ("commits", "Commits", None),
+    ("pulls", "Pull requests", None),
     ("config", "Config", Some(OptionalTab::Config)),
     ("present", "Present", Some(OptionalTab::Present)),
     ("scripts", "Scripts", Some(OptionalTab::Scripts)),
@@ -303,6 +304,7 @@ pub(super) fn configured_tab(
         "paper" => ("paper", "Paper", Some(OptionalTab::Paper)),
         "content" => ("content", "Content", None),
         "commits" => ("commits", "Commits", None),
+        "pulls" => ("pulls", "Pull requests", None),
         "config" => ("config", "Config", Some(OptionalTab::Config)),
         "present" => ("present", "Present", Some(OptionalTab::Present)),
         "scripts" => ("scripts", "Scripts", Some(OptionalTab::Scripts)),

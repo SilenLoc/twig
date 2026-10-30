@@ -82,7 +82,16 @@ pub enum CommitFileOutcome {
 }
 
 mod commit;
+mod pulls;
 mod read;
+
+#[cfg(test)]
+#[path = "handle/pulls_tests.rs"]
+mod pulls_tests;
+
+pub use pulls::{
+    CommitSummary, DiffFile, DiffLine, FileStatus, LineKind, MergeBuild, MergeStrategy,
+};
 
 #[cfg(test)]
 #[path = "handle/tests.rs"]

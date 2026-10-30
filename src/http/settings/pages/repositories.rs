@@ -224,8 +224,20 @@ pub async fn delete_repo(
     }
 
     // Delete the repository
+    let repo_id =
+        git::bare::RepoHandle::open(server.project_root(), &form.namespace, &form.repo_name)
+            .and_then(|handle| handle.repo_id())
+            .ok();
     match std::fs::remove_dir_all(&repo_path) {
         Ok(()) => {
+            if let Some(repo_id) = repo_id
+                && let Err(error) = auth_state
+                    .db()
+                    .delete_pull_requests_for_repo(&repo_id)
+                    .await
+            {
+                log::error!("Failed to remove pull requests of deleted repository: {error}");
+            }
             info!(
                 "Deleted repository '{}/{}' by user: {}",
                 form.namespace, form.repo_name, user_id

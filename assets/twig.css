@@ -3267,3 +3267,198 @@ body.twig-workspace-shell {
         display: none;
     }
 }
+
+/* Pull requests. Layout follows Forgejo's request list, conversation, and
+   compare pages, drawn with the same tokens as the rest of Twig. */
+
+.twig-pr-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--twig-space-4);
+}
+
+.twig-pr-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--twig-space-4);
+    border-block-end: 1px solid var(--twig-rule);
+}
+
+.twig-pr-filter {
+    padding-block: var(--twig-space-2);
+    color: var(--twig-ink-secondary);
+    text-decoration: none;
+    border-block-end: 2px solid transparent;
+}
+
+.twig-pr-filter[aria-current="page"] {
+    color: var(--twig-ink-primary);
+    border-block-end-color: var(--twig-accent-500);
+}
+
+.twig-pr-row {
+    min-block-size: auto;
+}
+
+.twig-pr-row-title {
+    display: flex;
+    align-items: baseline;
+    gap: var(--twig-space-2);
+    font-weight: 600;
+}
+
+.twig-pr-state {
+    display: inline-flex;
+    align-items: center;
+    padding-inline: var(--twig-space-2);
+    border: 1px solid var(--twig-rule);
+    font-size: var(--twig-t-data);
+    color: var(--twig-ink-secondary);
+}
+
+.twig-pr-state[data-state="open"] {
+    color: var(--twig-signal-ok);
+    border-color: currentColor;
+}
+
+.twig-pr-state[data-state="closed"] {
+    color: var(--twig-signal-danger);
+    border-color: currentColor;
+}
+
+.twig-pr-title-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--twig-space-4);
+}
+
+.twig-pr-number {
+    color: var(--twig-ink-tertiary);
+    font-weight: 400;
+}
+
+.twig-pr-byline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--twig-space-2);
+    color: var(--twig-ink-secondary);
+    font-size: var(--twig-t-body-sm);
+}
+
+.twig-pr-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: var(--twig-space-4);
+}
+
+.twig-pr-entry {
+    border: 1px solid var(--twig-rule);
+    background-color: var(--twig-surface-0);
+}
+
+.twig-pr-entry-head {
+    padding: var(--twig-space-2) var(--twig-space-4);
+    background-color: var(--twig-surface-1);
+    border-block-end: 1px solid var(--twig-rule);
+    color: var(--twig-ink-secondary);
+    font-size: var(--twig-t-body-sm);
+}
+
+.twig-pr-entry-author {
+    color: var(--twig-ink-primary);
+    font-weight: 600;
+}
+
+.twig-pr-entry-body {
+    padding: var(--twig-space-4);
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+}
+
+.twig-pr-body {
+    white-space: pre-wrap;
+    font-family: inherit;
+}
+
+.twig-pr-reactions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--twig-space-2);
+    padding: 0 var(--twig-space-4) var(--twig-space-3);
+}
+
+.twig-pr-reaction-form {
+    margin: 0;
+}
+
+.twig-pr-reaction {
+    min-block-size: 1.75rem;
+    padding-inline: var(--twig-space-2);
+    border: 1px solid var(--twig-rule);
+    background-color: var(--twig-surface-1);
+    color: var(--twig-ink-secondary);
+    font: inherit;
+    font-size: var(--twig-t-body-sm);
+    cursor: pointer;
+}
+
+.twig-pr-reaction[aria-pressed="true"] {
+    border-color: var(--twig-accent-500);
+    color: var(--twig-ink-primary);
+}
+
+.twig-pr-entry-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: var(--twig-space-3);
+    padding: var(--twig-space-3) var(--twig-space-4);
+    border-block-start: 1px solid var(--twig-rule);
+}
+
+.twig-pr-entry-tools form {
+    margin: 0;
+}
+
+.twig-pr-edit {
+    flex: 1 1 100%;
+}
+
+.twig-pr-edit summary {
+    cursor: pointer;
+    color: var(--twig-ink-secondary);
+}
+
+.twig-pr-composer {
+    border: 1px solid var(--twig-rule);
+    padding: var(--twig-space-4);
+    background-color: var(--twig-surface-0);
+}
+
+.twig-pr-compare-grid {
+    display: grid;
+    gap: var(--twig-space-6);
+    grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 48rem) {
+    .twig-pr-compare-grid {
+        grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    }
+}
+
+.twig-pr-branches {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--twig-space-2);
+}
+
+.twig-pr-branches select {
+    min-inline-size: 0;
+}

@@ -145,12 +145,25 @@ pub fn json_error(error: ApiError) -> HttpResponse {
 
 pub fn json_payload_error(
     error: actix_web::error::JsonPayloadError,
-    _request: &HttpRequest,
+    request: &HttpRequest,
 ) -> actix_web::Error {
-    let response = if matches!(&error, actix_web::error::JsonPayloadError::Overflow { .. }) {
-        ApiError::PayloadTooLarge.into_response()
-    } else {
-        ApiError::BadRequest("Invalid JSON request body".to_string()).into_response()
+    let overflow = matches!(&error, actix_web::error::JsonPayloadError::Overflow { .. });
+    // Forgejo-compatible routes answer in Forgejo's error shape; Twig's own routes keep theirs.
+    let forgejo_route =
+        request.path().starts_with("/api/v1/repos/") || request.path().starts_with("/api/v1/user");
+    let response = match (overflow, forgejo_route) {
+        (true, false) => ApiError::PayloadTooLarge.into_response(),
+        (false, false) => {
+            ApiError::BadRequest("Invalid JSON request body".to_string()).into_response()
+        }
+        (true, true) => super::compat::compat_error(
+            actix_web::http::StatusCode::PAYLOAD_TOO_LARGE,
+            "The request payload is too large",
+        ),
+        (false, true) => super::compat::compat_error(
+            actix_web::http::StatusCode::BAD_REQUEST,
+            "Invalid JSON request body",
+        ),
     };
     actix_web::error::InternalError::from_response(error, response).into()
 }

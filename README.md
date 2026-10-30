@@ -60,6 +60,7 @@ configuration reference.
 | [API](docs/api.md) | Application version endpoint |
 | [Git Backend](docs/git-backend.md) | Clone, fetch, push, authentication, and repository creation |
 | [Web UI](docs/ui.md) | Pages, account access, settings, and optional admin tools |
+| [Pull Requests](docs/pull-requests.md) | Requests, reviews, merges, and the Forgejo-compatible API used by T3 Code and `fj`/`tea` |
 | [Environment Variables](docs/environment-variables.md) | Runtime configuration |
 
 These Markdown files are also embedded in the application and shown under

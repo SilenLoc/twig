@@ -65,7 +65,8 @@ fn test_tabs_preserve_every_htmx_navigation_attribute() {
     )
     .into_string();
     let tabs = [
-        "markdown", "paper", "content", "commits", "config", "present", "scripts", "license",
+        "markdown", "paper", "content", "commits", "pulls", "config", "present", "scripts",
+        "license",
     ];
 
     for tab in tabs {
@@ -116,14 +117,27 @@ fn test_tabs_render_only_available_views_in_order() {
     let html = render_tabs(&frame_with(&[]), "markdown").into_string();
     assert_eq!(
         tab_labels(&html),
-        vec!["Documentation", "Content", "Commits", "License"],
+        vec![
+            "Documentation",
+            "Content",
+            "Commits",
+            "Pull requests",
+            "License"
+        ],
         "unconfigured repositories hide Config, Present, Paper and Scripts: {html}"
     );
 
     let html = render_tabs(&frame_with(&[OptionalTab::Paper]), "paper").into_string();
     assert_eq!(
         tab_labels(&html),
-        vec!["Documentation", "Paper", "Content", "Commits", "License"],
+        vec![
+            "Documentation",
+            "Paper",
+            "Content",
+            "Commits",
+            "Pull requests",
+            "License"
+        ],
         "a configured paper slots in after Documentation: {html}"
     );
 

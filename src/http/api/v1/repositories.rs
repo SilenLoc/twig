@@ -287,9 +287,21 @@ pub async fn delete_repository(
     if !git::bare::TwigConfig::load(server.project_root(), &path.namespace, &path.repo).deletable {
         return json_error(ApiError::Forbidden);
     }
+    let repo_id =
+        crate::git::bare::RepoHandle::open(server.project_root(), &path.namespace, &path.repo)
+            .and_then(|handle| handle.repo_id())
+            .ok();
     if let Err(error) = std::fs::remove_dir_all(&repo_path) {
         log::error!("Failed to delete API repository: {error}");
         return json_error(ApiError::Internal);
+    }
+    if let Some(repo_id) = repo_id
+        && let Err(error) = auth_state
+            .db()
+            .delete_pull_requests_for_repo(&repo_id)
+            .await
+    {
+        log::error!("Failed to remove pull requests of deleted repository: {error}");
     }
     HttpResponse::Ok().json(MutationResponse {
         resource: format!(

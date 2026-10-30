@@ -71,6 +71,18 @@ pub async fn git_handler(
         Err(response) => return response,
     };
 
+    if matches!(kind, twig_git::backend::GitRequestKind::Push) {
+        let encoding = req
+            .headers()
+            .get("Content-Encoding")
+            .and_then(|value| value.to_str().ok());
+        if targets_pull_refs(&body.bytes, encoding) {
+            log::warn!("Refused a push to a pull request ref in {namespace}/{clean_repo}");
+            return HttpResponse::Forbidden()
+                .body("Twig manages refs/pull/* for pull requests. Push a branch instead.");
+        }
+    }
+
     if is_write_request(&kind) {
         let Some(authenticated_user) = authenticated_user.as_ref() else {
             return HttpResponse::InternalServerError().body("Git authorization state is missing");
@@ -94,6 +106,19 @@ pub async fn git_handler(
     let namespace_role = authenticated_user
         .as_ref()
         .map(|authenticated_user| authenticated_user.namespace_role);
+
+    if matches!(
+        kind,
+        twig_git::backend::GitRequestKind::AdvertiseRefs(twig_git::backend::GitService::ReadRef)
+    ) {
+        crate::pulls::refresh_for_fetch(
+            auth_state.db(),
+            server.project_root(),
+            &namespace,
+            &clean_repo,
+        )
+        .await;
+    }
 
     let git_backend_config = twig_git::backend::Config::new(server.project_root());
     let namespace = namespace.clone();
@@ -121,6 +146,47 @@ pub async fn git_handler(
             log::error!("Git HTTP backend blocking task failed: {e}");
             HttpResponse::InternalServerError().body("blocking task failed")
         }
+    }
+}
+
+/// Whether a receive-pack request updates a `refs/pull/` ref. Those refs are Twig's:
+/// each mirrors a request's head. The ref commands come first, as pkt-lines ended by a
+/// flush packet, so they can be read without the pack. A compressed body cannot be read
+/// here, so it is refused rather than guessed at.
+pub fn targets_pull_refs(body: &[u8], content_encoding: Option<&str>) -> bool {
+    if content_encoding.is_some_and(|encoding| !encoding.eq_ignore_ascii_case("identity")) {
+        return true;
+    }
+    let mut rest = body;
+    loop {
+        let Some(header) = rest.get(..4) else {
+            return false;
+        };
+        let Some(length) = std::str::from_utf8(header)
+            .ok()
+            .and_then(|hex| usize::from_str_radix(hex, 16).ok())
+        else {
+            return false;
+        };
+        if length == 0 {
+            return false;
+        }
+        if length < 4 || rest.len() < length {
+            return false;
+        }
+        // A ref command is `<old> <new> <ref>`, optionally followed by NUL and capabilities.
+        let line = &rest[4..length];
+        let command = line.split(|byte| *byte == 0).next().unwrap_or_default();
+        let command = String::from_utf8_lossy(command);
+        let refname = command
+            .trim_end_matches('\n')
+            .split(' ')
+            .nth(2)
+            .unwrap_or_default();
+        if refname.starts_with("refs/pull/") {
+            return true;
+        }
+        rest = &rest[length..];
     }
 }
 
@@ -467,5 +533,52 @@ mod tests {
             response.headers().get("content-type").unwrap(),
             "text/plain"
         );
+    }
+}
+
+#[cfg(test)]
+mod pull_ref_guard_tests {
+    use super::targets_pull_refs;
+
+    /// One pkt-line: four hex digits of length (including themselves), then the payload.
+    fn pkt(payload: &str) -> String {
+        format!("{:04x}{payload}", payload.len() + 4)
+    }
+
+    const OLD: &str = "0000000000000000000000000000000000000000";
+    const NEW: &str = "1111111111111111111111111111111111111111";
+
+    #[test]
+    fn a_push_to_a_pull_ref_is_detected_even_after_other_commands() {
+        let body = format!(
+            "{}{}0000PACK",
+            pkt(&format!("{OLD} {NEW} refs/heads/main\n")),
+            pkt(&format!(
+                "{OLD} {NEW} refs/pull/9/head\0report-status side-band-64k\n"
+            )),
+        );
+        assert!(targets_pull_refs(body.as_bytes(), None));
+    }
+
+    #[test]
+    fn ordinary_branch_pushes_are_allowed() {
+        let body = format!(
+            "{}0000PACK",
+            pkt(&format!(
+                "{OLD} {NEW} refs/heads/feature/pulls-are-fine\0report-status\n"
+            )),
+        );
+        assert!(!targets_pull_refs(body.as_bytes(), None));
+    }
+
+    #[test]
+    fn compressed_or_unreadable_bodies_fail_closed() {
+        assert!(targets_pull_refs(b"0000", Some("gzip")));
+        assert!(!targets_pull_refs(b"0000", Some("identity")));
+        assert!(
+            !targets_pull_refs(b"zz", None),
+            "a body that is not pkt-lines has no ref commands"
+        );
+        assert!(!targets_pull_refs(b"", None));
     }
 }

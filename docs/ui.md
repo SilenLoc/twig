@@ -106,6 +106,14 @@ Available to signed-in users:
   and open a token's details page (`/settings/tokens/{id}`) for its namespace
   access.
 
+#### Pull requests (`/{namespace}/{repo}/pulls`)
+
+The **Pull requests** tab lists a repository's requests, open or closed. **New
+pull request** compares two branches and creates a request. A request has three
+views: Conversation (the timeline, comments, reviews, reactions, and the merge
+box), Commits, and Files changed, with inline comments on lines. See
+[Pull Requests](pull-requests.md) for who may do what.
+
 ### Manage repositories and namespaces
 
 - **Repository** (`/manage/repositories`) — search the repositories you manage,

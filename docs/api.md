@@ -145,3 +145,11 @@ Errors are JSON with a stable code and human-readable message:
 Common statuses are `400` for invalid input, `401` for absent/invalid credentials, `403` for insufficient permissions, `404` for missing resources, `409` for conflicts/stale branch tips, `413` for oversize payloads, and `500` for internal failures. Internal database and filesystem details are logged server-side and are not returned.
 
 Signup/login, account settings, personal-access-token creation/revocation, database administration, test endpoints, and Git Smart HTTP are not JSON API routes. Existing UI/public Git behavior is unchanged; the authentication requirement applies to `/api/` endpoints.
+
+## Forgejo-compatible API
+
+Pull requests, reviews, and the repository routes used by T3 Code and the
+Forgejo and Gitea command-line tools live under `/api/v1/repos/{owner}/{repo}`,
+`/api/v1/user`, and `/api/v1/version`. They use Forgejo's request and response
+shapes and error body (`{"message": ...}`), and accept `Authorization: token`.
+See [Pull Requests](pull-requests.md) for the endpoint table and the permission rules.

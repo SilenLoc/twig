@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mockup: pull request conversation</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; color: #1f2328; }
+  header { padding: 12px 24px; border-bottom: 1px solid #d0d7de; color: #57606a; font-size: 14px; }
+  main { padding: 16px 24px; max-width: 1100px; }
+  h1 { font-size: 24px; font-weight: 400; margin: 0 0 8px; }
+  h1 .num { color: #57606a; }
+  .state { display: inline-block; padding: 4px 10px; border-radius: 999px; color: #fff; background: #1a7f37; font-size: 14px; margin-right: 8px; }
+  .byline { color: #57606a; font-size: 14px; margin-bottom: 16px; }
+  .branch { font-family: ui-monospace, monospace; background: #ddf4ff; padding: 0 4px; border-radius: 4px; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid #d0d7de; margin-bottom: 16px; font-size: 14px; }
+  .tabs a { padding: 8px 12px; color: #57606a; text-decoration: none; border-bottom: 2px solid transparent; }
+  .tabs a[aria-current="page"] { color: #1f2328; border-bottom-color: #fd8c73; font-weight: 600; }
+  .cols { display: grid; grid-template-columns: 1fr 260px; gap: 24px; }
+  .comment { border: 1px solid #d0d7de; border-radius: 6px; margin-bottom: 16px; }
+  .comment-head { background: #f6f8fa; padding: 8px 12px; font-size: 13px; color: #57606a; border-bottom: 1px solid #d0d7de; }
+  .comment-body { padding: 12px; font-size: 14px; line-height: 1.5; }
+  .review-approved { color: #1a7f37; font-weight: 600; }
+  .review-changes { color: #cf222e; font-weight: 600; }
+  .merge-box { border: 1px solid #d0d7de; border-radius: 6px; font-size: 14px; }
+  .merge-box > div { padding: 12px 16px; border-bottom: 1px solid #d0d7de; }
+  .merge-box > div:last-child { border-bottom: 0; }
+  .ok { color: #1a7f37; }
+  .btn { padding: 6px 12px; border: 1px solid #d0d7de; border-radius: 6px; background: #f6f8fa; font-size: 14px; }
+  .btn-merge { background: #1f883d; border-color: #1f883d; color: #fff; }
+  .btn-danger { color: #cf222e; }
+  select { padding: 5px 8px; border-radius: 6px; border: 1px solid #d0d7de; }
+  textarea { width: 100%; box-sizing: border-box; min-height: 90px; border: 1px solid #d0d7de; border-radius: 6px; padding: 8px; font-family: inherit; }
+  .composer-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+</style>
+</head>
+<body>
+<header>acme / tooling &middot; Pull requests</header>
+<main>
+  <h1>Add retry to the release uploader <span class="num">#42</span></h1>
+  <div>
+    <span class="state">Open</span>
+    <span class="byline">silen wants to merge 3 commits into <span class="branch">main</span> from <span class="branch">feature/retry</span></span>
+  </div>
+  <nav class="tabs">
+    <a href="#" aria-current="page">Conversation <span>3</span></a>
+    <a href="#">Commits <span>3</span></a>
+    <a href="#">Files changed <span>3</span></a>
+  </nav>
+
+  <div class="cols">
+    <div>
+      <div class="comment">
+        <div class="comment-head">silen &middot; 2 hours ago</div>
+        <div class="comment-body">Retries three times with backoff on 5xx responses.</div>
+      </div>
+
+      <div class="comment">
+        <div class="comment-head">ci-bot &middot; reviewed &middot; <span class="review-changes">Requested changes</span></div>
+        <div class="comment-body">Please cap total wait time, not only attempts.</div>
+      </div>
+
+      <div class="comment">
+        <div class="comment-head">silen &middot; 1 hour ago</div>
+        <div class="comment-body">Capped at 30 seconds in the latest push.</div>
+      </div>
+
+      <div class="comment">
+        <div class="comment-head">Write &middot; Preview</div>
+        <div class="comment-body">
+          <textarea aria-label="Comment">Thanks, looks good to me.</textarea>
+          <div class="composer-actions">
+            <button class="btn">Comment</button>
+            <button class="btn">Approve</button>
+            <button class="btn">Request changes</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <aside>
+      <div class="merge-box">
+        <div><span class="ok">&#10003;</span> This branch has no conflicts with the base branch.</div>
+        <div>
+          <label>Merge style
+            <select aria-label="Merge style">
+              <option>Create a merge commit</option>
+              <option>Squash and merge</option>
+              <option>Rebase and merge</option>
+            </select>
+          </label>
+          <div style="margin-top:8px"><button class="btn btn-merge">Merge pull request</button></div>
+        </div>
+        <div>
+          <button class="btn btn-danger">Close pull request</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+</main>
+</body>
+</html>

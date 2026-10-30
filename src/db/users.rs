@@ -109,6 +109,30 @@ impl Database {
         }
     }
 
+    /// The account whose email address matches, used to link commit authors.
+    pub async fn get_user_by_email(&self, email: &str) -> Result<Option<User>, String> {
+        let mut rows = self
+            .conn()
+            .await?
+            .query(
+                "SELECT id, username, email, password_hash, created_at FROM users
+                 WHERE email = ?1 ORDER BY created_at ASC LIMIT 1",
+                crate::db::sqlite::params![email],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+        match rows.next().await.map_err(|e| e.to_string())? {
+            Some(row) => Ok(Some(User {
+                id: row.get(0).map_err(|e| e.to_string())?,
+                username: row.get(1).map_err(|e| e.to_string())?,
+                email: row.get(2).map_err(|e| e.to_string())?,
+                password_hash: row.get(3).map_err(|e| e.to_string())?,
+                created_at: row.get(4).map_err(|e| e.to_string())?,
+            })),
+            None => Ok(None),
+        }
+    }
+
     pub async fn get_user_by_id(&self, user_id: &str) -> Result<Option<User>, String> {
         let mut rows = self
             .conn()

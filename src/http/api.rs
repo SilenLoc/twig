@@ -3,6 +3,7 @@ use serde::Serialize;
 
 use crate::auth::TwigContext;
 
+pub mod compat;
 pub mod v1;
 
 #[derive(Debug, Serialize)]

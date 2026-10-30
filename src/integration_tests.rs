@@ -16,6 +16,12 @@ mod tests {
     mod namespace_pins;
     #[path = "../personal_access_tokens.rs"]
     mod personal_access_tokens;
+    #[path = "../pull_requests_api.rs"]
+    mod pull_requests_api;
+    #[path = "../pull_requests_git.rs"]
+    mod pull_requests_git;
+    #[path = "../pull_requests_ui.rs"]
+    mod pull_requests_ui;
     #[path = "../repo_access_and_routes.rs"]
     mod repo_access_and_routes;
     #[path = "../repo_binaries.rs"]
