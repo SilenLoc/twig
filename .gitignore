@@ -36,3 +36,4 @@ mise-oci
 # Local source-only security review; do not commit
 /SECURITY_REPORT.md
 /SECURITY_TEST_PLAN.md
+.env
