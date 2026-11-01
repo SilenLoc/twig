@@ -37,3 +37,6 @@ mise-oci
 /SECURITY_REPORT.md
 /SECURITY_TEST_PLAN.md
 .env
+
+# graphify knowledge graph; local and regenerable with /graphify .
+graphify-out/
