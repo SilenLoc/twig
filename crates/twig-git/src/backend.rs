@@ -48,6 +48,7 @@ pub struct GitRequest {
     path_info: String,
     query_string: String,
     content_type: String,
+    content_encoding: Option<String>,
     git_protocol: Option<String>,
 }
 
@@ -83,8 +84,20 @@ impl GitRequest {
             path_info: path_info.into(),
             query_string: query_string.into(),
             content_type: content_type.into(),
+            content_encoding: None,
             git_protocol: None,
         }
+    }
+
+    /// Forwards the request body's `Content-Encoding` to the Git CGI backend.
+    ///
+    /// `git http-backend` inflates a gzipped request body only when the encoding
+    /// arrives in the `HTTP_CONTENT_ENCODING` CGI variable. Git gzips every
+    /// fetch request larger than 1 KiB, so dropping the header turns ordinary
+    /// pulls from repositories with several branches into HTTP 500s.
+    pub fn with_content_encoding(mut self, content_encoding: Option<&str>) -> Self {
+        self.content_encoding = content_encoding.map(str::to_owned);
+        self
     }
 
     pub fn with_git_protocol(mut self, git_protocol: Option<&str>) -> Self {
@@ -119,25 +132,47 @@ pub fn run_with_config(
     let sh = prepare_cgi_env(&actual_root, sh, req, authenticated_user, namespace_role);
 
     let output = if body.is_empty() {
-        xshell::cmd!(sh, "git http-backend").output()
+        xshell::cmd!(sh, "git http-backend")
+            .ignore_status()
+            .output()
     } else {
-        xshell::cmd!(sh, "git http-backend").stdin(body).output()
+        xshell::cmd!(sh, "git http-backend")
+            .stdin(body)
+            .ignore_status()
+            .output()
     };
 
     match output {
         Ok(out) => {
-            let stdout = out.stdout;
             let stderr = String::from_utf8_lossy(&out.stderr);
-
-            if !stderr.is_empty() {
-                warn!(
-                    "Git backend HTTP stderr for path='{}': {}",
-                    req.path_info, stderr
-                );
-            }
-
-            let parsed = parse_cgi_response(&stdout);
+            let parsed = parse_cgi_response(&out.stdout);
             let (headers, body_bytes) = &parsed;
+
+            // `git http-backend` reports its own failures as a CGI response and
+            // still exits non-zero. That response explains the failure to the
+            // Git client, so keep it instead of replacing it with a bare 500.
+            if out.status.success() {
+                if !stderr.is_empty() {
+                    warn!(
+                        "Git backend HTTP stderr for path='{}': {}",
+                        req.path_info, stderr
+                    );
+                }
+            } else {
+                warn!(
+                    "Git backend HTTP exited with {} for path='{}': {}",
+                    out.status,
+                    req.path_info,
+                    stderr.trim()
+                );
+                if headers.is_empty() {
+                    return Err(format!(
+                        "git http-backend exited with {}: {}",
+                        out.status,
+                        stderr.trim()
+                    ));
+                }
+            }
 
             debug!(
                 "Git backend HTTP: completed path='{}' response_headers_size={} response_body_size={}",
@@ -187,6 +222,15 @@ pub fn prepare_cgi_env(
     sh.set_var("GIT_PROJECT_ROOT", project_root);
     sh.set_var("GIT_HTTP_EXPORT_ALL", "1");
     sh.set_var("GIT_HTTP_RECEIVE_PACK", "true"); // enables push operations
+    // Git's CGI backend only inflates a gzipped request body when the encoding
+    // reaches it through this CGI variable.
+    if let Some(encoding) = req
+        .content_encoding
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    {
+        sh.set_var("HTTP_CONTENT_ENCODING", encoding);
+    }
     // Git's CGI backend only enables protocol v2 when the HTTP Git-Protocol
     // header is forwarded through this environment variable. Set it even when
     // absent so an inherited server environment cannot affect negotiation.
@@ -397,6 +441,38 @@ mod tests {
         let sh = prepare_cgi_env("/srv/git/ns", sh, &req, None, None);
 
         assert_eq!(sh.var("GIT_PROTOCOL").unwrap(), "version=2");
+    }
+
+    #[test]
+    fn test_prepare_cgi_env_forwards_a_gzipped_request_body() {
+        let sh = Shell::new().unwrap();
+        let req = GitRequest::new(
+            "POST",
+            "/repo/git-upload-pack",
+            "",
+            "application/x-git-upload-pack-request",
+        )
+        .with_content_encoding(Some("gzip"));
+        let sh = prepare_cgi_env("/srv/git/ns", sh, &req, None, None);
+
+        assert_eq!(sh.var("HTTP_CONTENT_ENCODING").unwrap(), "gzip");
+    }
+
+    #[test]
+    fn test_prepare_cgi_env_leaves_the_encoding_unset_for_uncompressed_requests() {
+        let sh = Shell::new().unwrap();
+        let req = GitRequest::new(
+            "POST",
+            "/repo/git-upload-pack",
+            "",
+            "application/x-git-upload-pack-request",
+        );
+        let sh = prepare_cgi_env("/srv/git/ns", sh, &req, None, None);
+
+        assert!(
+            sh.var("HTTP_CONTENT_ENCODING").is_err(),
+            "an unencoded body must not be advertised as gzip"
+        );
     }
 
     #[test]
