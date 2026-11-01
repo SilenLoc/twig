@@ -47,7 +47,6 @@ pub fn render_layout(
                             }
                             nav aria-label="Primary" class="twig-nav twig-nav--primary" {
                                 a class="twig-btn twig-btn--quiet" href="/" { "Home" }
-                                a class="twig-btn twig-btn--quiet" href="/settings" { "Manage" }
                                 a class="twig-btn twig-btn--quiet" href="/_info" { "Docs" }
                             }
                         }
@@ -391,7 +390,7 @@ mod tests {
         for target in ["/", "/settings", "/_info", "/auth/logout"] {
             assert!(html.contains(target), "missing nav target {target}: {html}");
         }
-        for label in [">Home</a>", ">Manage</a>", ">Docs</a>", ">Logout</button>"] {
+        for label in [">Home</a>", ">Docs</a>", ">Logout</button>"] {
             assert!(html.contains(label), "missing nav item {label}: {html}");
         }
         assert!(
@@ -411,8 +410,11 @@ mod tests {
             "logout stays a real POST form: {html}"
         );
         assert!(
-            index_of(&html, ">Home</a>") < index_of(&html, ">Manage</a>")
-                && index_of(&html, ">Manage</a>") < index_of(&html, ">Docs</a>")
+            !html.contains(">Manage</a>"),
+            "Manage is not a separate primary nav item; the account name links to settings: {html}"
+        );
+        assert!(
+            index_of(&html, ">Home</a>") < index_of(&html, ">Docs</a>")
                 && index_of(&html, "twig-masthead-start") < index_of(&html, "twig-masthead-end")
                 && index_of(&html, "twig-masthead-end") < index_of(&html, ">Logout</button>")
                 && index_of(&html, ">Logout</button>") < index_of(&html, "twig-theme-toggle"),
@@ -423,10 +425,10 @@ mod tests {
     #[test]
     fn test_layout_anonymous_nav_offers_login() {
         let html = layout_html(None);
-        for target in ["/", "/settings", "/_info", "/auth/login"] {
+        for target in ["/", "/_info", "/auth/login"] {
             assert!(html.contains(target), "missing nav target {target}: {html}");
         }
-        for label in [">Home</a>", ">Manage</a>", ">Docs</a>", ">Login</a>"] {
+        for label in [">Home</a>", ">Docs</a>", ">Login</a>"] {
             assert!(html.contains(label), "missing nav item {label}: {html}");
         }
         assert!(
