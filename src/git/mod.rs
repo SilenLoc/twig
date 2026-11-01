@@ -54,7 +54,12 @@ pub async fn git_handler(
         .headers()
         .get("Git-Protocol")
         .and_then(|value| value.to_str().ok());
+    let content_encoding = req
+        .headers()
+        .get("Content-Encoding")
+        .and_then(|value| value.to_str().ok());
     let git_req = twig_git::backend::GitRequest::new(method, path_info, query, content_type)
+        .with_content_encoding(content_encoding)
         .with_git_protocol(git_protocol);
     let kind = git_req.kind();
 
@@ -71,16 +76,12 @@ pub async fn git_handler(
         Err(response) => return response,
     };
 
-    if matches!(kind, twig_git::backend::GitRequestKind::Push) {
-        let encoding = req
-            .headers()
-            .get("Content-Encoding")
-            .and_then(|value| value.to_str().ok());
-        if targets_pull_refs(&body.bytes, encoding) {
-            log::warn!("Refused a push to a pull request ref in {namespace}/{clean_repo}");
-            return HttpResponse::Forbidden()
-                .body("Twig manages refs/pull/* for pull requests. Push a branch instead.");
-        }
+    if matches!(kind, twig_git::backend::GitRequestKind::Push)
+        && targets_pull_refs(&body.bytes, content_encoding)
+    {
+        log::warn!("Refused a push to a pull request ref in {namespace}/{clean_repo}");
+        return HttpResponse::Forbidden()
+            .body("Twig manages refs/pull/* for pull requests. Push a branch instead.");
     }
 
     if is_write_request(&kind) {

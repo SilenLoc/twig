@@ -1,6 +1,6 @@
 [package]
 name = "twig"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2024"
 
 [workspace]
@@ -115,3 +115,4 @@ strip = true
 lto = "fat"
 panic = "abort"
 codegen-units = 1
+

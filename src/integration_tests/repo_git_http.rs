@@ -277,6 +277,110 @@ async fn test_git_client_clones_and_fetches_through_git_http_backend() {
     let _ = std::fs::remove_file(database_path);
 }
 
+/// Git gzips every fetch request larger than 1 KiB and marks it with
+/// `Content-Encoding: gzip`. Twig has to forward that header to `git
+/// http-backend` as the CGI `HTTP_CONTENT_ENCODING` variable; without it the
+/// backend rejects the compressed body and a pull from a repository with enough
+/// branches fails with HTTP 500 and "expected 'acknowledgments'".
+#[actix_web::test]
+async fn test_git_client_fetches_a_gzipped_request_body() {
+    use std::process::Command;
+
+    let root = std::env::temp_dir().join(format!(
+        "test_twig_git_http_gzip_fetch_{}",
+        uuid::Uuid::new_v4()
+    ));
+    let repository = root.join("public/example");
+    init_repo_with_files(&repository, "", &[("README.md", "# Example\n")]);
+    let (address, server_handle, _db, database_path) = start_network_git_server(&root).await;
+
+    let clone_dir = root.with_extension("clone");
+    let seed_dir = root.with_extension("seed");
+    let source_path = repository.to_string_lossy().into_owned();
+    let clone_url = format!("http://{address}/public/example.git");
+    let clone_path = clone_dir.to_string_lossy().into_owned();
+    let seed_path = seed_dir.to_string_lossy().into_owned();
+
+    let (fetch, fetched_branches) = tokio::task::spawn_blocking(move || {
+        let run = |args: &[&str]| {
+            let output = Command::new("git").args(args).output().unwrap();
+            assert!(output.status.success(), "{args:?}: {output:?}");
+            String::from_utf8_lossy(&output.stdout).trim().to_string()
+        };
+
+        // The first clone stays behind while the second one adds enough
+        // branches that its fetch request no longer fits in Git's 1 KiB
+        // uncompressed-request buffer. The branches are pushed straight into
+        // the bare repository because public reads are unauthenticated while
+        // pushes are not.
+        run(&["clone", "--quiet", &clone_url, &clone_path]);
+        run(&["clone", "--quiet", &source_path, &seed_path]);
+        run(&["-C", &seed_path, "config", "user.name", "Twig test"]);
+        run(&[
+            "-C",
+            &seed_path,
+            "config",
+            "user.email",
+            "twig-test@example.com",
+        ]);
+        for index in 0..24 {
+            run(&[
+                "-C",
+                &seed_path,
+                "checkout",
+                "--quiet",
+                "-B",
+                &format!("probe-{index}"),
+                "main",
+            ]);
+            std::fs::write(
+                std::path::Path::new(&seed_path).join(format!("probe-{index}.txt")),
+                format!("branch {index}\n"),
+            )
+            .unwrap();
+            run(&["-C", &seed_path, "add", "."]);
+            run(&[
+                "-C",
+                &seed_path,
+                "commit",
+                "--quiet",
+                "-m",
+                &format!("branch {index}"),
+            ]);
+        }
+        run(&["-C", &seed_path, "push", "--quiet", "origin", "--all"]);
+
+        let fetch = Command::new("git")
+            .args(["-C", &clone_path, "fetch", "origin"])
+            .output()
+            .unwrap();
+        let branches = run(&[
+            "-C",
+            &clone_path,
+            "branch",
+            "--remotes",
+            "--list",
+            "origin/probe-*",
+        ]);
+        (fetch, branches)
+    })
+    .await
+    .expect("join Git fetch");
+
+    assert!(fetch.status.success(), "{fetch:?}");
+    assert_eq!(
+        fetched_branches.lines().count(),
+        24,
+        "the fetch must update every branch it asked for: {fetched_branches}"
+    );
+
+    server_handle.stop(true).await;
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&clone_dir);
+    let _ = std::fs::remove_dir_all(&seed_dir);
+    let _ = std::fs::remove_file(database_path);
+}
+
 type NetworkGitServer = (
     std::net::SocketAddr,
     actix_web::dev::ServerHandle,
