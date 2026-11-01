@@ -19,6 +19,7 @@ use crate::pulls::PullError;
 
 use super::v1::{self, ApiError};
 
+pub mod actions;
 pub mod code;
 pub mod comments;
 pub mod issues;
@@ -45,6 +46,9 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(repos::get_branch)
         .service(repos::list_statuses)
         .service(repos::combined_status)
+        .service(actions::list_tasks)
+        .service(actions::task_log)
+        .service(actions::dispatch_workflow)
         .service(repos::list_labels)
         .service(repos::list_assignees)
         .service(pulls::list_pulls)

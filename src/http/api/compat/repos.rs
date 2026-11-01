@@ -12,7 +12,7 @@ use crate::{
 };
 
 use super::{
-    RepoPath, authorized_repo, compat_error,
+    RepoPath, actions, authorized_repo, compat_error,
     json::{PermissionsJson, RepositoryJson, RepositoryLocation, UserJson},
     origin,
 };
@@ -150,15 +150,16 @@ pub async fn get_branch(
     })
 }
 
-/// `GET /api/v1/repos/{owner}/{repo}/statuses/{sha}`: Twig runs no CI, so no statuses.
+/// `GET /api/v1/repos/{owner}/{repo}/statuses/{sha}`: the statuses CI reported for a
+/// commit, newest first. A commit with no CI runs has none.
 #[get("/api/v1/repos/{owner}/{repo}/statuses/{sha}")]
 pub async fn list_statuses(
     req: HttpRequest,
     server: web::Data<config::Server>,
     auth_state: web::Data<TwigContext>,
-    path: web::Path<RepoPath>,
+    path: web::Path<StatusPath>,
 ) -> HttpResponse {
-    if let Err(response) = authorized_repo(
+    let repo = match authorized_repo(
         &req,
         &server,
         &auth_state,
@@ -168,9 +169,26 @@ pub async fn list_statuses(
     )
     .await
     {
-        return response;
+        Ok(repo) => repo,
+        Err(response) => return response,
+    };
+    let repo_id = match repo.handle.repo_id() {
+        Ok(id) => id,
+        Err(error) => return internal(&error.to_string()),
+    };
+    match actions::commit_statuses(
+        auth_state.db(),
+        &repo_id,
+        &path.sha,
+        &origin(&req),
+        &path.owner,
+        &path.repo,
+    )
+    .await
+    {
+        Ok(statuses) => super::paginate(&req, statuses),
+        Err(error) => internal(&error),
     }
-    HttpResponse::Ok().json(Vec::<serde_json::Value>::new())
 }
 
 /// `GET /api/v1/repos/{owner}/{repo}/labels`: labels are not part of Twig's model.
@@ -245,11 +263,11 @@ pub struct CombinedStatusJson {
     pub state: &'static str,
     pub sha: String,
     pub total_count: i64,
-    pub statuses: Vec<serde_json::Value>,
+    pub statuses: Vec<actions::CommitStatusJson>,
 }
 
 /// `GET /api/v1/repos/{owner}/{repo}/commits/{sha}/status`: the combined state of a
-/// commit's statuses. Twig reports none, so the state is `pending`, as Forgejo does.
+/// commit's statuses. Without CI runs the state is `pending`, as Forgejo reports.
 #[get("/api/v1/repos/{owner}/{repo}/commits/{sha}/status")]
 pub async fn combined_status(
     req: HttpRequest,
@@ -257,7 +275,7 @@ pub async fn combined_status(
     auth_state: web::Data<TwigContext>,
     path: web::Path<StatusPath>,
 ) -> HttpResponse {
-    if let Err(response) = authorized_repo(
+    let repo = match authorized_repo(
         &req,
         &server,
         &auth_state,
@@ -267,16 +285,31 @@ pub async fn combined_status(
     )
     .await
     {
-        return response;
-    }
-    HttpResponse::Ok()
-        .insert_header(("X-Total-Count", "0"))
-        .json(CombinedStatusJson {
-            state: "pending",
+        Ok(repo) => repo,
+        Err(response) => return response,
+    };
+    let repo_id = match repo.handle.repo_id() {
+        Ok(id) => id,
+        Err(error) => return internal(&error.to_string()),
+    };
+    match actions::commit_statuses(
+        auth_state.db(),
+        &repo_id,
+        &path.sha,
+        &origin(&req),
+        &path.owner,
+        &path.repo,
+    )
+    .await
+    {
+        Ok(statuses) => HttpResponse::Ok().json(CombinedStatusJson {
+            state: actions::combined_state(&statuses),
             sha: path.sha.clone(),
-            total_count: 0,
-            statuses: Vec::new(),
-        })
+            total_count: i64::try_from(statuses.len()).unwrap_or(i64::MAX),
+            statuses,
+        }),
+        Err(error) => internal(&error),
+    }
 }
 
 #[derive(Debug, Deserialize)]

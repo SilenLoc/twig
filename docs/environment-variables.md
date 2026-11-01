@@ -16,6 +16,11 @@
 | `RESEND_API_KEY` | Secret API key used to send namespace invitation emails. If unset, invitations are saved and shown as links without attempting email delivery. | unset |
 | `RESEND_FROM` | Sender address used for invitation emails; configure a sender/domain allowed by Resend. | `onboarding@resend.dev` |
 | `PUBLIC_BASE_URL` | Canonical `http://` or `https://` origin used to build invitation links sent by email. Required for Resend delivery; do not include a path or query. | unset |
+| `TWIG_CI` | Set to `1` or `true` to run repository CI (`.twig/mise.toml`). Runs execute repository code on this host; see [CI](ci.md#what-isolation-does-not-give-you). | `false` |
+| `TWIG_CI_PROGRAM` | The `mise` executable that installs tools and runs CI. | `mise` |
+| `TWIG_CI_TIMEOUT_SECS` | Wall-clock limit for one CI run, including tool installation. | `1800` |
+| `TWIG_CI_CONCURRENCY` | CI runs executing at once. Others wait in the `waiting` state. | `1` |
+| `TWIG_CI_CACHE_DIR` | Shared tool, Cargo, and Rustup caches for CI runs. | `<temp dir>/twig-ci` |
 
 Store the real `RESEND_API_KEY` in the runtime environment or secret manager,
 not in tracked files. Replace the sample `re_xxxxxxxxx` value with the real key

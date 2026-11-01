@@ -381,7 +381,7 @@ async fn test_git_client_fetches_a_gzipped_request_body() {
     let _ = std::fs::remove_file(database_path);
 }
 
-type NetworkGitServer = (
+pub(super) type NetworkGitServer = (
     std::net::SocketAddr,
     actix_web::dev::ServerHandle,
     crate::db::Database,
@@ -400,6 +400,20 @@ async fn start_network_git_server_with_limits(
     project_root: &std::path::Path,
     request_body_limits: crate::http::body::RequestBodyLimits,
 ) -> NetworkGitServer {
+    start_network_git_server_with_ci(
+        project_root,
+        request_body_limits,
+        config::CiSettings::disabled(),
+    )
+    .await
+}
+
+/// Serves Git over HTTP on an ephemeral port with the given CI settings.
+pub(super) async fn start_network_git_server_with_ci(
+    project_root: &std::path::Path,
+    request_body_limits: crate::http::body::RequestBodyLimits,
+    ci: config::CiSettings,
+) -> NetworkGitServer {
     let database_path = project_root.with_extension("db");
     let config = config::Server::new(
         ("127.0.0.1".to_string(), 0),
@@ -408,7 +422,8 @@ async fn start_network_git_server_with_limits(
         database_path.to_string_lossy().into_owned(),
         "test-key".to_string(),
         true,
-    );
+    )
+    .with_ci(ci);
     let db = crate::db::Database::new(config.db_path());
     db.init_tables().await.expect("initialize test database");
     let auth_state = web::Data::new(crate::auth::TwigContext::new(

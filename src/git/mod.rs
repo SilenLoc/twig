@@ -6,6 +6,7 @@ use crate::auth::{
     AuthenticatedPrincipal, CredentialAuth, TwigContext, User,
     permissions::{self, NamespacePermission, PermissionSet},
 };
+use crate::ci;
 use crate::config;
 use crate::git::repo::bare_init;
 use crate::http::body::{BodyClass, BodyReadError, BoundedBody, RequestBodyLimits};
@@ -83,6 +84,13 @@ pub async fn git_handler(
         return HttpResponse::Forbidden()
             .body("Twig manages refs/pull/* for pull requests. Push a branch instead.");
     }
+    // Read before the body moves into git. Compressed pushes are refused above, so the
+    // commands are readable here.
+    let pushed = if matches!(kind, twig_git::backend::GitRequestKind::Push) {
+        pushed_branches(&body.bytes)
+    } else {
+        Vec::new()
+    };
 
     if is_write_request(&kind) {
         let Some(authenticated_user) = authenticated_user.as_ref() else {
@@ -101,6 +109,9 @@ pub async fn git_handler(
         }
     }
 
+    let pusher_id = authenticated_user
+        .as_ref()
+        .map(|authenticated_user| authenticated_user.user_id.clone());
     let username = authenticated_user
         .as_ref()
         .map(|authenticated_user| authenticated_user.username.clone());
@@ -123,6 +134,7 @@ pub async fn git_handler(
 
     let git_backend_config = twig_git::backend::Config::new(server.project_root());
     let namespace = namespace.clone();
+    let queued_namespace = namespace.clone();
     let body_bytes = std::mem::take(&mut body.bytes);
     let git_req = git_req.clone();
     let result = web::block(move || {
@@ -136,6 +148,22 @@ pub async fn git_handler(
         )
     })
     .await;
+
+    // Queued after git has finished, so a rejected ref is never built. The push
+    // response does not wait for CI.
+    if let Ok(Ok(_)) = &result
+        && !pushed.is_empty()
+        && let Some(user_id) = pusher_id
+    {
+        ci::queue_after_push(
+            server.clone(),
+            auth_state.db().clone(),
+            queued_namespace,
+            clean_repo.clone(),
+            user_id,
+            pushed,
+        );
+    }
 
     match result {
         Ok(Ok((headers, response_body))) => build_cgi_response(&headers, response_body),
@@ -158,37 +186,70 @@ pub fn targets_pull_refs(body: &[u8], content_encoding: Option<&str>) -> bool {
     if content_encoding.is_some_and(|encoding| !encoding.eq_ignore_ascii_case("identity")) {
         return true;
     }
+    ref_commands(body)
+        .iter()
+        .any(|command| command.refname.starts_with("refs/pull/"))
+}
+
+/// One ref update a receive-pack request asks for: the new commit and the ref.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RefCommand {
+    pub new: String,
+    pub refname: String,
+}
+
+/// The ref commands at the start of a receive-pack request, read up to the flush
+/// packet or the first line that is not a command. The pack is not needed. A
+/// compressed body cannot be read this way, so callers check the encoding first.
+pub fn ref_commands(body: &[u8]) -> Vec<RefCommand> {
+    let mut commands = Vec::new();
     let mut rest = body;
-    loop {
-        let Some(header) = rest.get(..4) else {
-            return false;
-        };
-        let Some(length) = std::str::from_utf8(header)
-            .ok()
-            .and_then(|hex| usize::from_str_radix(hex, 16).ok())
-        else {
-            return false;
-        };
-        if length == 0 {
-            return false;
-        }
-        if length < 4 || rest.len() < length {
-            return false;
+    while let Some(length) = pkt_line_length(rest) {
+        if length == 0 || length < 4 || rest.len() < length {
+            break;
         }
         // A ref command is `<old> <new> <ref>`, optionally followed by NUL and capabilities.
         let line = &rest[4..length];
         let command = line.split(|byte| *byte == 0).next().unwrap_or_default();
         let command = String::from_utf8_lossy(command);
-        let refname = command
-            .trim_end_matches('\n')
-            .split(' ')
-            .nth(2)
-            .unwrap_or_default();
-        if refname.starts_with("refs/pull/") {
-            return true;
+        let mut fields = command.trim_end_matches('\n').split(' ');
+        if let (Some(_old), Some(new), Some(refname)) =
+            (fields.next(), fields.next(), fields.next())
+        {
+            commands.push(RefCommand {
+                new: new.to_string(),
+                refname: refname.to_string(),
+            });
         }
         rest = &rest[length..];
     }
+    commands
+}
+
+/// The length a pkt-line header declares, if the header is present and readable.
+fn pkt_line_length(rest: &[u8]) -> Option<usize> {
+    let header = rest.get(..4)?;
+    std::str::from_utf8(header)
+        .ok()
+        .and_then(|hex| usize::from_str_radix(hex, 16).ok())
+}
+
+/// The branches a push sends new commits to. Deletions are not CI's concern.
+fn pushed_branches(body: &[u8]) -> Vec<ci::BranchUpdate> {
+    ref_commands(body)
+        .into_iter()
+        .filter(|command| {
+            command.refname.starts_with("refs/heads/")
+                && !command.new.bytes().all(|byte| byte == b'0')
+        })
+        .map(|command| ci::BranchUpdate {
+            branch: command
+                .refname
+                .trim_start_matches("refs/heads/")
+                .to_string(),
+            commit: command.new,
+        })
+        .collect()
 }
 
 async fn read_git_request_body(

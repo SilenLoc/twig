@@ -1,7 +1,74 @@
+use std::path::PathBuf;
+use std::time::Duration;
+
 use actix_web::http::header::HeaderValue;
 
 pub const DEFAULT_CACHE_CONTROL: &str = "public, max-age=31536000, immutable";
 pub const DEFAULT_RESEND_FROM: &str = "onboarding@resend.dev";
+pub const DEFAULT_CI_PROGRAM: &str = "mise";
+pub const DEFAULT_CI_TIMEOUT_SECS: u64 = 30 * 60;
+
+/// How CI runs execute. Off unless the operator sets `TWIG_CI`: a run executes
+/// code from the repository on this host.
+#[derive(Clone, Debug)]
+pub struct CiSettings {
+    enabled: bool,
+    program: String,
+    timeout: Duration,
+    concurrency: usize,
+    cache_dir: PathBuf,
+}
+
+impl CiSettings {
+    pub fn disabled() -> Self {
+        Self {
+            enabled: false,
+            program: DEFAULT_CI_PROGRAM.to_string(),
+            timeout: Duration::from_secs(DEFAULT_CI_TIMEOUT_SECS),
+            concurrency: 1,
+            cache_dir: std::env::temp_dir().join("twig-ci"),
+        }
+    }
+
+    pub fn enabled(
+        program: String,
+        timeout: Duration,
+        concurrency: usize,
+        cache_dir: PathBuf,
+    ) -> Self {
+        Self {
+            enabled: true,
+            program,
+            timeout,
+            concurrency: concurrency.max(1),
+            cache_dir,
+        }
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+
+    /// The `mise` executable that installs the tools and runs the `ci` task.
+    pub fn program(&self) -> &str {
+        &self.program
+    }
+
+    /// The wall-clock limit for one run, covering the install and the task.
+    pub fn timeout(&self) -> Duration {
+        self.timeout
+    }
+
+    /// How many runs may execute at once on this server.
+    pub fn concurrency(&self) -> usize {
+        self.concurrency
+    }
+
+    /// Persistent tool, Cargo, and Rustup caches shared by runs.
+    pub fn cache_dir(&self) -> &std::path::Path {
+        &self.cache_dir
+    }
+}
 
 #[derive(Clone)]
 pub struct Server {
@@ -18,6 +85,7 @@ pub struct Server {
     public_base_url: Option<String>,
     cache_control: HeaderValue,
     session_key: actix_web::cookie::Key,
+    ci: CiSettings,
 }
 
 impl Server {
@@ -43,12 +111,22 @@ impl Server {
             public_base_url: None,
             cache_control: HeaderValue::from_static(DEFAULT_CACHE_CONTROL),
             session_key: actix_web::cookie::Key::generate(),
+            ci: CiSettings::disabled(),
         }
     }
 
     pub fn with_cache_control(mut self, cache_control: HeaderValue) -> Self {
         self.cache_control = cache_control;
         self
+    }
+
+    pub fn with_ci(mut self, ci: CiSettings) -> Self {
+        self.ci = ci;
+        self
+    }
+
+    pub fn ci(&self) -> &CiSettings {
+        &self.ci
     }
 
     pub fn with_test_user(mut self, test_user: Option<String>) -> Self {
@@ -267,6 +345,44 @@ pub fn from_env() -> Server {
     .with_test_user(test_user)
     .with_admin_user(admin_user)
     .with_resend_settings(resend_api_key, resend_from, public_base_url)
+    .with_ci(ci_from_env())
+}
+
+/// Reads the CI switches. `TWIG_CI=1` or `TWIG_CI=true` enables runs; the other
+/// variables only apply once it is enabled.
+fn ci_from_env() -> CiSettings {
+    let enabled = matches!(
+        std::env::var("TWIG_CI").ok().as_deref().map(str::trim),
+        Some("1" | "true")
+    );
+    if !enabled {
+        return CiSettings::disabled();
+    }
+    let program = std::env::var("TWIG_CI_PROGRAM")
+        .ok()
+        .map(|program| program.trim().to_string())
+        .filter(|program| !program.is_empty())
+        .unwrap_or_else(|| DEFAULT_CI_PROGRAM.to_string());
+    let timeout_secs = std::env::var("TWIG_CI_TIMEOUT_SECS")
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .filter(|secs| *secs > 0)
+        .unwrap_or(DEFAULT_CI_TIMEOUT_SECS);
+    let concurrency = std::env::var("TWIG_CI_CONCURRENCY")
+        .ok()
+        .and_then(|value| value.trim().parse::<usize>().ok())
+        .unwrap_or(1);
+    let cache_dir = std::env::var("TWIG_CI_CACHE_DIR")
+        .ok()
+        .map(|dir| PathBuf::from(dir.trim()))
+        .filter(|dir| !dir.as_os_str().is_empty())
+        .unwrap_or_else(|| std::env::temp_dir().join("twig-ci"));
+    CiSettings::enabled(
+        program,
+        Duration::from_secs(timeout_secs),
+        concurrency,
+        cache_dir,
+    )
 }
 
 fn validate_reset_db_mode(
