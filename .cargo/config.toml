@@ -1,0 +1,9 @@
+# Linux targets link with lld. The nightly toolchain ships rust-lld and drives it
+# through the system gcc, so neither dev machines nor the Docker image need a
+# separate lld or mold package. Shared by `cargo build` and the Dockerfile.
+[target.'cfg(target_os = "linux")']
+rustflags = [
+  "-Zunstable-options",
+  "-Clinker-features=+lld",
+  "-Clink-self-contained=+linker",
+]

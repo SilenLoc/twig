@@ -9,7 +9,7 @@ CACHE_CONTROL = "no-cache"
 TEST_USER = "admin"
 
 [tools]
-rust = { version = "1.97" }
+rust = { version = "nightly-2026-10-31" }
 # nextest is not in the mise registry, so it comes from the cargo backend.
 # cargo-binstall makes that backend pull the prebuilt release binary instead of
 # compiling nextest from source.

@@ -23,13 +23,18 @@ LABEL ino.deploy.host="twig.silenlocatelli.ch"
 
 WORKDIR /app
 
-# mold links the final binary several times faster than GNU ld.
-# gcc 12 (bookworm) drives it via -fuse-ld=mold, so no clang needed.
-# No libssl-dev: git2 is built with default-features off and vendors libgit2,
-# and HTTP clients use Rustls. CMake is needed to build Rustls' AWS-LC provider.
+# No mold/lld package: the pinned nightly ships rust-lld, and .cargo/config.toml
+# links through it via the image's gcc. CMake is needed to build Rustls' AWS-LC
+# provider. No libssl-dev: git2 is built with default-features off and vendors
+# libgit2, and HTTP clients use Rustls.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends mold cmake \
+    && apt-get install -y --no-install-recommends cmake \
     && rm -rf /var/lib/apt/lists/*
+
+# Install the nightly named in rust-toolchain.toml. rustup fetches it on the
+# first cargo invocation in this directory, so this runs before any cargo call.
+COPY rust-toolchain.toml ./
+RUN cargo --version
 
 # sccache caches rustc outputs across builds and across projects that share the
 # same BuildKit cache, so cold `target/` rebuilds and dependency recompiles hit
@@ -38,14 +43,14 @@ RUN apt-get update \
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     cargo install sccache --version 0.18.0 --locked --no-default-features --root /usr/local
 
-ENV RUSTFLAGS="-C link-arg=-fuse-ld=mold" \
-    CARGO_INCREMENTAL=0 \
+ENV CARGO_INCREMENTAL=0 \
     CARGO_NET_RETRY=10 \
     CARGO_TERM_COLOR=always \
     RUSTC_WRAPPER=sccache \
     SCCACHE_DIR=/sccache
 
 COPY Cargo.toml Cargo.lock ./
+COPY .cargo ./.cargo
 COPY crates ./crates
 COPY docs ./docs
 COPY assets ./assets

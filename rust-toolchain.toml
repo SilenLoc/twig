@@ -1,0 +1,6 @@
+[toolchain]
+# Nightly is pinned to a date so builds stay reproducible while still getting
+# the unstable linker flags in .cargo/config.toml. Bump the date deliberately.
+channel = "nightly-2026-10-31"
+profile = "minimal"
+components = ["clippy", "rustfmt"]
