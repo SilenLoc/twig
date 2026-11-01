@@ -2,6 +2,7 @@ use std::sync::Arc;
 use tokio::sync::OnceCell;
 
 pub mod binaries;
+pub mod ci_runs;
 pub mod data;
 pub mod device_authorizations;
 pub mod invitations;

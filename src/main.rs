@@ -9,6 +9,7 @@ use env_logger::Env;
 use log::{info, warn};
 
 mod auth;
+mod ci;
 mod config;
 mod db;
 mod email;
@@ -48,6 +49,16 @@ fn spawn_database_init(
             match auth_state.db().init_tables().await {
                 Ok(()) => {
                     info!("Database initialized successfully");
+
+                    // Runs queued or executing when the previous process stopped can
+                    // never finish, so record them as failed instead of leaving them open.
+                    if let Err(error) = auth_state
+                        .db()
+                        .fail_unfinished_ci_runs("Twig restarted before this run finished.")
+                        .await
+                    {
+                        warn!("Failed to close unfinished CI runs: {error}");
+                    }
 
                     if config.reset_db() {
                         match auth::seed_dev_admin(&auth_state, config.project_root()).await {

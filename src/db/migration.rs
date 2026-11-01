@@ -337,6 +337,31 @@ const MIGRATIONS: &[Migration] = &[
             UNIQUE (target_key, user_id, content)
         );",
     },
+    Migration {
+        name: "create_ci_runs_table",
+        sql: r"CREATE TABLE IF NOT EXISTS ci_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            repo_id TEXT NOT NULL,
+            run_number INTEGER NOT NULL,
+            workflow TEXT NOT NULL,
+            event TEXT NOT NULL,
+            head_branch TEXT NOT NULL,
+            head_sha TEXT NOT NULL,
+            display_title TEXT NOT NULL,
+            status TEXT NOT NULL,
+            triggered_by_user_id TEXT,
+            created_at TEXT NOT NULL,
+            started_at TEXT,
+            finished_at TEXT,
+            log TEXT NOT NULL DEFAULT '',
+            UNIQUE (repo_id, run_number)
+        );",
+    },
+    Migration {
+        name: "create_ci_runs_sha_index",
+        sql: r"CREATE INDEX IF NOT EXISTS idx_ci_runs_repo_sha
+            ON ci_runs(repo_id, head_sha);",
+    },
 ];
 
 async fn prepare_migrations(conn: &crate::db::sqlite::Connection) -> Result<Vec<String>, String> {

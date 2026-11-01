@@ -57,7 +57,21 @@ pub(super) async fn create_test_service_with_db_and_body_limits(
         "secure".to_string(),
         true,
     );
+    create_test_service_for_config(config, request_body_limits).await
+}
 
+/// Builds the full app for `config`, with a fresh database at `config.db_path()`.
+pub(super) async fn create_test_service_for_config(
+    config: config::Server,
+    request_body_limits: crate::http::body::RequestBodyLimits,
+) -> (
+    impl actix_web::dev::Service<
+        Request,
+        Response = actix_web::dev::ServiceResponse,
+        Error = actix_web::Error,
+    >,
+    Database,
+) {
     let db = Database::new(config.db_path());
     let auth_state = web::Data::new(auth::TwigContext::new(db, "secure".to_string()));
     // Initialize database synchronously (we are already inside an async test runtime)

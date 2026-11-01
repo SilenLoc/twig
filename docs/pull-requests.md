@@ -107,7 +107,7 @@ Twig's internal IDs.
 | `GET` | `/repos/{o}/{r}/git/commits/{sha}.diff` | A commit's diff |
 | `GET` | `/repos/{o}/{r}/compare/{base}...{head}` | The commits `head` adds to `base` |
 | `GET` | `/repos/{o}/{r}/raw/{path}?ref=` | A file's raw bytes |
-| `GET` | `/repos/{o}/{r}/commits/{sha}/status` | Combined status (`pending`: Twig runs no CI) |
+| `GET` | `/repos/{o}/{r}/commits/{sha}/status` | Combined status of the CI runs on a commit (`pending` with none; see [CI](ci.md)) |
 | `GET` | `/repos/{o}/{r}/issues?type=pulls` | Requests in the issue shape, for searching (`type=issues` is empty) |
 | `GET` | `/repos/{o}/{r}/pulls/{n}/files` | The files a request changes |
 | `GET` | `/repos/{o}/{r}/pulls` | Requests (`state`, `head`, `sort`, `page`, `limit`) |
@@ -127,7 +127,9 @@ Twig's internal IDs.
 | `PATCH`, `DELETE` | `/repos/{o}/{r}/issues/comments/{id}` | Edit or delete a comment |
 | `GET`, `POST`, `DELETE` | `/repos/{o}/{r}/issues/{n}/reactions` | Reactions on the request (`content`) |
 | `GET`, `POST`, `DELETE` | `/repos/{o}/{r}/issues/comments/{id}/reactions` | Reactions on a comment |
-| `GET` | `/repos/{o}/{r}/statuses/{sha}` | Always empty: Twig runs no CI |
+| `GET` | `/repos/{o}/{r}/statuses/{sha}` | The statuses CI reported for a commit |
+| `GET` | `/repos/{o}/{r}/actions/tasks` | CI runs, for `fj actions tasks` |
+| `POST` | `/repos/{o}/{r}/actions/workflows/ci/dispatches` | Queue a CI run on a branch, for `fj actions dispatch` |
 | `GET` | `/repos/{o}/{r}/labels` | Always empty: Twig has no labels |
 | `GET` | `/repos/{o}/{r}/assignees` | Namespace members |
 
@@ -143,7 +145,8 @@ Without `page` or `limit`, a list returns every row.
 - Rebase updates (`update?style=rebase`). Only merge updates are offered, so
   clients do not show rebase updates.
 - Resolving review threads and replying to them.
-- Commit statuses and CI checks.
+- Required status checks: a branch's CI status is reported, but it does not gate a merge.
+- Other commit-status contexts and CI checks outside the `ci` task. See [CI](ci.md).
 - Creating a *private* repository through the API. Privacy is set in `.twig.toml`.
 - Renaming and moving repositories keeps their requests, because requests follow the
   repository's internal identity, not its name.

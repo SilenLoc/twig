@@ -1,0 +1,17 @@
+# Twig's CI definition. Twig runs the `ci` task for every branch push and for
+# `fj actions dispatch ci <branch>`. It exports the commit into an empty
+# directory, runs `mise install` and then `mise run ci` there with a cleared
+# environment, and keeps the output as the run's log. No git hook is involved.
+
+[tools]
+rust = { version = "nightly-2026-10-31" }
+# nextest is not in the mise registry, so it comes from the cargo backend.
+# cargo-binstall makes that backend pull the prebuilt release binary.
+"cargo-binstall" = "latest"
+"cargo:cargo-nextest" = "latest"
+
+[tasks.ci]
+# Tasks run from this `.twig/` directory unless told otherwise; cargo needs the
+# repository root.
+dir = ".."
+run = ['cargo fmt --check', 'cargo clippy --all-targets', 'cargo nextest run']
