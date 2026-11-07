@@ -23,43 +23,46 @@
 :root {
     color-scheme: dark;
 
-    /* Dark ink: black ground, raised grayscale surfaces. */
-    --twig-void: #080808;
-    --twig-surface-0: #141414;
-    --twig-surface-1: #1d1d1d;
-    --twig-surface-2: #292929;
-    --twig-surface-3: #373737;
+    /* Dark ink: a soft-black ground with gently raised grayscale surfaces.
+       Primary ink sits near 12:1 rather than full white, so long reads rest
+       the eye; every text role clears WCAG AA on the surfaces it sits on. */
+    --twig-void: #0a0a0a;
+    --twig-surface-0: #151515;
+    --twig-surface-1: #1c1c1c;
+    --twig-surface-2: #252525;
+    --twig-surface-3: #2e2e2e;
 
     /* Ink */
-    --twig-ink-primary: #ededed;
-    --twig-ink-secondary: #c8c8c8;
-    --twig-ink-tertiary: #a0a0a0;
+    --twig-ink-primary: #d4d4d4;
+    --twig-ink-secondary: #b2b2b2;
+    --twig-ink-tertiary: #9a9a9a;
 
-    /* Rules */
-    --twig-rule: #454545;
-    --twig-rule-strong: #9b9b9b;
+    /* Rules: hairlines recede; strong rules only mark controls. */
+    --twig-rule: #343434;
+    --twig-rule-strong: #6b6b6b;
 
     /* Interaction and feedback remain grayscale. */
-    --twig-accent-700: #b5b5b5;
-    --twig-accent-500: #d6d6d6;
-    --twig-accent-300: #ededed;
-    --twig-accent-100: #383838;
+    --twig-accent-700: #8f8f8f;
+    --twig-accent-500: #b4b4b4;
+    --twig-accent-300: #d4d4d4;
+    --twig-accent-100: #2e2e2e;
 
     /* Status roles use tone only; labels and structure carry meaning. */
-    --twig-signal-danger: #f0f0f0;
-    --twig-signal-ok: #c8c8c8;
-    --twig-signal-warn: #a0a0a0;
+    --twig-signal-danger: #dcdcdc;
+    --twig-signal-ok: #b2b2b2;
+    --twig-signal-warn: #9a9a9a;
 
-    /* Syntax uses color for quick token recognition, even on the e-ink UI. */
-    --twig-syntax-keyword: #d7a5ff;
-    --twig-syntax-type: #9ec1ff;
-    --twig-syntax-function: #83e0d4;
-    --twig-syntax-macro: #ffd479;
-    --twig-syntax-string: #c6f5a6;
-    --twig-syntax-lifetime: #ffad8a;
-    --twig-syntax-number: #ffb86c;
-    --twig-syntax-comment: #a9c7a0;
-    --twig-syntax-attribute: #ff9fca;
+    /* Syntax keeps hue for quick token recognition, at a lower chroma so code
+       reads as a calm surface rather than a highlighted one. */
+    --twig-syntax-keyword: #c7b3dc;
+    --twig-syntax-type: #aabfd8;
+    --twig-syntax-function: #9dd0c8;
+    --twig-syntax-macro: #d8c48f;
+    --twig-syntax-string: #b5d6a6;
+    --twig-syntax-lifetime: #d6ab98;
+    --twig-syntax-number: #d5b48c;
+    --twig-syntax-comment: #9bb394;
+    --twig-syntax-attribute: #d4a8bb;
 
     /* Families */
     --twig-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -103,6 +106,12 @@
     --twig-measure-slide-fs: 60rem;
     --twig-control-h: 2.75rem;
 
+    /* Corners: one soft scale. Controls and contained surfaces round; the
+       masthead, rails, tabs, and row rules stay square as structure. */
+    --twig-radius-sm: 2px;
+    --twig-radius: 4px;
+    --twig-radius-lg: 6px;
+
     /* Rail widths apply from 768px; below that the rail is a horizontal scroller */
     --twig-rail-docs: 13rem;
     --twig-rail-files: 11rem;
@@ -125,38 +134,39 @@
 :root[data-twig-theme="light"] {
     color-scheme: light;
 
-    /* Light ink on a soft-gray field. */
-    --twig-void: #f7f7f7;
+    /* Charcoal ink on a soft-gray field, with the same restraint as dark:
+       primary ink near 12:1, and tertiary text still clearing AA on surface-3. */
+    --twig-void: #f6f6f6;
     --twig-surface-0: #eeeeee;
-    --twig-surface-1: #f7f7f7;
-    --twig-surface-2: #e5e5e5;
-    --twig-surface-3: #d9d9d9;
+    --twig-surface-1: #f6f6f6;
+    --twig-surface-2: #e4e4e4;
+    --twig-surface-3: #d8d8d8;
 
-    --twig-ink-primary: #1b1b1b;
-    --twig-ink-secondary: #444444;
-    --twig-ink-tertiary: #696969;
+    --twig-ink-primary: #2a2a2a;
+    --twig-ink-secondary: #4a4a4a;
+    --twig-ink-tertiary: #5a5a5a;
 
-    --twig-rule: #c3c3c3;
-    --twig-rule-strong: #696969;
+    --twig-rule: #d0d0d0;
+    --twig-rule-strong: #7c7c7c;
 
-    --twig-accent-700: #252525;
-    --twig-accent-500: #444444;
-    --twig-accent-300: #666666;
-    --twig-accent-100: #e5e5e5;
+    --twig-accent-700: #242424;
+    --twig-accent-500: #4a4a4a;
+    --twig-accent-300: #5e5e5e;
+    --twig-accent-100: #e4e4e4;
 
-    --twig-signal-danger: #202020;
+    --twig-signal-danger: #262626;
     --twig-signal-ok: #484848;
-    --twig-signal-warn: #707070;
+    --twig-signal-warn: #5e5e5e;
 
-    --twig-syntax-keyword: #6b21a8;
-    --twig-syntax-type: #1e40af;
-    --twig-syntax-function: #0f6257;
-    --twig-syntax-macro: #854d0e;
-    --twig-syntax-string: #166534;
-    --twig-syntax-lifetime: #9a3412;
-    --twig-syntax-number: #9f1239;
-    --twig-syntax-comment: #48634d;
-    --twig-syntax-attribute: #9d174d;
+    --twig-syntax-keyword: #6a3f94;
+    --twig-syntax-type: #3d5a94;
+    --twig-syntax-function: #2a5f57;
+    --twig-syntax-macro: #6f5520;
+    --twig-syntax-string: #32603a;
+    --twig-syntax-lifetime: #7f4a33;
+    --twig-syntax-number: #7d3a4b;
+    --twig-syntax-comment: #46604a;
+    --twig-syntax-attribute: #7d3a5d;
 }
 
 @media (min-width: 48rem) {
@@ -183,7 +193,11 @@
 *::before,
 *::after {
     box-sizing: border-box;
-    border-radius: 0;
+}
+
+/* Native controls take the control radius, matching .twig-btn and .twig-input. */
+:is(button, input, select, textarea) {
+    border-radius: var(--twig-radius);
 }
 
 html {
@@ -223,7 +237,12 @@ body.twig-workspace-shell {
 :is(a, button, input, select, textarea, [tabindex]):focus-visible {
     outline: 2px solid var(--twig-accent-500);
     outline-offset: 2px;
-    border-radius: 0;
+}
+
+/* Panels clip to their curve, which would trim a ring drawn outside a control
+   that sits flush with the panel edge. Inside a panel the ring is drawn inset. */
+.twig-panel :is(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline-offset: -2px;
 }
 
 /* ---- 3. Shell, page column, masthead ------------------------------------ */
@@ -239,6 +258,7 @@ body.twig-workspace-shell {
     padding-inline: var(--twig-space-5);
     background-color: var(--twig-surface-0);
     border: 1px solid var(--twig-rule-strong);
+    border-radius: var(--twig-radius);
     color: var(--twig-ink-primary);
     font-size: var(--twig-t-label);
     font-weight: 500;
@@ -485,15 +505,22 @@ body.twig-workspace-shell {
     gap: var(--twig-space-2);
 }
 
+/* The grid rounds as one surface, outlined like a panel so the rule colour
+   frames the curve rather than bleeding through its anti-aliased edge. Its
+   hairline gaps stay square inside it. */
 .twig-bento {
     display: grid;
     grid-template-columns: 1fr;
     gap: 1px;
     background-color: var(--twig-rule);
+    border: 1px solid var(--twig-rule);
+    border-radius: var(--twig-radius-lg);
+    overflow: clip;
 }
 
 .twig-bento > .twig-panel {
     border: 0;
+    border-radius: 0;
 }
 
 @media (min-width: 48rem) {
@@ -665,10 +692,15 @@ body.twig-workspace-shell {
 
 /* ---- 7. Panel, column header, technical row ------------------------------ */
 
+/* clip (not hidden) trims rows and headers to the curve without making the
+   panel a scroll container, so sticky and in-flow children behave as before.
+   Rings on controls inside a panel are drawn inset (see section 2). */
 .twig-panel {
     background-color: var(--twig-surface-0);
     border: 1px solid var(--twig-rule);
+    border-radius: var(--twig-radius-lg);
     min-inline-size: 0;
+    overflow: clip;
 }
 
 .twig-panel--danger {
@@ -876,6 +908,7 @@ body.twig-workspace-shell {
     margin-inline-end: 0.75em;
     padding-inline: 0.4em;
     border: 1px solid currentColor;
+    border-radius: var(--twig-radius-sm);
     font-family: var(--twig-mono);
     font-size: var(--twig-t-data);
     letter-spacing: 0.04em;
@@ -933,7 +966,7 @@ body.twig-workspace-shell {
     width: fit-content;
     padding: 0.15rem 0.55rem;
     border: 1px solid var(--twig-rule-strong);
-    border-radius: 0;
+    border-radius: var(--twig-radius-sm);
     color: var(--twig-ink-secondary);
     font-family: var(--twig-mono);
     font-size: var(--twig-t-label);
@@ -991,7 +1024,7 @@ body.twig-workspace-shell {
 
 .twig-access-permission {
     padding: 0.15rem 0.45rem;
-    border-radius: 0;
+    border-radius: var(--twig-radius-sm);
     background: var(--twig-surface-2);
     color: var(--twig-ink-secondary);
     font-size: var(--twig-t-label);
@@ -1186,6 +1219,7 @@ body.twig-workspace-shell {
     padding-inline: var(--twig-space-5);
     background-color: transparent;
     border: 1px solid transparent;
+    border-radius: var(--twig-radius);
     color: var(--twig-ink-primary);
     font-family: var(--twig-mono);
     font-size: var(--twig-t-label);
@@ -1322,6 +1356,7 @@ body.twig-workspace-shell {
     appearance: none;
     background-color: var(--twig-surface-0);
     border: 1px solid var(--twig-rule-strong);
+    border-radius: var(--twig-radius);
     color: var(--twig-ink-primary);
     font-family: var(--twig-mono);
     font-size: var(--twig-t-body);
@@ -1440,6 +1475,7 @@ body.twig-workspace-shell {
 
 .twig-editor .ql-snow .ql-picker-options {
     border-color: var(--twig-rule-strong);
+    border-radius: var(--twig-radius);
     background-color: var(--twig-surface-1);
 }
 
@@ -1460,12 +1496,14 @@ body.twig-workspace-shell {
 .twig-editor .ql-snow .ql-tooltip {
     z-index: 2;
     border-color: var(--twig-rule-strong);
+    border-radius: var(--twig-radius);
     background-color: var(--twig-surface-2);
     color: var(--twig-ink-primary);
 }
 
 .twig-editor .ql-snow .ql-tooltip input[type="text"] {
     border-color: var(--twig-rule-strong);
+    border-radius: var(--twig-radius-sm);
     background-color: var(--twig-surface-0);
     color: var(--twig-ink-primary);
 }
@@ -1677,6 +1715,7 @@ body.twig-workspace-shell {
     min-inline-size: 14rem;
     padding: var(--twig-space-3);
     border: 1px solid var(--twig-rule-strong);
+    border-radius: var(--twig-radius-lg);
     background: var(--twig-surface-1);
 }
 
@@ -2385,6 +2424,7 @@ body.twig-workspace-shell {
     padding-inline: var(--twig-space-5);
     background-color: var(--twig-surface-2);
     border-inline-start: 2px solid var(--twig-accent-500);
+    border-radius: var(--twig-radius);
 }
 
 .twig-notice > .twig-eyebrow {
@@ -2456,6 +2496,7 @@ body.twig-workspace-shell {
     padding-block: var(--twig-space-12);
     padding-inline: var(--twig-space-5);
     background-color: var(--twig-surface-1);
+    border-radius: var(--twig-radius-lg);
 }
 
 .twig-empty-body {
@@ -2486,6 +2527,7 @@ body.twig-workspace-shell {
     padding: var(--twig-space-5);
     background-color: var(--twig-surface-3);
     border: 1px solid var(--twig-rule);
+    border-radius: var(--twig-radius);
     color: var(--twig-ink-primary);
     font-family: var(--twig-mono);
     font-size: var(--twig-t-data);
@@ -2606,6 +2648,7 @@ body.twig-workspace-shell {
     padding: var(--twig-space-6);
     background-color: var(--twig-surface-1);
     border: 1px solid var(--twig-rule);
+    border-radius: var(--twig-radius-lg);
 }
 
 .twig-md > * {
@@ -2697,6 +2740,7 @@ body.twig-workspace-shell {
 
 .twig-md code {
     padding: 2px 6px;
+    border-radius: var(--twig-radius-sm);
     background-color: var(--twig-surface-3);
     color: var(--twig-ink-primary);
     font-family: var(--twig-mono);

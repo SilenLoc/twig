@@ -195,8 +195,8 @@ fn test_twig_css_honours_the_depth_and_motion_bans() {
     for (offset, _) in css.match_indices("border-radius:") {
         let value = css[offset..].split(';').next().unwrap_or_default();
         assert!(
-            value.contains('0'),
-            "every corner is square, found {value:?}"
+            value.contains("var(--twig-radius") || value.ends_with(": 0") || value.contains("50%"),
+            "corners come from the radius scale or stay square, found {value:?}"
         );
     }
     assert!(css.contains("100dvh"), "full-height regions use dvh");
@@ -208,6 +208,25 @@ fn test_twig_css_honours_the_depth_and_motion_bans() {
         css.contains(":focus-visible"),
         "the shared focus ring must exist"
     );
+}
+
+#[test]
+fn test_twig_css_defines_a_soft_corner_scale() {
+    let css = css_without_comments(body_of("twig.css"));
+    let tokens = css
+        .split(":root {")
+        .nth(1)
+        .expect("the dark token block exists")
+        .split('}')
+        .next()
+        .expect("the dark token block closes");
+    for token in [
+        "--twig-radius-sm: 2px;",
+        "--twig-radius: 4px;",
+        "--twig-radius-lg: 6px;",
+    ] {
+        assert!(tokens.contains(token), "missing corner token {token}");
+    }
 }
 
 #[test]
