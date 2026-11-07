@@ -9,6 +9,9 @@ use super::views::{render_stopped_content, render_test_page};
 use super::{CallerRole, TestPageQuery, generate_qr_svg, generate_random_pin};
 use super::{render_pin_entry_page, render_pin_panel, render_runner_content};
 
+/// Every rendered fragment and page here is HTML; without this header a browser shows the markup as text.
+const HTML_CONTENT_TYPE: &str = "text/html; charset=utf-8";
+
 fn get_base_url(req: &HttpRequest, server: &config::Server) -> String {
     let host = req.connection_info().host().to_string();
     let scheme = req.connection_info().scheme().to_string();
@@ -62,20 +65,28 @@ async fn authenticate_caller(
     }
 
     if is_hx_request(req.headers()) {
-        return Err(HttpResponse::Forbidden().body(
-            crate::http::view::render_error(
-                "Forbidden: Test suite requires admin login or a valid session PIN.",
-            )
-            .into_string(),
-        ));
+        return Err(HttpResponse::Forbidden()
+            .content_type(HTML_CONTENT_TYPE)
+            .body(
+                crate::http::view::render_error(
+                    "Forbidden: Test suite requires admin login or a valid session PIN.",
+                )
+                .into_string(),
+            ));
     }
 
     let has_active_pin = auth_state.get_test_pin().await.is_some();
     let content = render_pin_entry_page(admin_user, has_active_pin);
-    Err(HttpResponse::Forbidden().body(
-        crate::http::view::render_layout(&content, username.as_deref(), Some("Test Suite Access"))
+    Err(HttpResponse::Forbidden()
+        .content_type(HTML_CONTENT_TYPE)
+        .body(
+            crate::http::view::render_layout(
+                &content,
+                username.as_deref(),
+                Some("Test Suite Access"),
+            )
             .into_string(),
-    ))
+        ))
 }
 
 async fn verify_admin_only(
@@ -96,12 +107,14 @@ async fn verify_admin_only(
         .as_deref()
         .is_some_and(|name| server.is_test_user(name))
     {
-        return Err(HttpResponse::Forbidden().body(
-            crate::http::view::render_error(
-                "Forbidden: Only the admin user can manage session PINs.",
-            )
-            .into_string(),
-        ));
+        return Err(HttpResponse::Forbidden()
+            .content_type(HTML_CONTENT_TYPE)
+            .body(
+                crate::http::view::render_error(
+                    "Forbidden: Only the admin user can manage session PINs.",
+                )
+                .into_string(),
+            ));
     }
 
     Ok(admin_user.to_string())
@@ -143,9 +156,11 @@ async fn handle_test_page(
     }
 
     if is_hx_request(req.headers()) {
-        builder.body(content.into_string())
+        builder
+            .content_type(HTML_CONTENT_TYPE)
+            .body(content.into_string())
     } else {
-        builder.body(
+        builder.content_type(HTML_CONTENT_TYPE).body(
             crate::http::view::render_layout(&content, role.username(), Some("Test Suite"))
                 .into_string(),
         )
@@ -180,7 +195,9 @@ pub async fn test_pin_create(
     let base_url = get_base_url(&req, &server);
 
     let panel = render_pin_panel(true, Some(&pin), &base_url);
-    HttpResponse::Ok().body(panel.into_string())
+    HttpResponse::Ok()
+        .content_type(HTML_CONTENT_TYPE)
+        .body(panel.into_string())
 }
 
 #[post("/_test/pin/remove")]
@@ -200,7 +217,9 @@ pub async fn test_pin_remove(
     let base_url = get_base_url(&req, &server);
 
     let panel = render_pin_panel(true, None, &base_url);
-    HttpResponse::Ok().body(panel.into_string())
+    HttpResponse::Ok()
+        .content_type(HTML_CONTENT_TYPE)
+        .body(panel.into_string())
 }
 
 #[get("/_test/pin/qr")]
@@ -241,7 +260,9 @@ pub async fn test_runner(
         return res;
     }
 
-    HttpResponse::Ok().body(render_runner_content().into_string())
+    HttpResponse::Ok()
+        .content_type(HTML_CONTENT_TYPE)
+        .body(render_runner_content().into_string())
 }
 
 #[get("/_test/stopped")]
@@ -255,7 +276,9 @@ pub async fn test_stopped(
         return res;
     }
 
-    HttpResponse::Ok().body(render_stopped_content().into_string())
+    HttpResponse::Ok()
+        .content_type(HTML_CONTENT_TYPE)
+        .body(render_stopped_content().into_string())
 }
 
 #[get("/_test/ping")]
@@ -286,5 +309,7 @@ pub async fn test_feature_check(
     let markup = maud::html! {
         span class="twig-data" { "all systems operational" }
     };
-    HttpResponse::Ok().body(markup.into_string())
+    HttpResponse::Ok()
+        .content_type(HTML_CONTENT_TYPE)
+        .body(markup.into_string())
 }

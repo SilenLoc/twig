@@ -23,34 +23,35 @@
 :root {
     color-scheme: dark;
 
-    /* Dark ink: a soft-black ground with gently raised grayscale surfaces.
-       Primary ink sits near 12:1 rather than full white, so long reads rest
-       the eye; every text role clears WCAG AA on the surfaces it sits on. */
-    --twig-void: #0a0a0a;
-    --twig-surface-0: #151515;
-    --twig-surface-1: #1c1c1c;
-    --twig-surface-2: #252525;
-    --twig-surface-3: #2e2e2e;
+    /* Dark ink: a cool blue-gray ground with gently raised surfaces. The hue
+       is a light tint (about 8–14% saturation), so the page reads cool without
+       turning blue. Primary ink sits near 12:1 rather than full white, and every
+       text role clears WCAG AA on the surfaces it sits on. */
+    --twig-void: #0a0b0d;
+    --twig-surface-0: #131518;
+    --twig-surface-1: #181a1e;
+    --twig-surface-2: #202328;
+    --twig-surface-3: #292d32;
 
     /* Ink */
-    --twig-ink-primary: #d4d4d4;
-    --twig-ink-secondary: #b2b2b2;
-    --twig-ink-tertiary: #9a9a9a;
+    --twig-ink-primary: #d3d7de;
+    --twig-ink-secondary: #afb5c0;
+    --twig-ink-tertiary: #949ca8;
 
     /* Rules: hairlines recede; strong rules only mark controls. */
-    --twig-rule: #343434;
-    --twig-rule-strong: #6b6b6b;
+    --twig-rule: #32373e;
+    --twig-rule-strong: #666e7a;
 
-    /* Interaction and feedback remain grayscale. */
-    --twig-accent-700: #8f8f8f;
-    --twig-accent-500: #b4b4b4;
-    --twig-accent-300: #d4d4d4;
-    --twig-accent-100: #2e2e2e;
+    /* Interaction and feedback share the cool neutral. */
+    --twig-accent-700: #898f9a;
+    --twig-accent-500: #aeb5c2;
+    --twig-accent-300: #d3d7de;
+    --twig-accent-100: #292d32;
 
     /* Status roles use tone only; labels and structure carry meaning. */
-    --twig-signal-danger: #dcdcdc;
-    --twig-signal-ok: #b2b2b2;
-    --twig-signal-warn: #9a9a9a;
+    --twig-signal-danger: #dddfe4;
+    --twig-signal-ok: #afb5c0;
+    --twig-signal-warn: #949ca8;
 
     /* Syntax keeps hue for quick token recognition, at a lower chroma so code
        reads as a calm surface rather than a highlighted one. */

@@ -14,6 +14,12 @@ async fn test_test_page_forbidden_when_unauthenticated() {
     let req = test::TestRequest::get().uri("/_test").to_request();
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    assert!(
+        resp.headers()
+            .get("content-type")
+            .is_some_and(|value| value.to_str().unwrap_or_default().starts_with("text/html")),
+        "the access page is HTML and must say so, or browsers show the markup as text"
+    );
 }
 
 #[actix_web::test]
@@ -35,6 +41,12 @@ async fn test_test_page_and_rapid_runner_when_authenticated_as_admin() {
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), StatusCode::OK);
+    assert!(
+        resp.headers()
+            .get("content-type")
+            .is_some_and(|value| value.to_str().unwrap_or_default().starts_with("text/html")),
+        "the test page is HTML and must say so, or browsers show the markup as text"
+    );
     let body = test::read_body(resp).await;
     let body_str = String::from_utf8(body.to_vec()).unwrap();
     assert!(body_str.contains("Test Suite"));
