@@ -92,7 +92,7 @@ not accepted. Errors use Forgejo's shape, `{"message": "...", "url": ""}`.
 
 Repositories are addressed as `/repos/{owner}/{repo}`. The owner is the Twig
 namespace. Identifiers are integers: a request's `number` is its index within the
-repository, and user and repository `id` values are stable integers derived from
+repository and is shared with issues (see [Issues](issues.md)), and user and repository `id` values are stable integers derived from
 Twig's internal IDs.
 
 | Method | Path | Purpose |
@@ -108,7 +108,7 @@ Twig's internal IDs.
 | `GET` | `/repos/{o}/{r}/compare/{base}...{head}` | The commits `head` adds to `base` |
 | `GET` | `/repos/{o}/{r}/raw/{path}?ref=` | A file's raw bytes |
 | `GET` | `/repos/{o}/{r}/commits/{sha}/status` | Combined status of the CI runs on a commit (`pending` with none; see [CI](ci.md)) |
-| `GET` | `/repos/{o}/{r}/issues?type=pulls` | Requests in the issue shape, for searching (`type=issues` is empty) |
+| `GET` | `/repos/{o}/{r}/issues?type=pulls` | Requests in the issue shape, for searching. `type=issues` lists [issues](issues.md) instead. |
 | `GET` | `/repos/{o}/{r}/pulls/{n}/files` | The files a request changes |
 | `GET` | `/repos/{o}/{r}/pulls` | Requests (`state`, `head`, `sort`, `page`, `limit`) |
 | `POST` | `/repos/{o}/{r}/pulls` | Open a request (`base`, `head`, `title`, `body`) |
@@ -141,7 +141,7 @@ Without `page` or `limit`, a list returns every row.
 
 - Pull requests from another repository (forks). The head must be a branch of the
   same repository. Use `owner:branch` only when the owner is the same namespace.
-- Labels, milestones, issues, and projects.
+- Labels, milestones, and projects. Issues are supported; see [Issues](issues.md).
 - Rebase updates (`update?style=rebase`). Only merge updates are offered, so
   clients do not show rebase updates.
 - Resolving review threads and replying to them.

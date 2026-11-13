@@ -264,11 +264,12 @@ pub(super) fn render_repo_crumbs(namespace: &str, repo: &str, can_edit: bool) ->
 
 /// Renders a tab navigation bar. `tabs_config` lists the only tabs to show
 /// when set; every tab additionally requires its content to exist.
-pub(super) const DEFAULT_TABS: [(&str, &str, Option<OptionalTab>); 9] = [
+pub(super) const DEFAULT_TABS: [(&str, &str, Option<OptionalTab>); 10] = [
     ("markdown", "Documentation", None),
     ("paper", "Paper", Some(OptionalTab::Paper)),
     ("content", "Content", None),
     ("commits", "Commits", None),
+    ("issues", "Issues", None),
     ("pulls", "Pull requests", None),
     ("config", "Config", Some(OptionalTab::Config)),
     ("present", "Present", Some(OptionalTab::Present)),
@@ -304,6 +305,7 @@ pub(super) fn configured_tab(
         "paper" => ("paper", "Paper", Some(OptionalTab::Paper)),
         "content" => ("content", "Content", None),
         "commits" => ("commits", "Commits", None),
+        "issues" => ("issues", "Issues", None),
         "pulls" => ("pulls", "Pull requests", None),
         "config" => ("config", "Config", Some(OptionalTab::Config)),
         "present" => ("present", "Present", Some(OptionalTab::Present)),

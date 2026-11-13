@@ -9,6 +9,7 @@ use crate::{
     config,
     db::{
         Database,
+        issues::comments::issue_comment_row_id,
         pull_requests::{
             PullRequest,
             comments::PullRequestComment,
@@ -57,6 +58,8 @@ pub struct CommentJson {
     pub body: String,
     pub created_at: String,
     pub updated_at: String,
+    /// Comments carry no attachments in Twig. Forgejo clients expect the field.
+    pub assets: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize)]
@@ -104,6 +107,7 @@ async fn comment_json(
             .updated_at
             .clone()
             .unwrap_or_else(|| comment.created_at.clone()),
+        assets: Vec::new(),
     }
 }
 
@@ -160,6 +164,19 @@ pub async fn list_comments(
     auth_state: web::Data<TwigContext>,
     path: web::Path<IssuePath>,
 ) -> HttpResponse {
+    if let Some(response) = super::issues::comment_request_for_issue(
+        &req,
+        &server,
+        &auth_state,
+        &path.owner,
+        &path.repo,
+        path.index,
+        super::issues::IssueCommentRequest::List,
+    )
+    .await
+    {
+        return response;
+    }
     let (_, pull_request, _, _) = match request_context(
         &req,
         &server,
@@ -195,6 +212,19 @@ pub async fn create_comment(
     path: web::Path<IssuePath>,
     body: web::Json<BodyInput>,
 ) -> HttpResponse {
+    if let Some(response) = super::issues::comment_request_for_issue(
+        &req,
+        &server,
+        &auth_state,
+        &path.owner,
+        &path.repo,
+        path.index,
+        super::issues::IssueCommentRequest::Create(&body.body),
+    )
+    .await
+    {
+        return response;
+    }
     let (_, pull_request, principal, permissions) = match request_context(
         &req,
         &server,
@@ -245,6 +275,16 @@ pub async fn edit_comment(
     path: web::Path<CommentPath>,
     body: web::Json<BodyInput>,
 ) -> HttpResponse {
+    if let Some(row_id) = issue_comment_row_id(path.id) {
+        return match super::issues::issue_scope(&req, &server, &auth_state, &path.owner, &path.repo)
+            .await
+        {
+            Ok(scope) => {
+                super::issues::edit_comment(&req, &auth_state, &scope, row_id, &body.body).await
+            }
+            Err(response) => response,
+        };
+    }
     let (_, pull_request, principal, permissions) =
         match comment_context(&req, &server, &auth_state, &path).await {
             Ok(context) => context,
@@ -287,6 +327,14 @@ pub async fn delete_comment(
     auth_state: web::Data<TwigContext>,
     path: web::Path<CommentPath>,
 ) -> HttpResponse {
+    if let Some(row_id) = issue_comment_row_id(path.id) {
+        return match super::issues::issue_scope(&req, &server, &auth_state, &path.owner, &path.repo)
+            .await
+        {
+            Ok(scope) => super::issues::delete_comment(&auth_state, &scope, row_id).await,
+            Err(response) => response,
+        };
+    }
     let (_, pull_request, principal, permissions) =
         match comment_context(&req, &server, &auth_state, &path).await {
             Ok(context) => context,
@@ -391,6 +439,12 @@ async fn reactions_handler(
     method: ReactionMethod,
     content: Option<&str>,
 ) -> HttpResponse {
+    if let Some(response) =
+        super::issues::refuse_reactions(req, server, auth_state, owner, repo, index, comment_id)
+            .await
+    {
+        return response;
+    }
     let (_, pull_request, principal, permissions) =
         match request_context(req, server, auth_state, owner, repo, index).await {
             Ok(context) => context,

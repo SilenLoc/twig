@@ -132,20 +132,8 @@ async fn insert_in_transaction(
     conn: &Connection,
     new: &NewPullRequest<'_>,
 ) -> Result<PullRequest, String> {
-    let mut rows = conn
-        .query(
-            "SELECT COALESCE(MAX(number), 0) + 1 FROM pull_requests WHERE repo_id = ?1",
-            sqlite::params![new.repo_id],
-        )
-        .await
-        .map_err(|e| e.to_string())?;
-    let number: i64 = rows
-        .next()
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or("Pull request numbering returned no row")?
-        .get(0)
-        .map_err(|e| e.to_string())?;
+    // Issues share this sequence, so a pull request never takes an issue's number.
+    let number = crate::db::issues::next_repo_number(conn, new.repo_id).await?;
 
     let id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
@@ -188,7 +176,7 @@ async fn insert_in_transaction(
 }
 
 impl Database {
-    /// Inserts a request numbered one above the repository's highest number.
+    /// Inserts a request numbered one above the repository's highest number, counting issues.
     /// The number is read and written in one `BEGIN IMMEDIATE` transaction, so
     /// concurrent creates in the same repository never share a number.
     pub async fn create_pull_request(

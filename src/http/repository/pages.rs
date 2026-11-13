@@ -65,6 +65,7 @@ struct RawParams {
 mod content;
 mod context;
 mod hooks;
+mod issues;
 mod markdown;
 mod paper;
 mod presentation;
@@ -79,6 +80,13 @@ pub use content::{content_handler, raw_handler};
 #[cfg(test)]
 use context::*;
 pub use hooks::{delete_hook_handler, disable_hook_handler, hooks_tab_handler};
+pub use issues::{
+    assignees_handler as issue_assignees_handler, comment_handler as issue_comment_handler,
+    create_issue_handler, delete_comment_handler as issue_delete_comment_handler,
+    edit_comment_handler as issue_edit_comment_handler, edit_handler as issue_edit_handler,
+    issue_page_handler, issues_tab_handler, new_issue_page_handler,
+    state_handler as issue_state_handler,
+};
 pub use markdown::markdown_handler;
 #[cfg(test)]
 use markdown::*;
