@@ -152,4 +152,4 @@ Pull requests, reviews, CI runs, and the repository routes used by T3 Code and t
 Forgejo and Gitea command-line tools live under `/api/v1/repos/{owner}/{repo}`,
 `/api/v1/user`, and `/api/v1/version`. They use Forgejo's request and response
 shapes and error body (`{"message": ...}`), and accept `Authorization: token`.
-See [Pull Requests](pull-requests.md) for the endpoint table and the permission rules, and [CI](ci.md) for the Actions routes.
+See [Pull Requests](pull-requests.md) for the endpoint table and the permission rules, [Issues](issues.md) for the issue routes, and [CI](ci.md) for the Actions routes.

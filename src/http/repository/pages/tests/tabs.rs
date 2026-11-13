@@ -65,8 +65,8 @@ fn test_tabs_preserve_every_htmx_navigation_attribute() {
     )
     .into_string();
     let tabs = [
-        "markdown", "paper", "content", "commits", "pulls", "config", "present", "scripts",
-        "license",
+        "markdown", "paper", "content", "commits", "issues", "pulls", "config", "present",
+        "scripts", "license",
     ];
 
     for tab in tabs {
@@ -121,6 +121,7 @@ fn test_tabs_render_only_available_views_in_order() {
             "Documentation",
             "Content",
             "Commits",
+            "Issues",
             "Pull requests",
             "License"
         ],
@@ -135,6 +136,7 @@ fn test_tabs_render_only_available_views_in_order() {
             "Paper",
             "Content",
             "Commits",
+            "Issues",
             "Pull requests",
             "License"
         ],

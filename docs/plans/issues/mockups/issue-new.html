@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mockup: new issue</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; color: #1f2328; background: #fff; }
+  header { padding: 12px 24px; border-bottom: 1px solid #d0d7de; }
+  .crumbs { color: #57606a; font-size: 14px; }
+  .tabs { display: flex; gap: 4px; padding: 0 24px; border-bottom: 1px solid #d0d7de; }
+  .tabs a { padding: 10px 12px; color: #57606a; text-decoration: none; border-bottom: 2px solid transparent; font-size: 14px; }
+  .tabs a[aria-current="page"] { color: #1f2328; border-bottom-color: #fd8c73; font-weight: 600; }
+  main { max-width: 860px; padding: 16px 24px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 16px; }
+  label { display: block; font-weight: 600; font-size: 14px; margin: 16px 0 6px; }
+  .title-input { width: 100%; padding: 8px 10px; border: 1px solid #d0d7de; border-radius: 6px; font: inherit; box-sizing: border-box; }
+  .body-input { width: 100%; min-height: 220px; padding: 8px 10px; border: 1px solid #d0d7de; border-radius: 6px; font: inherit; box-sizing: border-box; }
+  .hint { color: #57606a; font-size: 12px; margin-top: 4px; }
+  .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+  .btn { padding: 6px 12px; border: 1px solid #d0d7de; border-radius: 6px; background: #f6f8fa; font-size: 14px; }
+  .btn-primary { background: #1f883d; border-color: #1f883d; color: #fff; }
+  .side { display: flex; gap: 16px; align-items: center; margin-top: 12px; font-size: 14px; color: #57606a; }
+</style>
+</head>
+<body>
+<header>
+  <div class="crumbs">Namespaces / acme / <strong>tooling</strong></div>
+</header>
+<nav class="tabs">
+  <a href="#">Documentation</a>
+  <a href="#">Content</a>
+  <a href="#">Commits</a>
+  <a href="#" aria-current="page">Issues</a>
+  <a href="#">Pull requests</a>
+  <a href="#">Config</a>
+  <a href="#">License</a>
+</nav>
+<main>
+  <h1>New issue</h1>
+  <label for="t">Title</label>
+  <input id="t" class="title-input" type="text" placeholder="A short summary">
+  <label for="b">Description</label>
+  <textarea id="b" class="body-input" placeholder="Describe the problem or request. Markdown is supported."></textarea>
+  <div class="hint">Markdown is shown the same way as pull request comments.</div>
+  <div class="side">
+    <span>Assignee: <strong>none</strong></span>
+    <span>Labels: not available</span>
+  </div>
+  <div class="actions">
+    <button class="btn">Cancel</button>
+    <button class="btn btn-primary">Submit new issue</button>
+  </div>
+</main>
+</body>
+</html>

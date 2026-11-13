@@ -53,6 +53,36 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(repos::list_assignees)
         .service(pulls::list_pulls)
         .service(issues::list_issues)
+        .service(issues::create_issue)
+        .service(issues::get_issue)
+        .service(issues::edit_issue)
+        .service(issues::get_comment)
+        // Features Twig does not have answer with a reason `fj` can show.
+        .service(
+            web::resource("/api/v1/repos/{owner}/{repo}/issues/{index}/dependencies")
+                .route(web::get().to(issues::dependencies_refused))
+                .route(web::post().to(issues::dependencies_refused))
+                .route(web::delete().to(issues::dependencies_refused)),
+        )
+        .service(
+            web::resource("/api/v1/repos/{owner}/{repo}/issues/{index}/blocks")
+                .route(web::get().to(issues::blocks_refused))
+                .route(web::post().to(issues::blocks_refused))
+                .route(web::delete().to(issues::blocks_refused)),
+        )
+        .service(
+            web::resource("/api/v1/repos/{owner}/{repo}/issues/{index}/labels")
+                .route(web::get().to(issues::labels_list))
+                .route(web::post().to(issues::labels_refused))
+                .route(web::put().to(issues::labels_refused))
+                .route(web::delete().to(issues::labels_refused)),
+        )
+        .service(
+            web::resource("/api/v1/repos/{owner}/{repo}/issues/{index}/labels/{identifier}")
+                .route(web::delete().to(issues::labels_refused)),
+        )
+        .service(issues::issue_templates)
+        .service(issues::issue_config)
         .service(code::get_raw_file)
         .service(code::compare)
         .service(code::list_pull_files)
@@ -132,6 +162,26 @@ pub fn from_api_error(error: ApiError) -> HttpResponse {
 }
 
 /// Maps request-rule failures from `crate::pulls` onto Forgejo's error body.
+/// Maps issue-rule failures onto Forgejo's error body.
+pub fn from_issue_error(error: crate::issues::IssueError) -> HttpResponse {
+    use crate::issues::IssueError;
+    match error {
+        IssueError::NotFound => compat_error(StatusCode::NOT_FOUND, "The target couldn't be found"),
+        IssueError::Forbidden => compat_error(
+            StatusCode::FORBIDDEN,
+            "The required permission is not granted",
+        ),
+        IssueError::Invalid(message) => compat_error(StatusCode::UNPROCESSABLE_ENTITY, &message),
+        IssueError::Internal(detail) => {
+            log::error!("Issue operation failed: {detail}");
+            compat_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "The request could not be completed",
+            )
+        }
+    }
+}
+
 pub fn from_pull_error(error: PullError) -> HttpResponse {
     match error {
         PullError::NotFound => compat_error(StatusCode::NOT_FOUND, "The target couldn't be found"),

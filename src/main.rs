@@ -17,6 +17,7 @@ mod git;
 mod http;
 mod info;
 mod integration_tests;
+mod issues;
 mod md;
 mod pulls;
 

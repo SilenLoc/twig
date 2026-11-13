@@ -295,13 +295,17 @@ pub async fn delete_repository(
         log::error!("Failed to delete API repository: {error}");
         return json_error(ApiError::Internal);
     }
-    if let Some(repo_id) = repo_id
-        && let Err(error) = auth_state
+    if let Some(repo_id) = repo_id {
+        if let Err(error) = auth_state
             .db()
             .delete_pull_requests_for_repo(&repo_id)
             .await
-    {
-        log::error!("Failed to remove pull requests of deleted repository: {error}");
+        {
+            log::error!("Failed to remove pull requests of deleted repository: {error}");
+        }
+        if let Err(error) = auth_state.db().delete_issues_for_repo(&repo_id).await {
+            log::error!("Failed to remove issues of deleted repository: {error}");
+        }
     }
     HttpResponse::Ok().json(MutationResponse {
         resource: format!(

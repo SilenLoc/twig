@@ -12,6 +12,10 @@ mod tests {
     mod ci_api;
     #[path = "../device_authorization.rs"]
     mod device_authorization;
+    #[path = "../issues_api.rs"]
+    mod issues_api;
+    #[path = "../issues_ui.rs"]
+    mod issues_ui;
     #[path = "../namespace_permissions.rs"]
     mod namespace_permissions;
     #[path = "../namespace_pins.rs"]

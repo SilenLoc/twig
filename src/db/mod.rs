@@ -7,6 +7,7 @@ pub mod data;
 pub mod device_authorizations;
 pub mod invitations;
 pub mod invites;
+pub mod issues;
 pub mod migration;
 pub mod namespaces;
 pub mod personal_access_tokens;

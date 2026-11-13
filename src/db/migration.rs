@@ -362,6 +362,52 @@ const MIGRATIONS: &[Migration] = &[
         sql: r"CREATE INDEX IF NOT EXISTS idx_ci_runs_repo_sha
             ON ci_runs(repo_id, head_sha);",
     },
+    Migration {
+        name: "create_issues_table",
+        sql: r"CREATE TABLE IF NOT EXISTS issues (
+            id TEXT PRIMARY KEY,
+            repo_id TEXT NOT NULL,
+            number INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            body TEXT NOT NULL DEFAULT '',
+            state TEXT NOT NULL,
+            author_user_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            closed_at TEXT,
+            UNIQUE (repo_id, number)
+        );",
+    },
+    Migration {
+        name: "create_issues_repo_state_index",
+        sql: r"CREATE INDEX IF NOT EXISTS idx_issues_repo_state
+            ON issues(repo_id, state, updated_at);",
+    },
+    Migration {
+        name: "create_issue_assignees_table",
+        sql: r"CREATE TABLE IF NOT EXISTS issue_assignees (
+            issue_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            assigned_at TEXT NOT NULL,
+            PRIMARY KEY (issue_id, user_id)
+        );",
+    },
+    Migration {
+        name: "create_issue_comments_table",
+        sql: r"CREATE TABLE IF NOT EXISTS issue_comments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            issue_id TEXT NOT NULL,
+            author_user_id TEXT NOT NULL,
+            body TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT
+        );",
+    },
+    Migration {
+        name: "create_issue_comments_index",
+        sql: r"CREATE INDEX IF NOT EXISTS idx_issue_comments_issue
+            ON issue_comments(issue_id, created_at);",
+    },
 ];
 
 async fn prepare_migrations(conn: &crate::db::sqlite::Connection) -> Result<Vec<String>, String> {

@@ -230,13 +230,17 @@ pub async fn delete_repo(
             .ok();
     match std::fs::remove_dir_all(&repo_path) {
         Ok(()) => {
-            if let Some(repo_id) = repo_id
-                && let Err(error) = auth_state
+            if let Some(repo_id) = repo_id {
+                if let Err(error) = auth_state
                     .db()
                     .delete_pull_requests_for_repo(&repo_id)
                     .await
-            {
-                log::error!("Failed to remove pull requests of deleted repository: {error}");
+                {
+                    log::error!("Failed to remove pull requests of deleted repository: {error}");
+                }
+                if let Err(error) = auth_state.db().delete_issues_for_repo(&repo_id).await {
+                    log::error!("Failed to remove issues of deleted repository: {error}");
+                }
             }
             info!(
                 "Deleted repository '{}/{}' by user: {}",
