@@ -702,3 +702,39 @@ async fn invalid_device_code_lookups_are_rate_limited() {
     .await;
     assert_eq!(limited.status(), StatusCode::TOO_MANY_REQUESTS);
 }
+
+#[actix_web::test]
+async fn device_page_without_code_asks_for_the_code() {
+    let app = create_test_service().await;
+    let page = test::call_service(
+        &app,
+        test::TestRequest::get().uri("/auth/device").to_request(),
+    )
+    .await;
+    assert_eq!(page.status(), StatusCode::OK);
+    let body = String::from_utf8(test::read_body(page).await.to_vec()).unwrap();
+    assert!(body.contains("name=\"user_code\""), "{body}");
+    assert!(
+        body.contains("method=\"get\" action=\"/auth/device\""),
+        "{body}"
+    );
+}
+
+#[actix_web::test]
+async fn device_page_with_malformed_code_shows_entry_form_error() {
+    let app = create_test_service().await;
+    let page = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri("/auth/device?user_code=ABCD-EF!H")
+            .to_request(),
+    )
+    .await;
+    assert_eq!(page.status(), StatusCode::BAD_REQUEST);
+    let body = String::from_utf8(test::read_body(page).await.to_vec()).unwrap();
+    assert!(body.contains("name=\"user_code\""), "{body}");
+    assert!(
+        body.contains("Enter the eight-character code shown in Tree."),
+        "{body}"
+    );
+}

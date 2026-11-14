@@ -21,7 +21,7 @@ use crate::{
     config,
     db::device_authorizations::DeviceAuthorizationStatus,
     http::{
-        auth::session::device_return_to,
+        auth::session::{device_return_to, get_username_from_request},
         view::{render_error, render_layout},
     },
 };
@@ -85,7 +85,7 @@ fn peer_ip(request: &HttpRequest) -> IpAddr {
 
 #[derive(Deserialize)]
 struct DeviceCodeQuery {
-    user_code: String,
+    user_code: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -121,12 +121,20 @@ pub async fn device_authorization_page(
     auth_state: web::Data<TwigContext>,
     rate_limiter: web::Data<DeviceAuthorizationRateLimiter>,
 ) -> HttpResponse {
+    let raw_code = query.user_code.as_deref().map_or("", str::trim);
+    if raw_code.is_empty() {
+        let username = get_username_from_request(&request, &auth_state).await;
+        return render_code_entry_response(username.as_deref(), None);
+    }
     if !rate_limiter.allow_code_lookup(peer_ip(&request), Instant::now()) {
         return no_store(HttpResponse::TooManyRequests()).finish();
     }
-    let normalized_code = match normalize_user_code(&query.user_code) {
+    let normalized_code = match normalize_user_code(raw_code) {
         Ok(code) => code,
-        Err(message) => return no_store(HttpResponse::BadRequest()).body(message),
+        Err(message) => {
+            let username = get_username_from_request(&request, &auth_state).await;
+            return render_code_entry_response(username.as_deref(), Some(&message));
+        }
     };
     let user_code = format_user_code(&normalized_code);
     let code_hash = hash_device_code(&normalized_code);
@@ -421,6 +429,57 @@ fn render_error_response(builder: actix_web::HttpResponseBuilder, message: &str)
     no_store(builder)
         .content_type("text/html")
         .body(render_error(message).into_string())
+}
+
+fn render_code_entry_response(username: Option<&str>, error: Option<&str>) -> HttpResponse {
+    let builder = if error.is_some() {
+        HttpResponse::BadRequest()
+    } else {
+        HttpResponse::Ok()
+    };
+    let content = render_code_entry_page(error);
+    no_store(builder)
+        .insert_header(("Referrer-Policy", "no-referrer"))
+        .content_type("text/html")
+        .body(render_layout(&content, username, Some("Authorize Tree")).into_string())
+}
+
+fn render_code_entry_page(error: Option<&str>) -> maud::Markup {
+    maud::html! {
+        section class="card twig-panel" aria-labelledby="tree-code-title" {
+            header class="twig-panel-head" {
+                h1 class="card-title twig-eyebrow" id="tree-code-title" { "AUTHORIZE TREE" }
+            }
+            div class="card-body twig-panel-body twig-stack" {
+                p class="twig-body-sm twig-ink-secondary" {
+                    "Enter the eight-character code shown in Tree."
+                }
+                form method="get" action="/auth/device" class="twig-form" {
+                    div class="twig-field" {
+                        label class="twig-label" for="user_code" { "Code" }
+                        input
+                            type="text"
+                            name="user_code"
+                            id="user_code"
+                            required
+                            autocomplete="off"
+                            autocapitalize="characters"
+                            spellcheck="false"
+                            placeholder="XXXX-XXXX"
+                            class="twig-input twig-input--mono";
+                    }
+                    @if let Some(message) = error {
+                        p class="twig-hint" role="alert" { (message) }
+                    }
+                    div class="twig-form-actions" {
+                        button type="submit" class="twig-btn twig-btn--primary twig-btn--block" {
+                            "Continue"
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn render_approval_page(
