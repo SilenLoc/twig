@@ -13,8 +13,8 @@ command-line client (`fj`) works with them.
    description and the conversation. Signed-in viewers can comment.
 3. The author, and anyone who can push, can edit the title and description, and
    close or reopen the issue. The author can edit or delete their own comments.
-4. Anyone who can push can assign members of the namespace from the **Assignees**
-   panel, and remove them.
+4. Anyone who can push can assign an owner of the namespace from the **Assignees**
+   dropdown, and remove assignees. The dropdown lists owners who are not assigned yet.
 5. The list filters by **Open**, **Closed**, or **All**. The search box matches the
    title and the description. The author and assignee boxes take a username.
 

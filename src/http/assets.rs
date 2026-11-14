@@ -67,6 +67,12 @@ const ASSETS: &[Asset] = &[
         body: include_bytes!("../../assets/repo-edit.js"),
     },
     Asset {
+        stem: "issue-composer",
+        extension: "js",
+        content_type: "application/javascript; charset=utf-8",
+        body: include_bytes!("../../assets/issue-composer.js"),
+    },
+    Asset {
         stem: "quill",
         extension: "js",
         content_type: "application/javascript; charset=utf-8",

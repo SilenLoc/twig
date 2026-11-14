@@ -14,6 +14,7 @@ use crate::{
 };
 
 mod actions;
+mod composer;
 mod list;
 mod new;
 mod view;

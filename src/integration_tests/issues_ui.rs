@@ -63,6 +63,11 @@ async fn new_issue_form_creates_an_issue_and_shows_it() {
     let refused_body = test::read_body(refused).await;
     let refused_html = String::from_utf8(refused_body.to_vec()).unwrap();
     assert!(refused_html.contains("Title is required"));
+    assert!(
+        refused_html.contains("data-md-composer")
+            && refused_html.contains("/assets/issue-composer"),
+        "the description is a Markdown field with its composer script"
+    );
 
     // A valid title creates the issue and redirects to its page.
     let created = test::call_service(
@@ -421,9 +426,13 @@ async fn author_edits_text_and_members_are_assigned_from_the_page() {
     assert!(after_edit.contains("New body"));
     assert!(!after_edit.contains("Old title"));
 
+    // The Assign dropdown offers the namespace's owners, not its contributors.
+    assert!(after_edit.contains(&format!("<option value=\"{}\">", user.username)));
+    assert!(!after_edit.contains("<option value=\"ui-reviewer\">"));
+
     // Anonymous visitors see who is assigned but none of the controls.
     let (_, anonymous) = body_of(&app, &page).await;
-    assert!(!anonymous.contains("Assign a member"));
+    assert!(!anonymous.contains("Assign an owner"));
 
     let assigned = test::call_service(
         &app,

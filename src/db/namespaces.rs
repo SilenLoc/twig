@@ -426,16 +426,36 @@ impl Database {
         &self,
         namespace: &str,
     ) -> Result<Vec<crate::auth::User>, String> {
+        self.list_namespace_users(namespace, "").await
+    }
+
+    /// The namespace's owners, by username. The Issues UI offers these as assignees.
+    pub async fn list_namespace_owners(
+        &self,
+        namespace: &str,
+    ) -> Result<Vec<crate::auth::User>, String> {
+        self.list_namespace_users(namespace, "AND nm.role = 'owner'")
+            .await
+    }
+
+    /// The namespace's users that match `role_filter`, an SQL clause over `nm`.
+    async fn list_namespace_users(
+        &self,
+        namespace: &str,
+        role_filter: &str,
+    ) -> Result<Vec<crate::auth::User>, String> {
         let mut rows = self
             .conn()
             .await?
             .query(
-                "SELECT u.id, u.username, u.email, u.password_hash, u.created_at
-                 FROM namespace_members nm
-                 JOIN namespaces n ON n.id = nm.namespace_id
-                 JOIN users u ON u.id = nm.user_id
-                 WHERE n.name = ?1
-                 ORDER BY u.username ASC",
+                &format!(
+                    "SELECT u.id, u.username, u.email, u.password_hash, u.created_at
+                     FROM namespace_members nm
+                     JOIN namespaces n ON n.id = nm.namespace_id
+                     JOIN users u ON u.id = nm.user_id
+                     WHERE n.name = ?1 {role_filter}
+                     ORDER BY u.username ASC"
+                ),
                 crate::db::sqlite::params![namespace],
             )
             .await

@@ -1,5 +1,6 @@
 //! One issue's page: the title and state, the description, the conversation, and the
-//! controls the signed-in viewer may use. A pull request's number redirects to its page.
+//! controls the signed-in viewer may use. A sidebar holds the assignees and the close or
+//! reopen action, as in the issue mockup. A pull request's number redirects to its page.
 
 use actix_web::{HttpRequest, HttpResponse, Result as AwResult, get, http::StatusCode, web};
 use maud::{Markup, PreEscaped, html};
@@ -16,7 +17,11 @@ use crate::{
     md, pulls,
 };
 
-use super::{author_name, error_response, html_response, see_other, signed_in};
+use super::{
+    author_name,
+    composer::{self, markdown_field},
+    error_response, html_response, see_other, signed_in,
+};
 
 #[derive(serde::Deserialize)]
 pub(super) struct IssuePath {
@@ -135,62 +140,102 @@ async fn render(
     let assignees = super::actions::current_assignee_names(auth_state.db(), issue)
         .await
         .unwrap_or_default();
+    let owner_choices = if can_push {
+        unassigned_owners(auth_state, namespace, &assignees).await
+    } else {
+        Vec::new()
+    };
     html! {
         div class="twig-stack" {
-            header {
-                h1 class="twig-pr-title" {
+            header class="twig-issue-head" {
+                h2 class="twig-section" {
                     (issue.title) " "
-                    span class="twig-mono" { "#" (number) }
+                    span class="twig-pr-number" { "#" (number) }
                 }
-                span class="twig-pr-state" data-state=(key) { (label) }
-                div class="twig-row-meta" {
-                    "opened " (opened) " by " (author)
+                div class="twig-pr-byline" {
+                    span class="twig-pr-state" data-state=(key) { (label) }
+                    " " (author) " opened this issue on " (opened)
                 }
             }
-            section class="twig-panel" {
-                div class="twig-panel-body" {
-                    @if issue.body.trim().is_empty() {
-                        p class="twig-hint" { "No description provided." }
+            div class="twig-issue-layout" {
+                div class="twig-issue-main" {
+                    div class="twig-pr-timeline" {
+                        article class="twig-pr-entry" id="issue-description" {
+                            div class="twig-pr-entry-body" {
+                                @if issue.body.trim().is_empty() {
+                                    p class="twig-hint" { "No description provided." }
+                                } @else {
+                                    (PreEscaped(md::render_untrusted_markdown(&issue.body)))
+                                }
+                            }
+                            @if can_change_state {
+                                footer class="twig-pr-entry-tools" {
+                                    (edit_details(namespace, repo, issue))
+                                }
+                            }
+                        }
+                        @for (comment, name) in &timeline {
+                            (comment_entry(namespace, repo, number, comment, name, viewer_id == Some(comment.author_user_id.as_str()), editing))
+                        }
+                    }
+                    @if viewer.is_some() {
+                        section class="twig-pr-composer" aria-label="Add a comment" {
+                            form method="post" action=(format!("/{namespace}/{repo}/issues/{number}/comments")) class="twig-form" {
+                                label class="twig-label" for="issue-comment" { "Comment" }
+                                (markdown_field("issue-comment", "body", "Comment", "", 5, None))
+                                div class="twig-form-actions" {
+                                    button type="submit" class="twig-btn twig-btn--primary" { "Comment" }
+                                }
+                            }
+                        }
                     } @else {
-                        div class="twig-pr-entry-body" {
-                            (PreEscaped(md::render_untrusted_markdown(&issue.body)))
+                        p class="twig-hint" { "Sign in to comment." }
+                    }
+                    @if viewer.is_some() {
+                        (composer::scripts())
+                    }
+                }
+                aside class="twig-issue-side" aria-label="Issue details" {
+                    (assignees_panel(namespace, repo, number, &assignees, &owner_choices, can_push))
+                    @if can_change_state {
+                        section class="twig-issue-panel" aria-labelledby="issue-actions-heading" {
+                            h3 class="twig-label" id="issue-actions-heading" { "Actions" }
+                            form method="post" action=(format!("/{namespace}/{repo}/issues/{number}/state")) {
+                                @if closed {
+                                    button type="submit" name="action" value="reopen" class="twig-btn twig-btn--block" { "Reopen issue" }
+                                } @else {
+                                    button type="submit" name="action" value="close" class="twig-btn twig-btn--block" { "Close issue" }
+                                }
+                            }
                         }
                     }
                 }
             }
-            @if can_change_state {
-                (edit_panel(namespace, repo, issue))
-            }
-            (assignees_panel(namespace, repo, number, &assignees, can_push))
-            @for (comment, name) in &timeline {
-                (comment_block(namespace, repo, number, comment, name, viewer_id == Some(comment.author_user_id.as_str()), editing))
-            }
-            @if viewer.is_some() {
-                form class="twig-stack" method="post" action=(format!("/{namespace}/{repo}/issues/{number}/comments")) {
-                    textarea name="body" rows="5" placeholder="Leave a comment" required {}
-                    div class="twig-row-actions" {
-                        button type="submit" class="twig-btn twig-btn--primary" { "Comment" }
-                    }
-                }
-            } @else {
-                p class="twig-hint" { "Sign in to comment." }
-            }
-            @if can_change_state {
-                form method="post" action=(format!("/{namespace}/{repo}/issues/{number}/state")) {
-                    @if closed {
-                        button type="submit" name="action" value="reopen" class="twig-btn" { "Reopen issue" }
-                    } @else {
-                        button type="submit" name="action" value="close" class="twig-btn" { "Close issue" }
-                    }
-                }
-            }
-            a href=(format!("/{namespace}/{repo}/issues")) { "Back to issues" }
+        }
+    }
+}
+
+/// Namespace owners who are not assigned yet: the choices in the Assignees dropdown.
+async fn unassigned_owners(
+    auth_state: &web::Data<TwigContext>,
+    namespace: &str,
+    assigned: &[String],
+) -> Vec<String> {
+    match auth_state.db().list_namespace_owners(namespace).await {
+        Ok(owners) => owners
+            .into_iter()
+            .map(|owner| owner.username)
+            .filter(|name| !assigned.contains(name))
+            .collect(),
+        Err(error) => {
+            log::error!("Failed to load namespace owners for {namespace}: {error}");
+            Vec::new()
         }
     }
 }
 
 /// One comment. Its author sees Edit and Delete; an open edit form replaces the text.
-fn comment_block(
+fn comment_entry(
     namespace: &str,
     repo: &str,
     number: i64,
@@ -202,50 +247,61 @@ fn comment_block(
     let row = comment.row_id;
     let posted = comment.created_at.split('T').next().unwrap_or_default();
     let is_editing = own && editing == Some(row);
+    let page = format!("/{namespace}/{repo}/issues/{number}");
     html! {
-        section class="twig-panel" id=(format!("issuecomment-{row}")) {
-            div class="twig-panel-body" {
-                div class="twig-row-meta" {
-                    strong { (author) } " commented " (posted)
-                    @if comment.updated_at.is_some() { " · edited" }
-                }
-                @if is_editing {
-                    form method="post" action=(format!("/{namespace}/{repo}/issues/{number}/comments/{row}/edit")) {
-                        textarea name="body" rows="5" required { (comment.body) }
-                        div class="twig-row-actions" {
-                            button type="submit" class="twig-btn twig-btn--primary" { "Save" }
-                        }
-                    }
-                } @else {
-                    div class="twig-pr-entry-body" {
-                        (PreEscaped(md::render_untrusted_markdown(&comment.body)))
+        article class="twig-pr-entry" id=(format!("issuecomment-{row}")) {
+            header class="twig-pr-entry-head twig-issue-comment-head" {
+                div {
+                    span class="twig-pr-entry-author" { (author) }
+                    " commented on " (posted)
+                    @if comment.updated_at.is_some() {
+                        span class="twig-pr-entry-edited" { " · edited" }
                     }
                 }
                 @if own && !is_editing {
-                    div class="twig-row-actions" {
-                        a href=(format!("/{namespace}/{repo}/issues/{number}?edit={row}#issuecomment-{row}")) { "Edit" }
-                        form method="post" action=(format!("/{namespace}/{repo}/issues/{number}/comments/{row}/delete")) {
-                            button type="submit" class="twig-btn" { "Delete" }
+                    details class="twig-issue-menu" {
+                        summary class="twig-issue-menu-toggle" aria-label="Comment actions" { "…" }
+                        div class="twig-issue-menu-panel" {
+                            a class="twig-issue-menu-item" href=(format!("{page}?edit={row}#issuecomment-{row}")) { "Edit" }
+                            form method="post" action=(format!("{page}/comments/{row}/delete")) {
+                                button type="submit" class="twig-issue-menu-item twig-issue-menu-item--danger" { "Delete" }
+                            }
                         }
                     }
+                }
+            }
+            @if is_editing {
+                div class="twig-pr-entry-body" {
+                    form method="post" action=(format!("{page}/comments/{row}/edit")) class="twig-form" {
+                        (markdown_field(&format!("issue-comment-{row}"), "body", "Comment text", &comment.body, 5, None))
+                        div class="twig-form-actions" {
+                            button type="submit" class="twig-btn twig-btn--primary" { "Save" }
+                            a class="twig-btn" href=(format!("{page}#issuecomment-{row}")) { "Cancel" }
+                        }
+                    }
+                }
+            } @else {
+                div class="twig-pr-entry-body" {
+                    (PreEscaped(md::render_untrusted_markdown(&comment.body)))
                 }
             }
         }
     }
 }
 
-/// The title and description form, for an author or a pusher.
-fn edit_panel(namespace: &str, repo: &str, issue: &Issue) -> Markup {
+/// The title and description form, folded into a disclosure under the description.
+/// It is shown only to an author or a pusher.
+fn edit_details(namespace: &str, repo: &str, issue: &Issue) -> Markup {
     let number = issue.number;
     html! {
-        details class="twig-panel" {
+        details class="twig-pr-edit" {
             summary { "Edit title and description" }
-            form class="twig-stack" method="post" action=(format!("/{namespace}/{repo}/issues/{number}/edit")) {
-                label for="edit-title" { "Title" }
-                input id="edit-title" name="title" type="text" value=(issue.title) required;
-                label for="edit-body" { "Description" }
-                textarea id="edit-body" name="body" rows="8" { (issue.body) }
-                div class="twig-row-actions" {
+            form method="post" action=(format!("/{namespace}/{repo}/issues/{number}/edit")) class="twig-form" {
+                label class="twig-label" for="edit-title" { "Title" }
+                input id="edit-title" class="twig-input" name="title" type="text" value=(issue.title) required;
+                label class="twig-label" for="edit-body" { "Description" }
+                (markdown_field("edit-body", "body", "Description", &issue.body, 8, None))
+                div class="twig-form-actions" {
                     button type="submit" class="twig-btn twig-btn--primary" { "Save" }
                 }
             }
@@ -253,44 +309,48 @@ fn edit_panel(namespace: &str, repo: &str, issue: &Issue) -> Markup {
     }
 }
 
-/// The assignees, with Remove and Assign controls for people who can push.
+/// The assignees, with Remove for people who can push. The Assign dropdown lists the
+/// namespace's owners who are not assigned yet.
 fn assignees_panel(
     namespace: &str,
     repo: &str,
     number: i64,
     assignees: &[String],
+    owner_choices: &[String],
     can_push: bool,
 ) -> Markup {
     let action = format!("/{namespace}/{repo}/issues/{number}/assignees");
     html! {
-        section class="twig-panel" {
-            div class="twig-panel-body" {
-                div class="twig-row-meta" { "Assignees" }
-                @if assignees.is_empty() {
-                    p class="twig-hint" { "No one is assigned." }
-                } @else {
-                    ul {
-                        @for name in assignees {
-                            li {
-                                span class="twig-mono" { (name) }
-                                @if can_push {
-                                    form method="post" action=(action.as_str()) {
-                                        input type="hidden" name="action" value="remove";
-                                        input type="hidden" name="username" value=(name);
-                                        button type="submit" class="twig-btn" { "Remove" }
-                                    }
+        section class="twig-issue-panel" aria-labelledby="issue-assignees-heading" {
+            h3 class="twig-label" id="issue-assignees-heading" { "Assignees" }
+            @if assignees.is_empty() {
+                p class="twig-hint" { "No one is assigned." }
+            } @else {
+                ul class="twig-issue-people" {
+                    @for name in assignees {
+                        li class="twig-issue-person" {
+                            span class="twig-mono" { (name) }
+                            @if can_push {
+                                form method="post" action=(action.as_str()) {
+                                    input type="hidden" name="action" value="remove";
+                                    input type="hidden" name="username" value=(name);
+                                    button type="submit" class="twig-btn twig-btn--quiet" { "Remove" }
                                 }
                             }
                         }
                     }
                 }
-                @if can_push {
-                    form method="post" action=(action.as_str()) {
-                        input type="hidden" name="action" value="add";
-                        label for="assign-user" { "Assign a member" }
-                        input id="assign-user" name="username" type="text" required;
-                        button type="submit" class="twig-btn" { "Assign" }
+            }
+            @if can_push && !owner_choices.is_empty() {
+                form method="post" action=(action.as_str()) class="twig-form" {
+                    input type="hidden" name="action" value="add";
+                    label class="twig-sr" for="issue-assignee" { "Assign an owner" }
+                    select id="issue-assignee" name="username" class="twig-input twig-input--mono" {
+                        @for name in owner_choices {
+                            option value=(name) { (name) }
+                        }
                     }
+                    button type="submit" class="twig-btn" { "Assign" }
                 }
             }
         }

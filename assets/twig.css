@@ -3507,3 +3507,212 @@ body.twig-workspace-shell {
 .twig-pr-branches select {
     min-inline-size: 0;
 }
+
+/* Issues. The list reuses the request list and search styles. The issue page reuses the
+   conversation entries and adds the sidebar from the issue mockup, which holds the
+   assignees and the close or reopen action. */
+
+.twig-search .twig-input--person {
+    flex: 0 1 11rem;
+}
+
+/* A wide row puts the title on the left and the date on the right. The shared row grows
+   only its id cell, so the title takes the space here instead. */
+@media (min-width: 48rem) {
+    .twig-issue-row {
+        justify-content: flex-start;
+    }
+
+    .twig-issue-row .twig-pr-row-title {
+        flex: 1 1 auto;
+        min-inline-size: 0;
+    }
+
+    .twig-issue-row .twig-row-meta {
+        flex: 0 0 16rem;
+        overflow-wrap: normal;
+    }
+}
+
+/* Markdown fields. The source box is the form value; Rich text mode edits it through
+   Quill. The editor's own classes set a display, so hidden parts are forced off here. */
+.twig-md-composer {
+    display: flex;
+    flex-direction: column;
+    gap: var(--twig-space-3);
+    min-inline-size: 0;
+}
+
+.twig-md-composer [hidden] {
+    display: none !important;
+}
+
+.twig-md-composer .twig-editor-modes {
+    justify-content: flex-end;
+}
+
+.twig-md-composer .twig-editor-rich .ql-editor {
+    min-block-size: 10rem;
+}
+
+/* A comment's header holds a small menu at its right edge, with Edit and Delete. */
+.twig-issue-comment-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--twig-space-2);
+}
+
+.twig-issue-menu {
+    position: relative;
+}
+
+.twig-issue-menu-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-inline-size: 2rem;
+    min-block-size: 1.75rem;
+    padding-inline: var(--twig-space-2);
+    border: 1px solid transparent;
+    border-radius: var(--twig-radius);
+    color: var(--twig-ink-secondary);
+    list-style: none;
+    cursor: pointer;
+}
+
+.twig-issue-menu-toggle::-webkit-details-marker {
+    display: none;
+}
+
+.twig-issue-menu-toggle:hover,
+.twig-issue-menu[open] > .twig-issue-menu-toggle {
+    border-color: var(--twig-rule-strong);
+    background-color: var(--twig-surface-1);
+    color: var(--twig-ink-primary);
+}
+
+.twig-issue-menu-panel {
+    position: absolute;
+    inset-block-start: calc(100% + var(--twig-space-1));
+    inset-inline-end: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 8rem;
+    padding-block: var(--twig-space-1);
+    background-color: var(--twig-surface-1);
+    border: 1px solid var(--twig-rule-strong);
+    border-radius: var(--twig-radius);
+}
+
+.twig-issue-menu-panel form {
+    margin: 0;
+}
+
+.twig-issue-menu-item {
+    display: block;
+    inline-size: 100%;
+    padding: var(--twig-space-2) var(--twig-space-4);
+    border: 0;
+    background: transparent;
+    color: var(--twig-ink-primary);
+    font: inherit;
+    font-size: var(--twig-t-body-sm);
+    text-align: start;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.twig-issue-menu-item:hover {
+    background-color: var(--twig-surface-2);
+}
+
+.twig-issue-menu-item--danger {
+    color: var(--twig-signal-danger);
+}
+
+.twig-issue-head {
+    display: flex;
+    flex-direction: column;
+    gap: var(--twig-space-2);
+    min-inline-size: 0;
+}
+
+.twig-issue-head .twig-section {
+    overflow-wrap: anywhere;
+}
+
+.twig-issue-layout {
+    display: grid;
+    gap: var(--twig-space-6);
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+}
+
+@media (min-width: 48rem) {
+    .twig-issue-layout {
+        grid-template-columns: minmax(0, 1fr) 15rem;
+    }
+}
+
+.twig-issue-main {
+    display: flex;
+    flex-direction: column;
+    gap: var(--twig-space-5);
+    min-inline-size: 0;
+}
+
+.twig-issue-side {
+    display: flex;
+    flex-direction: column;
+    gap: var(--twig-space-5);
+    min-inline-size: 0;
+    font-size: var(--twig-t-body-sm);
+}
+
+.twig-issue-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--twig-space-3);
+    padding-block-end: var(--twig-space-5);
+    border-block-end: 1px solid var(--twig-rule);
+}
+
+.twig-issue-panel:last-child {
+    border-block-end: 0;
+}
+
+.twig-issue-panel > .twig-label {
+    margin: 0;
+}
+
+.twig-issue-people {
+    display: flex;
+    flex-direction: column;
+    gap: var(--twig-space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.twig-issue-person {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--twig-space-2);
+    min-inline-size: 0;
+}
+
+.twig-issue-person .twig-mono {
+    overflow-wrap: anywhere;
+}
+
+.twig-issue-panel .twig-form {
+    gap: var(--twig-space-3);
+}
+
+.twig-issue-panel .twig-form .twig-btn {
+    align-self: flex-start;
+}

@@ -215,11 +215,14 @@ fn render(
                     }
                 }
             }
-            form class="twig-pr-toolbar" method="get" action=(format!("/{namespace}/{repo}/issues")) {
+            form class="twig-search twig-issue-filters" role="search" method="get" action=(format!("/{namespace}/{repo}/issues")) {
                 input type="hidden" name="state" value=(state);
-                input type="search" name="q" value=(filters.q) placeholder="Search issues";
-                input type="text" name="author" value=(filters.author) placeholder="Author";
-                input type="text" name="assignee" value=(filters.assignee) placeholder="Assignee";
+                label class="twig-sr" for="issue-search" { "Search issues" }
+                input id="issue-search" class="twig-input" type="search" name="q" value=(filters.q) placeholder="Search issues";
+                label class="twig-sr" for="issue-author" { "Author" }
+                input id="issue-author" class="twig-input twig-input--mono twig-input--person" type="text" name="author" value=(filters.author) placeholder="Author";
+                label class="twig-sr" for="issue-assignee-filter" { "Assignee" }
+                input id="issue-assignee-filter" class="twig-input twig-input--mono twig-input--person" type="text" name="assignee" value=(filters.assignee) placeholder="Assignee";
                 button type="submit" class="twig-btn" { "Filter" }
             }
             @if rows.is_empty() {
@@ -250,7 +253,7 @@ fn row(namespace: &str, repo: &str, issue: &Issue, author: &str) -> Markup {
     let opened = issue.created_at.split('T').next().unwrap_or_default();
     let number = issue.number;
     html! {
-        div class="twig-row twig-pr-row" {
+        div class="twig-row twig-pr-row twig-issue-row" {
             div class="twig-pr-row-title" {
                 span class="twig-pr-state" data-state=(key) { (label) }
                 a href=(format!("/{namespace}/{repo}/issues/{number}")) { (issue.title) }

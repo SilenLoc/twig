@@ -17,7 +17,10 @@ use crate::{
     issues::{self, Actor, CreateInput, IssueError, RepoRef},
 };
 
-use super::{error_response, html_response, see_other, signed_in};
+use super::{
+    composer::{self, markdown_field},
+    error_response, html_response, see_other, signed_in,
+};
 
 #[derive(Debug, Deserialize)]
 pub(super) struct IssueForm {
@@ -138,23 +141,24 @@ fn render_form(
     }
     html! {
         div class="twig-stack" {
+            h2 class="twig-section" { "New issue" }
             @if let Some(message) = notice {
                 div class="twig-notice twig-notice--danger" role="alert" {
                     p class="twig-eyebrow" { "ERROR" }
                     p class="twig-notice-body" { (message) }
                 }
             }
-            form class="twig-stack" method="post" action=(format!("/{namespace}/{repo}/issues/new")) {
-                label for="issue-title" { "Title" }
-                input id="issue-title" name="title" type="text" value=(title) required;
-                label for="issue-body" { "Description" }
-                textarea id="issue-body" name="body" rows="12" placeholder="Describe the problem or request. Markdown is supported." {
-                    (body)
-                }
-                div class="twig-row-actions" {
+            form class="twig-form" method="post" action=(format!("/{namespace}/{repo}/issues/new")) {
+                label class="twig-label" for="issue-title" { "Title" }
+                input id="issue-title" class="twig-input" name="title" type="text" value=(title) required;
+                label class="twig-label" for="issue-body" { "Description" }
+                (markdown_field("issue-body", "body", "Description", body, 12, Some("Describe the problem or request. Markdown is supported.")))
+                div class="twig-form-actions" {
                     button type="submit" class="twig-btn twig-btn--primary" { "Submit new issue" }
+                    a class="twig-btn" href=(format!("/{namespace}/{repo}/issues")) { "Cancel" }
                 }
             }
+            (composer::scripts())
         }
     }
 }
