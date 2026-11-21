@@ -14,7 +14,7 @@ use super::MarkdownParams;
 use super::content::parent_path;
 use super::context::{open_repo, render_empty, render_not_found_for_request};
 use super::paper::PaperHeading;
-use super::tabs::{markdown_files, render_tab_response};
+use super::tabs::{is_hidden_markdown_path, markdown_files, render_tab_response};
 
 #[get("/{namespace}/{repo}/md/{file_path:.*}")]
 pub async fn markdown_handler(
@@ -29,7 +29,8 @@ pub async fn markdown_handler(
         Err(rendered) => return Ok(rendered),
     };
 
-    if !is_safe_repo_path(file_path) {
+    // A hidden path is not found here either, so typing its URL shows nothing.
+    if !is_safe_repo_path(file_path) || is_hidden_markdown_path(file_path) {
         return Ok(render_not_found_for_request(
             &req,
             ctx.username.as_deref(),
