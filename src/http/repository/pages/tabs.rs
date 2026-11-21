@@ -11,11 +11,55 @@ use crate::auth::TwigContext;
 use crate::config;
 use crate::git::bare::{Commit, MAX_COMMITS};
 
+/// Folders the Documentation tab never shows, at any depth: agent and skill
+/// folders that tools keep beside a project's code.
+const HIDDEN_MARKDOWN_FOLDERS: [&str; 11] = [
+    ".agents",
+    ".claude",
+    ".codex",
+    ".cursor",
+    ".opencode",
+    ".vibe",
+    "agent",
+    "agents",
+    "skill",
+    "skills",
+    "vault",
+];
+
+/// Files the Documentation tab never shows, matched by name at any depth.
+const HIDDEN_MARKDOWN_FILES: [&str; 2] = ["agents.md", "claude.md"];
+
+/// Whether the Documentation tab hides the repository-relative `path`. The
+/// rules are fixed: they apply whatever `.twig.toml` says.
+pub(super) fn is_hidden_markdown_path(path: &str) -> bool {
+    let mut folders: Vec<&str> = path.split('/').collect();
+    let name = folders.pop().unwrap_or_default();
+    if HIDDEN_MARKDOWN_FILES
+        .iter()
+        .any(|hidden| name.eq_ignore_ascii_case(hidden))
+    {
+        return true;
+    }
+    // `docs/plans` is hidden only at the repository root.
+    if folders.starts_with(&["docs", "plans"]) {
+        return true;
+    }
+    folders.iter().any(|folder| {
+        HIDDEN_MARKDOWN_FOLDERS
+            .iter()
+            .any(|hidden| folder.eq_ignore_ascii_case(hidden))
+    })
+}
+
 pub(super) fn markdown_files(ctx: &RepoContext) -> Vec<String> {
-    ctx.handle
+    let mut files = ctx
+        .handle
         .list_files(Some(&ctx.twig_result.config))
         .unwrap_or_default()
-        .markdown_files
+        .markdown_files;
+    files.retain(|file| !is_hidden_markdown_path(file));
+    files
 }
 
 /// The Documentation tab: the default Markdown file, README preferred.

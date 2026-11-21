@@ -19,6 +19,41 @@ fn test_get_default_markdown_file() {
     assert_eq!(get_default_markdown_file(&files), None);
 }
 #[test]
+fn test_hidden_markdown_paths_cover_agent_and_skill_folders() {
+    for path in [
+        ".vibe/notes.md",
+        ".claude/CLAUDE.md",
+        ".opencode/skills/htmx/SKILL.md",
+        "skills/README.md",
+        "tools/skills/guide.md",
+        "agents/planner.md",
+        "src/agent/prompt.md",
+        "vault/secret.md",
+        "docs/plans/issues/01-product.md",
+        "AGENTS.md",
+        "sub/agents.md",
+        "claude.md",
+    ] {
+        assert!(is_hidden_markdown_path(path), "{path} should be hidden");
+    }
+}
+
+#[test]
+fn test_visible_markdown_paths_stay_listed() {
+    for path in [
+        "README.md",
+        "docs/guide.md",
+        "docs/plans.md",
+        "notes/docs/plans/draft.md",
+        "skillset.md",
+        "vaults/guide.md",
+        "agency/readme.md",
+    ] {
+        assert!(!is_hidden_markdown_path(path), "{path} should be shown");
+    }
+}
+
+#[test]
 fn test_default_tab_prefers_configuration_then_markdown() {
     let configured = vec!["license".to_string(), "commits".to_string()];
     let files = vec!["README.md".to_string()];

@@ -452,3 +452,44 @@ async fn private_repository_markup_is_inert_for_an_authorized_reader() {
 
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[actix_web::test]
+async fn test_documentation_tab_never_lists_or_opens_agent_material() {
+    let root = format!("/tmp/test_twig_markdown_hidden_{}", uuid::Uuid::new_v4());
+    let app = create_test_service_in(&root).await;
+    init_repo_with_files(
+        &std::path::Path::new(&root).join("pub/guide"),
+        "tabs = []\n",
+        &[
+            ("README.md", "# Guide\n"),
+            ("docs/guide.md", "# Visible guide\n"),
+            ("AGENTS.md", "# Hidden agent rules\n"),
+            ("skills/review/SKILL.md", "# Hidden skill body\n"),
+            (".claude/notes.md", "# Hidden claude notes\n"),
+            ("docs/plans/roadmap.md", "# Hidden roadmap\n"),
+        ],
+    );
+
+    let body = get_body(&app, "/pub/guide").await;
+    assert!(body.contains("docs/guide.md"), "{body}");
+    assert!(body.contains("README.md"), "{body}");
+    for hidden in [
+        "AGENTS.md",
+        "skills/review/SKILL.md",
+        ".claude/notes.md",
+        "docs/plans/roadmap.md",
+    ] {
+        assert!(
+            !body.contains(hidden),
+            "{hidden} must not be listed: {body}"
+        );
+    }
+
+    let body = get_body(&app, "/pub/guide/md/AGENTS.md").await;
+    assert!(
+        !body.contains("Hidden agent rules"),
+        "a direct visit must not render a hidden file: {body}"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+}

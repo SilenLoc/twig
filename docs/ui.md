@@ -62,7 +62,11 @@ The repository page offers tabs according to available content and `.twig.toml`
 configuration:
 
 - **Documentation** — rendered Markdown, including README files and links
-  between repository Markdown files.
+  between repository Markdown files. It never lists or opens agent and skill
+  material: `.agents`, `.claude`, `.codex`, `.cursor`, `.opencode`, `.vibe`,
+  `agent(s)`, `skill(s)`, and `vault` folders at any depth, `docs/plans` at the
+  repository root, and `AGENTS.md`/`agents.md`/`CLAUDE.md` files. These rules
+  are fixed and do not depend on `.twig.toml`; the Content tab still shows them.
 - **Paper** — read every Markdown page under `[paper].dir` as one continuous
   document. Pages load as they scroll into view, and the pinned toolbar offers
   the same A−/A+ zoom as presentations plus a Sans/Serif/Mono reading font.
