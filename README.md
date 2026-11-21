@@ -2,7 +2,7 @@
 
 Twig is a self-hosted Git server with a web interface for browsing and managing
 repositories. It is a single Rust/Actix-web application backed by a local
-SQLite-compatible database (Turso/libSQL) and Git's smart-HTTP backend.
+SQLite database (bundled `rusqlite`) and Git's smart-HTTP backend.
 
 ## Features
 
