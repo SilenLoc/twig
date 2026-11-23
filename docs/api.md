@@ -146,6 +146,28 @@ Common statuses are `400` for invalid input, `401` for absent/invalid credential
 
 Signup/login, account settings, personal-access-token creation/revocation, database administration, test endpoints, and Git Smart HTTP are not JSON API routes. Existing UI/public Git behavior is unchanged; the authentication requirement applies to `/api/` endpoints.
 
+## GitHub-compatible API
+
+The GitHub REST API lives under `/api/v3`, and GitHub's GraphQL API at `/api/graphql`. These are the paths `gh` uses for a custom host, so `GH_HOST=<twig host>` and `GH_ENTERPRISE_TOKEN=<token>` work with no other configuration. Both accept a personal access token as `Authorization: token <token>` or `Authorization: Bearer <token>`, and HTTP Basic with a token as the password. A request without credentials gets `401`. `GET /api/v3/` needs no credentials, as on GitHub.
+
+Supported in this slice:
+
+- `GET /api/v3/`, `GET /api/v3/user`, `GET /api/v3/repos/{owner}/{repo}`
+- Issues: `GET|POST /api/v3/repos/{owner}/{repo}/issues`, `GET|PATCH .../issues/{number}`
+- Pull requests: `GET|POST .../pulls`, `GET|PATCH .../pulls/{number}`, `GET .../pulls/{number}/merge` (merged?), `PUT .../pulls/{number}/merge` (`merge`, `squash`, or `rebase`; `sha` guards the head), `GET .../pulls/{number}/files`, `GET .../pulls/{number}/commits`, `GET|POST .../pulls/{number}/reviews`, and `GET|POST|DELETE .../pulls/{number}/requested_reviewers`. A pull request's diff comes back with `Accept: application/vnd.github.v3.diff`.
+- GraphQL: `viewer`, `repository` with `issue`, `issues`, `pullRequest`, and `pullRequests`; the mutations `createIssue`, `updateIssue`, `closeIssue`, `reopenIssue`, `addComment`, `createPullRequest`, `addPullRequestReview`, `mergePullRequest`, `closePullRequest`, and `reopenPullRequest`; and `search` for issues and pull requests filtered by `repo:`, `is:`, `author:`, `assignee:`, and `review-requested:`.
+
+To log in with the `gh` command line, give a hostname with no port, because `gh` refuses ports in `--hostname`, and serve Twig over HTTPS on that host's port 443:
+
+```sh
+printf %s "$TWIG_TOKEN" | gh auth login --hostname twig.example --with-token
+gh pr list -R twig.example/namespace/repository
+```
+
+Twig has no labels, milestones, projects, teams, reactions on issues, auto-merge, or check runs. Requests that name them are refused with `422`, or answer with an empty value where GitHub would list nothing.
+
+Merged pull requests keep their files and commits: the merge commit names them.
+
 ## Forgejo-compatible API
 
 Pull requests, reviews, CI runs, and the repository routes used by T3 Code and the
