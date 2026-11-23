@@ -480,18 +480,8 @@ pub async fn update_pull(
 
 /// Lines added, lines removed, and files changed by a request, from its merge base.
 pub fn change_size(handle: &RepoHandle, pull_request: &PullRequest) -> (i64, i64, i64) {
-    let range = (|| {
-        let base = handle
-            .branch_tip(&pull_request.base_branch)
-            .ok()
-            .flatten()?;
-        let head = handle
-            .branch_tip(&pull_request.head_branch)
-            .ok()
-            .flatten()?;
-        let from = handle.merge_base(base, head).ok().flatten().unwrap_or(base);
-        handle.diff_files(from, head).ok()
-    })();
+    let range = crate::pulls::change_range(handle, pull_request)
+        .and_then(|(from, to)| handle.diff_files(from, to).ok());
     let files = range.unwrap_or_default();
     let additions: usize = files.iter().map(|file| file.additions).sum();
     let deletions: usize = files.iter().map(|file| file.deletions).sum();

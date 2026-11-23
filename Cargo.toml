@@ -24,6 +24,7 @@ semver = "1"
 sha2 = "0.10"
 toml = "1.1"
 rusqlite = { version = "0.40.1", features = ["bundled"] }
+async-graphql = "8.0.0-rc.5"
 
 [dependencies.actix-http]
 version = "3"

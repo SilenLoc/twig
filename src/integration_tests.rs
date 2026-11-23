@@ -12,6 +12,10 @@ mod tests {
     mod ci_api;
     #[path = "../device_authorization.rs"]
     mod device_authorization;
+    #[path = "../github_issues_api.rs"]
+    mod github_issues_api;
+    #[path = "../github_pull_requests_api.rs"]
+    mod github_pull_requests_api;
     #[path = "../issues_api.rs"]
     mod issues_api;
     #[path = "../issues_ui.rs"]

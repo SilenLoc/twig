@@ -65,35 +65,70 @@ pub async fn create(
     input: CreateInput<'_>,
 ) -> Result<PullRequest, PullError> {
     require(perms, NamespacePermission::PushChanges)?;
-    let title = input.title.trim();
-    if title.is_empty() {
-        return Err(PullError::Invalid("Title is required".to_string()));
-    }
-    if input.base == input.head {
+    let title = checked_title(input.title)?;
+    let head_tip = check_create_branches(handle, input.base, input.head)?;
+    let pull_request = create_record(
+        db, repo, actor, perms, title, input.body, input.base, input.head,
+    )
+    .await?;
+    attach_head_ref(handle, &pull_request, head_tip);
+    Ok(pull_request)
+}
+
+/// The git half of opening a request: both branches exist, differ, and the head has
+/// commits the base lacks. Returns the head's tip. Takes no database work, so callers
+/// can run it without holding a database await.
+pub fn check_create_branches(
+    handle: &RepoHandle,
+    base: &str,
+    head: &str,
+) -> Result<git2::Oid, PullError> {
+    if base == head {
         return Err(PullError::Invalid(EQUAL_BRANCHES.to_string()));
     }
-
     let base_tip = handle
-        .branch_tip(input.base)
+        .branch_tip(base)
         .map_err(|_| PullError::Invalid("Invalid base branch name".to_string()))?
-        .ok_or_else(|| {
-            PullError::Invalid(format!("Base branch '{}' does not exist", input.base))
-        })?;
+        .ok_or_else(|| PullError::Invalid(format!("Base branch '{base}' does not exist")))?;
     let head_tip = handle
-        .branch_tip(input.head)
+        .branch_tip(head)
         .map_err(|_| PullError::Invalid("Invalid head branch name".to_string()))?
-        .ok_or_else(|| {
-            PullError::Invalid(format!("Head branch '{}' does not exist", input.head))
-        })?;
+        .ok_or_else(|| PullError::Invalid(format!("Head branch '{head}' does not exist")))?;
     let ahead = handle
         .commit_ids_in_range(base_tip, head_tip)
         .map_err(|error| PullError::Internal(format!("Failed to compare branches: {error}")))?;
     if ahead.is_empty() {
         return Err(PullError::Invalid(EQUAL_BRANCHES.to_string()));
     }
+    Ok(head_tip)
+}
 
+/// Trims a title and refuses an empty one.
+pub fn checked_title(title: &str) -> Result<&str, PullError> {
+    let title = title.trim();
+    if title.is_empty() {
+        Err(PullError::Invalid("Title is required".to_string()))
+    } else {
+        Ok(title)
+    }
+}
+
+/// The database half of opening a request: no open request may exist for the same
+/// branches, then the row is stored. No git work happens here.
+#[allow(clippy::too_many_arguments)]
+pub async fn create_record(
+    db: &Database,
+    repo: &RepoRef<'_>,
+    actor: &Actor<'_>,
+    perms: &PermissionSet,
+    title: &str,
+    body: &str,
+    base: &str,
+    head: &str,
+) -> Result<PullRequest, PullError> {
+    require(perms, NamespacePermission::PushChanges)?;
     if db
-        .find_open_pull_request(repo.repo_id, input.head, input.base)
+        .find_open_pull_request(repo.repo_id, head, base)
         .await
         .map_err(PullError::Internal)?
         .is_some()
@@ -102,26 +137,27 @@ pub async fn create(
             "A pull request for these branches already exists".to_string(),
         ));
     }
+    db.create_pull_request(NewPullRequest {
+        repo_id: repo.repo_id,
+        title,
+        body,
+        author_user_id: actor.user_id,
+        head_branch: head,
+        base_branch: base,
+    })
+    .await
+    .map_err(PullError::Internal)
+}
 
-    let pull_request = db
-        .create_pull_request(NewPullRequest {
-            repo_id: repo.repo_id,
-            title,
-            body: input.body,
-            author_user_id: actor.user_id,
-            head_branch: input.head,
-            base_branch: input.base,
-        })
-        .await
-        .map_err(PullError::Internal)?;
+/// Points `refs/pull/<number>/head` at the head tip. Failure is logged, not fatal: the
+/// next fetch repairs the ref from the stored request.
+pub fn attach_head_ref(handle: &RepoHandle, pull_request: &PullRequest, head_tip: git2::Oid) {
     if let Err(error) = handle.set_pull_ref(pull_request.number, head_tip) {
-        // The next fetch repairs the ref from the stored request, so this is not fatal.
         log::warn!(
             "Failed to set head ref for pull request #{}: {error}",
             pull_request.number
         );
     }
-    Ok(pull_request)
 }
 
 /// Makes each open request's `refs/pull/<number>/head` name the current tip of its
@@ -432,6 +468,30 @@ pub async fn merge(
     message: Option<&str>,
     merger: &Merger<'_>,
 ) -> Result<String, PullError> {
+    let tip = merge_git(
+        handle,
+        pull_request,
+        perms,
+        strategy,
+        title,
+        message,
+        merger,
+    )?;
+    record_merge(db, pull_request, actor, &tip).await?;
+    Ok(tip)
+}
+
+/// The git half of a merge: checks, builds the merge commit, and moves the base branch
+/// if it has not moved. Returns the new tip. No database work happens here.
+pub fn merge_git(
+    handle: &RepoHandle,
+    pull_request: &PullRequest,
+    perms: &PermissionSet,
+    strategy: MergeStrategy,
+    title: Option<&str>,
+    message: Option<&str>,
+    merger: &Merger<'_>,
+) -> Result<String, PullError> {
     require(perms, NamespacePermission::PushChanges)?;
     if pull_request.merged_at.is_some() {
         return Err(PullError::Conflict(
@@ -517,11 +577,77 @@ pub async fn merge(
             "The base branch moved while merging. Try again.".to_string(),
         ));
     }
-    let now = Utc::now().to_rfc3339();
-    db.mark_pull_request_merged(&pull_request.id, actor.user_id, &tip.to_string(), &now)
-        .await
-        .map_err(PullError::Internal)?;
     Ok(tip.to_string())
+}
+
+/// The database half of a merge: marks the stored request merged by `actor`.
+pub async fn record_merge(
+    db: &Database,
+    pull_request: &PullRequest,
+    actor: &Actor<'_>,
+    tip: &str,
+) -> Result<(), PullError> {
+    let now = Utc::now().to_rfc3339();
+    db.mark_pull_request_merged(&pull_request.id, actor.user_id, tip, &now)
+        .await
+        .map_err(PullError::Internal)
+}
+
+/// The two commits whose difference is the request's change: the merge base and the
+/// head for an open request, or the merge commit's first parent and the merge commit
+/// once it is merged. `None` when a branch is missing.
+pub fn change_range(
+    handle: &RepoHandle,
+    pull_request: &PullRequest,
+) -> Option<(git2::Oid, git2::Oid)> {
+    if let Some(merge) = merge_commit(pull_request) {
+        let summary = handle.commit_summary(merge).ok()?;
+        let parent = *summary.parents.first()?;
+        return Some((parent, merge));
+    }
+    let base = handle
+        .branch_tip(&pull_request.base_branch)
+        .ok()
+        .flatten()?;
+    let head = handle
+        .branch_tip(&pull_request.head_branch)
+        .ok()
+        .flatten()?;
+    let from = handle.merge_base(base, head).ok().flatten().unwrap_or(base);
+    Some((from, head))
+}
+
+/// The commits a request brings in. A merge commit with two parents exposes the
+/// merged branch's commits; a squash or rebase merge is one commit. Open requests list
+/// the commits the head has beyond the base. Newest first.
+pub fn change_commits(handle: &RepoHandle, pull_request: &PullRequest) -> Vec<git2::Oid> {
+    if let Some(merge) = merge_commit(pull_request) {
+        let parents = handle
+            .commit_summary(merge)
+            .map(|summary| summary.parents)
+            .unwrap_or_default();
+        return match parents.as_slice() {
+            [base, head] => handle.commit_ids_in_range(*base, *head).unwrap_or_default(),
+            _ => vec![merge],
+        };
+    }
+    let base = handle.branch_tip(&pull_request.base_branch).ok().flatten();
+    let head = handle.branch_tip(&pull_request.head_branch).ok().flatten();
+    match (base, head) {
+        (Some(base), Some(head)) => handle.commit_ids_in_range(base, head).unwrap_or_default(),
+        _ => Vec::new(),
+    }
+}
+
+/// The merge commit of a merged request, if it has one.
+fn merge_commit(pull_request: &PullRequest) -> Option<git2::Oid> {
+    if pull_request.merged_at.is_none() {
+        return None;
+    }
+    pull_request
+        .merge_commit_oid
+        .as_deref()
+        .and_then(|oid| git2::Oid::from_str(oid).ok())
 }
 
 /// Whether a request is open and its head merges cleanly into its base right now.
