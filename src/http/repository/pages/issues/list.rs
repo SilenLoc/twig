@@ -13,7 +13,7 @@ use crate::{
         context::{RepoContext, open_repo},
         tabs::render_tab_response,
     },
-    http::view::render_error,
+    http::view::{percent_encode, render_error},
     issues::{self, AccountFilter, RepoRef},
 };
 
@@ -167,19 +167,6 @@ fn list_href(namespace: &str, repo: &str, state: &str, filters: &Filters) -> Str
         .collect::<Vec<_>>()
         .join("&");
     format!("/{namespace}/{repo}/issues?{query}")
-}
-
-/// Percent-encodes a query value. Everything but unreserved characters is escaped.
-fn percent_encode(value: &str) -> String {
-    value
-        .bytes()
-        .map(|byte| match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                char::from(byte).to_string()
-            }
-            _ => format!("%{byte:02X}"),
-        })
-        .collect()
 }
 
 fn render(

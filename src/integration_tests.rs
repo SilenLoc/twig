@@ -18,6 +18,8 @@ mod tests {
     mod github_issues_api;
     #[path = "../github_pull_requests_api.rs"]
     mod github_pull_requests_api;
+    #[path = "../global_issues_ui.rs"]
+    mod global_issues_ui;
     #[path = "../issues_ui.rs"]
     mod issues_ui;
     #[path = "../namespace_permissions.rs"]

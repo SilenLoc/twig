@@ -2,6 +2,7 @@ pub mod api;
 pub mod assets;
 pub mod auth;
 pub mod body;
+pub mod global_issues;
 pub mod health;
 pub mod info;
 pub mod namespace;

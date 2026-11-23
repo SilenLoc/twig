@@ -4,10 +4,17 @@
 use chrono::Utc;
 
 use crate::{
-    auth::{NamespacePermission, PermissionSet},
+    auth::{
+        NamespacePermission, PermissionSet,
+        permissions::{self},
+    },
     db::{
         Database,
         issues::{Issue, IssueEdit, IssueFilter, IssueState, NewIssue, comments::IssueComment},
+    },
+    git::{
+        bare::{RepoHandle, get_repos_with_info},
+        reserved::validate_repo_name,
     },
 };
 
@@ -297,4 +304,67 @@ pub async fn account_filter(
         Some(user) => Ok(AccountFilter::Only(user.id)),
         None => Ok(AccountFilter::NoOne),
     }
+}
+
+/// Who asks for a listing across repositories. Anonymous visitors have no `Viewer`.
+pub struct Viewer<'a> {
+    pub user_id: &'a str,
+    pub is_site_admin: bool,
+}
+
+/// A repository a viewer may read, with the names its issues are listed under.
+pub struct VisibleRepo {
+    pub repo_id: String,
+    pub namespace: String,
+    pub repo: String,
+}
+
+/// Every repository the viewer may read. A public repository is readable by everyone.
+/// A private one is readable where the viewer may view its namespace, the rule that
+/// opens the repository's own pages.
+pub async fn visible_repos(
+    db: &Database,
+    root: &str,
+    viewer: Option<&Viewer<'_>>,
+) -> Result<Vec<VisibleRepo>, IssueError> {
+    let namespaces = db
+        .get_all_namespaces_with_owners()
+        .await
+        .map_err(IssueError::Internal)?;
+    let mut visible = Vec::new();
+    for (namespace, _) in namespaces {
+        let member = match viewer {
+            Some(viewer) => permissions::has(
+                db,
+                viewer.user_id,
+                &namespace.name,
+                viewer.is_site_admin,
+                NamespacePermission::ViewNamespace,
+            )
+            .await
+            .map_err(IssueError::Internal)?,
+            None => false,
+        };
+        for info in get_repos_with_info(root, &namespace.name) {
+            if validate_repo_name(&info.name).is_err() || (info.is_private && !member) {
+                continue;
+            }
+            let Ok(handle) = RepoHandle::open(root, &namespace.name, &info.name) else {
+                continue;
+            };
+            match handle.repo_id() {
+                Ok(repo_id) => visible.push(VisibleRepo {
+                    repo_id,
+                    namespace: namespace.name.clone(),
+                    repo: info.name,
+                }),
+                Err(error) => log::error!(
+                    "Skipping {}/{} in the issue list: {error}",
+                    namespace.name,
+                    info.name
+                ),
+            }
+        }
+    }
+    Ok(visible)
 }

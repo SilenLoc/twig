@@ -47,6 +47,7 @@ pub fn render_layout(
                             }
                             nav aria-label="Primary" class="twig-nav twig-nav--primary" {
                                 a class="twig-btn twig-btn--quiet" href="/" { "Home" }
+                                a class="twig-btn twig-btn--quiet" href="/issues" { "Issues" }
                                 a class="twig-btn twig-btn--quiet" href="/_info" { "Docs" }
                             }
                         }
@@ -159,6 +160,19 @@ pub fn render_success(message: &str) -> maud::Markup {
             p class="twig-notice-body" { (message) }
         }
     }
+}
+
+/// Percent-encodes a query value. Everything but unreserved characters is escaped.
+pub fn percent_encode(value: &str) -> String {
+    value
+        .bytes()
+        .map(|byte| match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                char::from(byte).to_string()
+            }
+            _ => format!("%{byte:02X}"),
+        })
+        .collect()
 }
 
 #[cfg(test)]
