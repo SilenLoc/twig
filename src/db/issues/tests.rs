@@ -264,7 +264,6 @@ fn like_pattern_matches_wildcard_characters_literally() {
 
 #[tokio::test]
 async fn issue_comments_add_list_update_and_delete() {
-    use super::comments::issue_comment_api_id;
     let (db, path) = database().await;
     let issue = db
         .create_issue(new_issue("repo-a", "Discuss", ""))
@@ -294,10 +293,7 @@ async fn issue_comments_add_list_update_and_delete() {
         "only this issue's comments, oldest first"
     );
     assert_eq!(db.count_issue_comments(&issue.id).await.unwrap(), 2);
-    assert_ne!(
-        issue_comment_api_id(first.row_id),
-        issue_comment_api_id(second.row_id)
-    );
+    assert_ne!(first.row_id, second.row_id);
 
     db.update_issue_comment(first.row_id, "Edited", "2026-11-13T12:00:00Z")
         .await

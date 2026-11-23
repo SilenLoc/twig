@@ -1,9 +1,7 @@
 //! Continuous integration. A repository's `ci` task, defined in
-//! `.twig/mise.toml`, runs for each branch push and each manual dispatch. No
-//! git hook is involved: the push handler queues runs once it has accepted the
-//! push, and each run executes in the background (see [`runner`]).
-
-use std::collections::BTreeMap;
+//! `.twig/mise.toml`, runs for each branch push that defines it. No git hook is
+//! involved: the push handler queues runs once it has accepted the push, and each
+//! run executes in the background (see [`runner`]).
 
 use actix_web::web;
 use git2::Oid;
@@ -17,13 +15,11 @@ use crate::git::bare::RepoHandle;
 
 pub mod runner;
 
-/// The workflow name Forgejo clients use for CI, as in `fj actions dispatch ci`.
+/// The workflow name recorded on each CI run.
 pub const WORKFLOW: &str = "ci";
 /// Where a commit defines its CI: a mise config inside `.twig/`.
 pub const DEFINITION_PATH: &str = ".twig/mise.toml";
 const TASK: &str = "ci";
-const MAX_INPUTS: usize = 32;
-const MAX_INPUT_VALUE_BYTES: usize = 4096;
 
 /// Whether `commit` defines the `ci` task in its `.twig/mise.toml`. A missing or
 /// unparsable file defines nothing.
@@ -43,33 +39,6 @@ pub fn defines_ci_task(handle: &RepoHandle, commit: Oid) -> bool {
         .is_some_and(|tasks| tasks.contains_key(TASK))
 }
 
-/// Checks dispatch inputs and returns them as ordered pairs. Names become
-/// `TWIG_INPUT_<NAME>` variables, so they must be plain identifiers.
-pub fn validate_inputs(inputs: BTreeMap<String, String>) -> Result<Vec<(String, String)>, String> {
-    if inputs.len() > MAX_INPUTS {
-        return Err(format!("At most {MAX_INPUTS} inputs are allowed"));
-    }
-    for (name, value) in &inputs {
-        let is_identifier = !name.is_empty()
-            && name.len() <= 64
-            && name
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
-            && !name.as_bytes()[0].is_ascii_digit();
-        if !is_identifier {
-            return Err(format!(
-                "Input name '{name}' must be letters, digits, or underscores"
-            ));
-        }
-        if value.len() > MAX_INPUT_VALUE_BYTES {
-            return Err(format!(
-                "Input '{name}' is longer than {MAX_INPUT_VALUE_BYTES} bytes"
-            ));
-        }
-    }
-    Ok(inputs.into_iter().collect())
-}
-
 /// One run to queue.
 pub struct NewRun<'a> {
     pub namespace: &'a str,
@@ -80,7 +49,6 @@ pub struct NewRun<'a> {
     pub commit: &'a str,
     pub title: &'a str,
     pub user_id: Option<&'a str>,
-    pub inputs: Vec<(String, String)>,
 }
 
 /// Records a run as waiting and starts it in the background.
@@ -112,7 +80,6 @@ pub async fn enqueue(
             commit: run.commit.to_string(),
             branch: run.branch.to_string(),
             event: run.event.to_string(),
-            inputs: run.inputs,
         },
     );
     Ok(stored)
@@ -172,7 +139,6 @@ pub fn queue_after_push(
                     commit: &push.commit,
                     title: &push.title,
                     user_id: Some(&user_id),
-                    inputs: Vec::new(),
                 },
             )
             .await;

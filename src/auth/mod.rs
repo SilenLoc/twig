@@ -370,7 +370,7 @@ impl TwigContext {
         let Some((scheme, credential)) = auth_value.split_once(' ') else {
             return Ok(CredentialAuth::Missing);
         };
-        // `token` is the Forgejo/Gitea spelling used by fj and tea; it carries the
+        // `token` is the spelling `gh` sends for GitHub-compatible routes; it carries the
         // same personal access token as `Bearer`.
         if !scheme.eq_ignore_ascii_case("Bearer") && !scheme.eq_ignore_ascii_case("token") {
             return Ok(CredentialAuth::Missing);

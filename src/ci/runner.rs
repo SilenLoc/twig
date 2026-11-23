@@ -35,7 +35,6 @@ pub struct Job {
     pub commit: String,
     pub branch: String,
     pub event: String,
-    pub inputs: Vec<(String, String)>,
 }
 
 static SLOTS: OnceLock<Arc<Semaphore>> = OnceLock::new();
@@ -160,7 +159,7 @@ fn environment(
     home: &Path,
 ) -> Vec<(String, String)> {
     let cache = settings.cache_dir();
-    let mut env = vec![
+    let env = vec![
         (
             "PATH".to_string(),
             std::env::var("PATH").unwrap_or_else(|_| FALLBACK_PATH.to_string()),
@@ -229,9 +228,6 @@ fn environment(
             cache.join("rustup").display().to_string(),
         ),
     ];
-    for (name, value) in &job.inputs {
-        env.push((format!("TWIG_INPUT_{name}"), value.clone()));
-    }
     env
 }
 

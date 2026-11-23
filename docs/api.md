@@ -167,11 +167,3 @@ gh pr list -R twig.example/namespace/repository
 Twig has no labels, milestones, projects, teams, reactions on issues, auto-merge, or check runs. Requests that name them are refused with `422`, or answer with an empty value where GitHub would list nothing.
 
 Merged pull requests keep their files and commits: the merge commit names them.
-
-## Forgejo-compatible API
-
-Pull requests, reviews, CI runs, and the repository routes used by T3 Code and the
-Forgejo and Gitea command-line tools live under `/api/v1/repos/{owner}/{repo}`,
-`/api/v1/user`, and `/api/v1/version`. They use Forgejo's request and response
-shapes and error body (`{"message": ...}`), and accept `Authorization: token`.
-See [Pull Requests](pull-requests.md) for the endpoint table and the permission rules, [Issues](issues.md) for the issue routes, and [CI](ci.md) for the Actions routes.

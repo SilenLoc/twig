@@ -1,14 +1,12 @@
 # Pull Requests
 
-Twig repositories have pull requests in the Forgejo and Gitea style. A request
-proposes that a branch be merged into another branch of the same repository. It
-holds the title, the description, a conversation, reviews with inline comments,
-and a merge.
+Twig repositories have pull requests. A request proposes that a branch be merged
+into another branch of the same repository. It holds the title, the description,
+a conversation, reviews with inline comments, and a merge.
 
 Requests are available in the web UI on the repository's **Pull requests** tab,
-and through a Forgejo/Gitea-compatible REST API. The API is what lets T3 Code and
-the Forgejo and Gitea command-line tools (`fj`, `tea`) work with Twig as a
-Forgejo server.
+and through the GitHub-compatible REST and GraphQL APIs that `gh` uses. See
+[API](api.md#github-compatible-api).
 
 ## Using pull requests in the web UI
 
@@ -48,30 +46,6 @@ Forgejo server.
 API tokens are scoped the same way: a token's grant is intersected with its
 owner's current rights, so a token cannot do more than its owner can.
 
-## Connecting T3 Code and the Forgejo/Gitea CLIs
-
-T3 Code finds a Forgejo or Gitea server by a matching login in `fj` or `tea`.
-For a Twig server:
-
-1. Create a personal access token in **Settings → Access tokens**. Grant it the
-   namespaces and permissions you want T3 Code to use. Read access is enough to
-   browse requests; push access is needed to open, review, or merge them.
-2. Log in with the token, using the server's address:
-
-   ```sh
-   fj --host https://twig.example auth add-token
-   ```
-
-   or, with `tea`, run `tea login add` and enter the same address and token when
-   it asks.
-
-3. Clone the repository over HTTPS, so the remote is
-   `https://twig.example/{namespace}/{repo}.git`. T3 Code matches the remote's host
-   against the login.
-
-T3 Code then lists the repository's open requests, checks one out by fetching
-`refs/pull/{number}/head`, and opens or merges requests through the API below.
-
 ## Git refs
 
 Each open request has a read-only ref, `refs/pull/{number}/head`, that names its
@@ -83,70 +57,33 @@ git fetch origin refs/pull/1/head
 
 Pushes to `refs/pull/*` are refused. Twig maintains these refs itself.
 
-## API
+## Command line and API
 
-All paths are under `/api/v1`. Every request needs a credential: a
-personal access token as `Authorization: token <token>` or
-`Authorization: Bearer <token>`, or HTTP Basic credentials. Browser sessions are
-not accepted. Errors use Forgejo's shape, `{"message": "...", "url": ""}`.
+`gh` works with a Twig server through the GitHub-compatible API. Log in with a
+personal access token and the server's host, as described in
+[API](api.md#github-compatible-api), then use the usual commands, for example:
 
-Repositories are addressed as `/repos/{owner}/{repo}`. The owner is the Twig
-namespace. Identifiers are integers: a request's `number` is its index within the
-repository and is shared with issues (see [Issues](issues.md)), and user and repository `id` values are stable integers derived from
-Twig's internal IDs.
+```sh
+gh pr list -R twig.example/namespace/repository
+```
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/user` | The caller, for `whoami` |
-| `GET` | `/version` | The Twig version |
-| `POST` | `/user/repos` | Create a repository in the namespace named after your login |
-| `GET` | `/repos/{o}/{r}` | The repository and the caller's permissions |
-| `GET` | `/repos/{o}/{r}/branches/{branch}` | A branch and its commit |
-| `GET` | `/repos/{o}/{r}/contents/{path}?ref=` | A file's bytes, base64 |
-| `GET` | `/repos/{o}/{r}/git/commits/{sha}` | A commit |
-| `GET` | `/repos/{o}/{r}/git/commits/{sha}.diff` | A commit's diff |
-| `GET` | `/repos/{o}/{r}/compare/{base}...{head}` | The commits `head` adds to `base` |
-| `GET` | `/repos/{o}/{r}/raw/{path}?ref=` | A file's raw bytes |
-| `GET` | `/repos/{o}/{r}/commits/{sha}/status` | Combined status of the CI runs on a commit (`pending` with none; see [CI](ci.md)) |
-| `GET` | `/repos/{o}/{r}/issues?type=pulls` | Requests in the issue shape, for searching. `type=issues` lists [issues](issues.md) instead. |
-| `GET` | `/repos/{o}/{r}/pulls/{n}/files` | The files a request changes |
-| `GET` | `/repos/{o}/{r}/pulls` | Requests (`state`, `head`, `sort`, `page`, `limit`) |
-| `POST` | `/repos/{o}/{r}/pulls` | Open a request (`base`, `head`, `title`, `body`) |
-| `GET` | `/repos/{o}/{r}/pulls/{n}` | One request, with `mergeable` and change size |
-| `PATCH` | `/repos/{o}/{r}/pulls/{n}` | Change `title`, `body`, or `state` |
-| `GET` | `/repos/{o}/{r}/pulls/{n}.diff` | The request's diff |
-| `GET` | `/repos/{o}/{r}/pulls/{n}/commits` | The request's commits |
-| `POST` | `/repos/{o}/{r}/pulls/{n}/merge` | Merge (`Do`: `merge`, `squash`, or `rebase`) |
-| `GET` | `/repos/{o}/{r}/pulls/{n}/merge` | `204` once merged, `404` before |
-| `POST` | `/repos/{o}/{r}/pulls/{n}/update?style=merge` | Merge the base into the head |
-| `GET`, `POST` | `/repos/{o}/{r}/pulls/{n}/reviews` | List reviews, or submit one (`event`, `body`, `comments`) |
-| `GET` | `/repos/{o}/{r}/pulls/{n}/reviews/{id}` | One review |
-| `GET` | `/repos/{o}/{r}/pulls/{n}/reviews/{id}/comments` | A review's inline comments |
-| `GET`, `POST`, `DELETE` | `/repos/{o}/{r}/pulls/{n}/requested_reviewers` | Reviewers (`reviewers`: logins) |
-| `GET`, `POST` | `/repos/{o}/{r}/issues/{n}/comments` | Conversation comments |
-| `PATCH`, `DELETE` | `/repos/{o}/{r}/issues/comments/{id}` | Edit or delete a comment |
-| `GET`, `POST`, `DELETE` | `/repos/{o}/{r}/issues/{n}/reactions` | Reactions on the request (`content`) |
-| `GET`, `POST`, `DELETE` | `/repos/{o}/{r}/issues/comments/{id}/reactions` | Reactions on a comment |
-| `GET` | `/repos/{o}/{r}/statuses/{sha}` | The statuses CI reported for a commit |
-| `GET` | `/repos/{o}/{r}/actions/tasks` | CI runs, for `fj actions tasks` |
-| `POST` | `/repos/{o}/{r}/actions/workflows/ci/dispatches` | Queue a CI run on a branch, for `fj actions dispatch` |
-| `GET` | `/repos/{o}/{r}/labels` | Always empty: Twig has no labels |
-| `GET` | `/repos/{o}/{r}/assignees` | Namespace members |
+The routes that serve requests are `/api/v3/repos/{owner}/{repo}/pulls`, with
+`/{number}`, `/merge`, `/files`, `/commits`, `/reviews`, and
+`/requested_reviewers` beneath it, and the `pullRequest`, `pullRequests`,
+`createPullRequest`, `addPullRequestReview`, `mergePullRequest`,
+`closePullRequest`, and `reopenPullRequest` operations on `/api/graphql`. Errors
+use GitHub's shape, `{"message": "...", "documentation_url": "..."}`.
 
-List endpoints accept `page` and `limit` (at most 50). A `Link` header with
-`rel="next"` appears when another page exists, and `X-Total-Count` gives the total.
-Without `page` or `limit`, a list returns every row.
+Requests are numbered within the repository and share their numbers with issues
+(see [Issues](issues.md)).
 
 ### What is not supported
 
 - Pull requests from another repository (forks). The head must be a branch of the
-  same repository. Use `owner:branch` only when the owner is the same namespace.
+  same repository.
 - Labels, milestones, and projects. Issues are supported; see [Issues](issues.md).
-- Rebase updates (`update?style=rebase`). Only merge updates are offered, so
-  clients do not show rebase updates.
 - Resolving review threads and replying to them.
-- Required status checks: a branch's CI status is reported, but it does not gate a merge.
-- Other commit-status contexts and CI checks outside the `ci` task. See [CI](ci.md).
+- Required status checks: CI results do not gate a merge. See [CI](ci.md).
 - Creating a *private* repository through the API. Privacy is set in `.twig.toml`.
 - Renaming and moving repositories keeps their requests, because requests follow the
   repository's internal identity, not its name.

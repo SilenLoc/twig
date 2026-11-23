@@ -133,30 +133,6 @@ fn export_writes_files_and_skips_links() {
 }
 
 #[test]
-fn inputs_must_be_identifiers() {
-    let accepted = BTreeMap::from([
-        ("TARGET".to_string(), "linux".to_string()),
-        ("_retries".to_string(), "3".to_string()),
-    ]);
-    assert_eq!(
-        validate_inputs(accepted).expect("valid inputs"),
-        vec![
-            ("TARGET".to_string(), "linux".to_string()),
-            ("_retries".to_string(), "3".to_string()),
-        ]
-    );
-    for name in ["", "1ST", "has-dash", "has space"] {
-        let inputs = BTreeMap::from([(name.to_string(), "x".to_string())]);
-        assert!(
-            validate_inputs(inputs).is_err(),
-            "{name:?} is not a valid name"
-        );
-    }
-    let oversized = BTreeMap::from([("BIG".to_string(), "x".repeat(4097))]);
-    assert!(validate_inputs(oversized).is_err());
-}
-
-#[test]
 fn logs_keep_their_tail_within_the_limit() {
     let short = "short log\n".to_string();
     assert_eq!(runner::cap_log(short.clone()), short);
@@ -194,7 +170,6 @@ fn job(root: &Path, commit: Oid) -> runner::Job {
         commit: commit.to_string(),
         branch: "main".to_string(),
         event: "push".to_string(),
-        inputs: vec![("TARGET".to_string(), "linux".to_string())],
     }
 }
 
@@ -205,7 +180,7 @@ async fn a_run_executes_in_a_clean_checkout_with_only_its_own_environment() {
     std::fs::create_dir_all(&tools).expect("tools dir");
     let program = fake_mise(
         &tools,
-        "echo \"args: $*\"\necho \"cwd: $(pwd)\"\necho \"sha: $TWIG_CI_SHA input: $TWIG_INPUT_TARGET\"\n\
+        "echo \"args: $*\"\necho \"cwd: $(pwd)\"\necho \"sha: $TWIG_CI_SHA\"\n\
          env | sed 's/^/ENV:/'",
     );
 
@@ -216,10 +191,7 @@ async fn a_run_executes_in_a_clean_checkout_with_only_its_own_environment() {
     .await;
 
     assert_eq!(status, RunStatus::Success, "log:\n{log}");
-    assert!(
-        log.contains(&format!("sha: {commit} input: linux")),
-        "log:\n{log}"
-    );
+    assert!(log.contains(&format!("sha: {commit}")), "log:\n{log}");
     assert!(
         log.contains("args: -C ") && log.contains(" install"),
         "log:\n{log}"
@@ -244,7 +216,6 @@ async fn a_run_executes_in_a_clean_checkout_with_only_its_own_environment() {
         "TWIG_CI_REPOSITORY",
         "TWIG_CI_REF",
         "TWIG_CI_SHA",
-        "TWIG_INPUT_TARGET",
         "CARGO_HOME",
         "RUSTUP_HOME",
         "PWD",

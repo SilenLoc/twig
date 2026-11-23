@@ -2,8 +2,8 @@
 
 Twig repositories have issues: a place to record a bug, a request, or a question
 that is not a change yet. Issues are available in the web UI on the repository's
-**Issues** tab, and through the Forgejo/Gitea-compatible REST API, so the Forgejo
-command-line client (`fj`) works with them.
+**Issues** tab, and through the GitHub-compatible REST API for `gh` (see
+[API](api.md#github-compatible-api)).
 
 ## Using issues in the web UI
 
@@ -22,46 +22,19 @@ Issues and pull requests share one number sequence in each repository. `#12` is
 one or the other, never both. An issue's page redirects to its pull request when
 the number is a pull request.
 
-## Using issues with `fj`
+## Using issues from the command line
 
-Log in with a personal access token (see [Pull Requests](pull-requests.md#connecting-t3-code-and-the-forgejogitea-clis)),
-then use the repository's remote:
-
-```sh
-fj issue create "Uploader drops the last chunk" --body "Reproduced on a slow link."
-fj issue search                       # open issues
-fj issue search -s all -c alice       # every issue alice opened
-fj issue view 12                      # title and description
-fj issue view 12 comments
-fj issue comment 12 "Looking into it."
-fj issue edit 12 title "New title"
-fj issue edit 12 body "New description"
-fj issue assign 12 bob
-fj issue unassign 12 bob
-fj issue close 12 -w "Fixed in 0.4.3."
-```
-
-`fj` has no reopen command. Reopen an issue in the web UI, or with a `PATCH` to
-`/api/v1/repos/{owner}/{repo}/issues/{number}` with `{"state": "open"}`.
-
-`fj issue edit <issue> comment <index>` takes the comment's position in the list,
-starting at 0, as `fj issue view <issue> comments` shows them.
+`gh issue` works with a Twig server through the GitHub-compatible REST API. The
+routes are listed under [API](api.md#github-compatible-api). Conversation comments
+and reactions are only on the web page.
 
 ### What Twig does not do
 
 Twig has no labels, milestones, issue templates, dependencies, blocking, reactions
 on issues, due dates, time tracking, attachments, pinning, locking, or
-notifications. Commands for these answer with a refusal instead of a wrong result:
-
-| Command | Result |
-| --- | --- |
-| `fj issue search -l <label>`, `-m <milestone>` | `Labels are not supported on Twig` (or milestones) |
-| `fj issue depend ...` | `422`: issue dependencies are not supported |
-| `fj issue block ...` | `422`: blocking is not supported |
-| Reactions on an issue or issue comment | `422`: reactions on issues are not supported yet |
-
-`fj` prints only the status for some of these (`unexpected status code 422`). The
-server's message is in the response body.
+notifications. Requests that name them are refused with `422` and a reason, instead
+of returning a wrong result. For example, creating an issue with a label answers
+`Labels are not supported on Twig`.
 
 ## Permissions
 
@@ -79,21 +52,13 @@ intersected with its owner's current rights.
 
 ## API
 
-The routes are under `/api/v1/repos/{owner}/{repo}/issues`. They use Forgejo's
-shapes and its error body. The authoritative route list is in
-[Pull Requests](pull-requests.md#api), which covers the shared endpoints.
+The GitHub-compatible routes are under `/api/v3/repos/{owner}/{repo}/issues`:
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `issues?type=issues&state=&q=&created_by=&assigned_by=&page=&limit=` | Search issues. `X-Total-Count` and `Link` are set. |
-| `POST` | `issues` | Open an issue (`title`, `body`, `assignees`) |
-| `GET` | `issues/{number}` | An issue, or a pull request in issue shape |
-| `PATCH` | `issues/{number}` | Change `title`, `body`, `state`, or `assignees` (replaces the set). Answers `201`. |
-| `GET`, `POST` | `issues/{number}/comments` | The conversation |
-| `GET`, `PATCH`, `DELETE` | `issues/comments/{id}` | One comment |
-| `GET` | `issue_templates` | `404`: Twig has no templates |
-| `GET` | `issue_config` | `{"blank_issues_enabled": true, "contact_links": []}` |
+| `GET` | `issues?state=&creator=&assignee=&page=&per_page=` | Search issues. `X-Total-Count` and `Link` are set. |
+| `POST` | `issues` | Open an issue (`title`, `body`, `assignees`). Answers `201`. |
+| `GET` | `issues/{number}` | One issue |
+| `PATCH` | `issues/{number}` | Change `title`, `body`, `state`, or `assignees` (replaces the set) |
 
-Issue comment IDs are 2⁴⁰ (`1099511627776`) plus the comment's row number, so the
-first is `1099511627777`. They never collide with pull request comment IDs in the
-shared routes.
+Errors use GitHub's shape, `{"message": "...", "documentation_url": "..."}`.

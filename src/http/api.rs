@@ -3,9 +3,9 @@ use serde::Serialize;
 
 use crate::auth::TwigContext;
 
-pub mod compat;
 pub mod github;
 pub mod graphql;
+pub mod shared;
 pub mod v1;
 
 #[derive(Debug, Serialize)]

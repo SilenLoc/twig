@@ -15,7 +15,6 @@ use super::RepoHandle;
 /// to pre-fill a request's title and description.
 #[derive(Debug, Clone)]
 pub struct CommitSummary {
-    pub id: Oid,
     pub short_id: String,
     pub summary: String,
     pub body: String,
@@ -129,7 +128,6 @@ impl RepoHandle {
         let id = oid.to_string();
         let author = commit.author();
         Ok(CommitSummary {
-            id: oid,
             short_id: id[..id.len().min(7)].to_string(),
             summary,
             body,
@@ -222,33 +220,6 @@ impl RepoHandle {
         Ok(files.into_inner())
     }
 
-    /// The patch a single commit introduces, against its first parent (or the empty tree).
-    pub fn commit_patch(&self, oid: Oid) -> Result<String, git2::Error> {
-        let commit = self.repo.find_commit(oid)?;
-        let parent = commit.parent(0).ok().map(|parent| parent.id());
-        match parent {
-            Some(parent) => self.diff_patch(parent, oid),
-            None => self.diff_patch(self.empty_tree_oid()?, oid),
-        }
-    }
-
-    /// The blob ID and bytes of `path` as it was in the commit `commit`, if it exists there.
-    pub fn blob_at_commit(
-        &self,
-        commit: Oid,
-        path: &str,
-    ) -> Result<Option<(Oid, Vec<u8>)>, git2::Error> {
-        let tree = self.repo.find_commit(commit)?.tree()?;
-        match tree.get_path(std::path::Path::new(path)) {
-            Ok(entry) => {
-                let blob = self.repo.find_blob(entry.id())?;
-                Ok(Some((entry.id(), blob.content().to_vec())))
-            }
-            Err(error) if error.code() == ErrorCode::NotFound => Ok(None),
-            Err(error) => Err(error),
-        }
-    }
-
     fn tree_diff(&self, from: Oid, to: Oid) -> Result<git2::Diff<'_>, git2::Error> {
         let from_tree = self.repo.find_commit(from)?.tree()?;
         let to_tree = self.repo.find_commit(to)?.tree()?;
@@ -257,10 +228,6 @@ impl RepoHandle {
         options.old_prefix("a/").new_prefix("b/");
         self.repo
             .diff_tree_to_tree(Some(&from_tree), Some(&to_tree), Some(&mut options))
-    }
-
-    fn empty_tree_oid(&self) -> Result<Oid, git2::Error> {
-        self.repo.treebuilder(None)?.write()
     }
 
     /// Points `refs/pull/<number>/head` at a commit. Clients fetch this ref to get

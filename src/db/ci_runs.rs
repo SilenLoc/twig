@@ -1,12 +1,14 @@
 //! CI run rows. A run is one execution of a repository's `ci` task against one
-//! commit. Runs are numbered per repository, starting at 1, and listed newest
-//! first. The log is kept out of the row reads, because listings never need it.
+//! commit. Runs are numbered per repository, starting at 1. Nothing reads runs
+//! back over HTTP; the row reads below exist for the database tests.
 
 use chrono::Utc;
 
+#[cfg(test)]
+use crate::db::sqlite::Row;
 use crate::db::{
     Database,
-    sqlite::{self, Connection, Row},
+    sqlite::{self, Connection},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,6 +29,7 @@ impl RunStatus {
         }
     }
 
+    #[cfg(test)]
     pub fn parse(value: &str) -> Option<Self> {
         match value {
             "waiting" => Some(Self::Waiting),
@@ -65,9 +68,11 @@ pub struct NewCiRun<'a> {
     pub triggered_by_user_id: Option<&'a str>,
 }
 
+#[cfg(test)]
 const COLUMNS: &str = "id, repo_id, run_number, workflow, event, head_branch, head_sha,
     display_title, status, triggered_by_user_id, created_at, started_at, finished_at";
 
+#[cfg(test)]
 fn from_row(row: &Row) -> Result<CiRun, String> {
     let text = |index: usize| row.get::<String>(index).map_err(|e| e.to_string());
     let optional = |index: usize| row.get::<Option<String>>(index).map_err(|e| e.to_string());
@@ -91,6 +96,7 @@ fn from_row(row: &Row) -> Result<CiRun, String> {
     })
 }
 
+#[cfg(test)]
 async fn collect(
     conn: &Connection,
     sql: &str,
@@ -198,6 +204,7 @@ impl Database {
     }
 
     /// One page of a repository's runs, newest first, with the total count.
+    #[cfg(test)]
     pub async fn list_ci_runs(
         &self,
         repo_id: &str,
@@ -231,25 +238,8 @@ impl Database {
         Ok((runs, total))
     }
 
-    /// Every run against one commit of a repository, newest first.
-    pub async fn list_ci_runs_for_sha(
-        &self,
-        repo_id: &str,
-        sha: &str,
-    ) -> Result<Vec<CiRun>, String> {
-        let conn = self.conn().await?;
-        collect(
-            &conn,
-            &format!(
-                "SELECT {COLUMNS} FROM ci_runs WHERE repo_id = ?1 AND head_sha = ?2
-                 ORDER BY id DESC"
-            ),
-            sqlite::params![repo_id, sha],
-        )
-        .await
-    }
-
     /// The captured log of one run, only when it belongs to `repo_id`.
+    #[cfg(test)]
     pub async fn find_ci_run_log(&self, repo_id: &str, id: i64) -> Result<Option<String>, String> {
         let conn = self.conn().await?;
         let mut rows = conn
@@ -268,8 +258,8 @@ impl Database {
     pub async fn mark_ci_run_started(&self, id: i64) -> Result<(), String> {
         let conn = self.conn().await?;
         conn.execute(
-            "UPDATE ci_runs SET status = 'running', started_at = ?1 WHERE id = ?2",
-            sqlite::params![Utc::now().to_rfc3339(), id],
+            "UPDATE ci_runs SET status = ?1, started_at = ?2 WHERE id = ?3",
+            sqlite::params![RunStatus::Running.as_str(), Utc::now().to_rfc3339(), id],
         )
         .await
         .map_err(|e| e.to_string())?;

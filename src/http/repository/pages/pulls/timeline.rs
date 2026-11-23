@@ -146,7 +146,7 @@ pub(super) async fn load(
     Ok(entries)
 }
 
-/// The sentence that heads a review entry, in Forgejo's wording.
+/// The sentence that heads a review entry, as the timeline shows it.
 fn review_verb(state: ReviewState) -> &'static str {
     match state {
         ReviewState::Approved => "approved these changes",

@@ -218,18 +218,6 @@ impl Database {
         Ok(found.pop())
     }
 
-    /// A request by its ID, for routes that reach it through a comment.
-    pub async fn get_pull_request_by_id(&self, id: &str) -> Result<Option<PullRequest>, String> {
-        let conn = self.conn().await?;
-        let mut found = collect(
-            &conn,
-            &format!("SELECT {COLUMNS} FROM pull_requests WHERE id = ?1"),
-            sqlite::params![id],
-        )
-        .await?;
-        Ok(found.pop())
-    }
-
     /// Returns one page of requests and whether a further page exists. The
     /// query asks for one extra row to answer that without a count.
     pub async fn list_pull_requests(
@@ -269,44 +257,6 @@ impl Database {
         let has_more = rows.len() > filter.limit as usize;
         rows.truncate(filter.limit as usize);
         Ok((rows, has_more))
-    }
-
-    /// How many requests match `filter`, ignoring its paging. Lists report it in `X-Total-Count`.
-    pub async fn count_pull_requests(
-        &self,
-        repo_id: &str,
-        filter: &PullRequestFilter,
-    ) -> Result<u64, String> {
-        let conn = self.conn().await?;
-        let state = filter.state.map(PullRequestState::as_str);
-        let pattern = filter
-            .query
-            .as_ref()
-            .map(|query| format!("%{}%", query.to_lowercase()));
-        let mut rows = conn
-            .query(
-                "SELECT COUNT(*) FROM pull_requests
-                 WHERE repo_id = ?1
-                   AND (?2 IS NULL OR state = ?2)
-                   AND (?3 IS NULL OR head_branch = ?3)
-                   AND (?4 IS NULL OR lower(title) LIKE ?4)",
-                sqlite::params![
-                    repo_id,
-                    state,
-                    filter.head_branch.as_deref(),
-                    pattern.as_deref()
-                ],
-            )
-            .await
-            .map_err(|e| e.to_string())?;
-        let count: i64 = rows
-            .next()
-            .await
-            .map_err(|e| e.to_string())?
-            .ok_or("Count returned no row")?
-            .get(0)
-            .map_err(|e| e.to_string())?;
-        Ok(u64::try_from(count).unwrap_or_default())
     }
 
     /// The open request for exactly this head and base, if one exists.

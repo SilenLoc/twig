@@ -19,7 +19,7 @@ use crate::{
         },
     },
     git::bare::{FileStatus, MergeStrategy, RepoHandle},
-    http::api::compat::{json::is_work_in_progress, origin, pulls::change_size},
+    http::api::shared::{change_size, is_work_in_progress, origin},
     pulls::{self, Actor, CreateInput, InlineInput, Merger, PullError, RepoRef},
 };
 
@@ -135,7 +135,7 @@ pub struct PullJson {
 fn repo_ref_json(origin: &str, owner: &str, repo: &str, repo_id: &str) -> RepoRefJson {
     let full_name = format!("{owner}/{repo}");
     RepoRefJson {
-        id: crate::http::api::compat::json::numeric_id(repo_id),
+        id: crate::http::api::shared::numeric_id(repo_id),
         name: repo.to_string(),
         full_name: full_name.clone(),
         owner: user_json(origin, owner, &format!("namespace:{owner}")),
@@ -207,7 +207,7 @@ async fn render(
         repo: Some(repo_ref_json(origin, owner, repo, repo_id)),
     };
     Ok(PullJson {
-        id: crate::http::api::compat::json::numeric_id(&pull.id),
+        id: crate::http::api::shared::numeric_id(&pull.id),
         node_id: format!("PR_{}", pull.id),
         number: pull.number,
         state: if open { "open" } else { "closed" },

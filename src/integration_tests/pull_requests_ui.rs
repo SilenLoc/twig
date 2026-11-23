@@ -1,4 +1,4 @@
-use super::pull_requests_api::{push_branch, seed_owner_repo};
+use super::fixtures::{push_branch, seed_owner_repo};
 use super::support::*;
 use super::*;
 
@@ -85,7 +85,7 @@ async fn pull_requests_pages_create_list_and_show_a_request() {
     assert!(page.contains("Explains the policy."));
     assert!(
         page.contains("wants to merge 1 commit into"),
-        "byline matches Forgejo wording"
+        "byline names the merge direction"
     );
 
     // A second request for the same branches is refused and the form is shown again.
@@ -198,7 +198,7 @@ fn session_cookie(session: &str) -> actix_web::cookie::Cookie<'static> {
 
 #[actix_web::test]
 async fn conversation_comments_state_edit_and_reactions_work_from_the_page() {
-    use super::pull_requests_api::seed_contributor;
+    use super::fixtures::seed_contributor;
     let root = format!("/tmp/test_twig_pr_conv_{}", uuid::Uuid::new_v4());
     let (app, db) = create_test_service_with_db_in(&root).await;
     let (owner, namespace, repo) = seed_owner_repo(&db, &root).await;
@@ -399,7 +399,7 @@ struct ReviewerChange<'a> {
 
 #[actix_web::test]
 async fn reviews_and_reviewers_are_offered_and_recorded_from_the_page() {
-    use super::pull_requests_api::seed_contributor;
+    use super::fixtures::seed_contributor;
     let root = format!("/tmp/test_twig_pr_review_ui_{}", uuid::Uuid::new_v4());
     let (app, db) = create_test_service_with_db_in(&root).await;
     let (owner, namespace, repo) = seed_owner_repo(&db, &root).await;

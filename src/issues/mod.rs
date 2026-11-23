@@ -1,4 +1,4 @@
-//! Issue rules shared by the compatibility API and the web UI. Handlers authenticate
+//! Issue rules shared by the GitHub-compatible API and the web UI. Handlers authenticate
 //! and parse input; these functions decide what is allowed.
 
 use chrono::Utc;

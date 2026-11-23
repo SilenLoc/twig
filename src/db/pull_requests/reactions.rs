@@ -1,4 +1,4 @@
-//! Emoji reactions on a request or a comment. Forgejo's eight reaction names are
+//! Emoji reactions on a request or a comment. The eight reaction names are
 //! the only values accepted.
 
 use chrono::Utc;
@@ -30,7 +30,7 @@ impl ReactionContent {
         Self::Eyes,
     ];
 
-    /// The name Forgejo clients send, such as `+1` or `heart`.
+    /// The name a client sends, such as `+1` or `heart`.
     pub fn parse(value: &str) -> Option<Self> {
         Self::ALL
             .into_iter()

@@ -1,4 +1,4 @@
-use super::pull_requests_api::{push_branch, seed_owner_repo, token_for, token_header};
+use super::fixtures::{push_branch, seed_owner_repo, token_for, token_header};
 use super::support::*;
 use super::*;
 use crate::auth::NamespacePermission;
@@ -78,7 +78,7 @@ async fn fetch_advertises_pull_request_head_refs_and_follows_pushes() {
     let created = test::call_service(
         &app,
         test::TestRequest::post()
-            .uri(&format!("/api/v1/repos/{namespace}/{repo}/pulls"))
+            .uri(&format!("/api/v3/repos/{namespace}/{repo}/pulls"))
             .insert_header((name, value.as_str()))
             .set_json(
                 serde_json::json!({"title": "Retry", "head": "feature/retry", "base": "main"}),

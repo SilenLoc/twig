@@ -22,7 +22,7 @@ use async_graphql::{
 };
 
 use super::{
-    compat::{json::numeric_id, origin},
+    shared::{numeric_id, origin},
     v1,
 };
 use crate::{
@@ -1619,7 +1619,7 @@ impl PullRequestNode {
     /// Lines added, lines removed, and files changed since the merge base.
     fn change_size(&self) -> (i64, i64, i64) {
         match handle_at(&self.root, &self.owner, &self.name) {
-            Ok(handle) => crate::http::api::compat::pulls::change_size(&handle, &self.pull),
+            Ok(handle) => crate::http::api::shared::change_size(&handle, &self.pull),
             Err(_) => (0, 0, 0),
         }
     }
@@ -1695,7 +1695,7 @@ impl PullRequestNode {
     }
 
     async fn is_draft(&self) -> bool {
-        crate::http::api::compat::json::is_work_in_progress(&self.pull.title)
+        crate::http::api::shared::is_work_in_progress(&self.pull.title)
     }
 
     async fn merged(&self) -> bool {
@@ -2757,7 +2757,7 @@ impl Mutation {
             ));
         }
         let title = if input.draft == Some(true)
-            && !crate::http::api::compat::json::is_work_in_progress(&input.title)
+            && !crate::http::api::shared::is_work_in_progress(&input.title)
         {
             format!("WIP: {}", input.title)
         } else {

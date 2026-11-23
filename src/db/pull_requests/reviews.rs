@@ -18,7 +18,7 @@ pub enum ReviewState {
 }
 
 impl ReviewState {
-    /// The event name Forgejo clients send and receive.
+    /// The event name the review API sends and receives.
     pub fn api_value(self) -> &'static str {
         match self {
             Self::Approved => "APPROVED",
@@ -176,24 +176,5 @@ impl Database {
             reviews.push(from_row(&row)?);
         }
         Ok(reviews)
-    }
-
-    pub async fn get_pull_request_review(
-        &self,
-        pull_request_id: &str,
-        review_id: i64,
-    ) -> Result<Option<PullRequestReview>, String> {
-        let conn = self.conn().await?;
-        let mut rows = conn
-            .query(
-                &format!("SELECT {COLUMNS} FROM pull_request_reviews WHERE pull_request_id = ?1 AND id = ?2"),
-                sqlite::params![pull_request_id, review_id],
-            )
-            .await
-            .map_err(|e| e.to_string())?;
-        match rows.next().await.map_err(|e| e.to_string())? {
-            Some(row) => Ok(Some(from_row(&row)?)),
-            None => Ok(None),
-        }
     }
 }

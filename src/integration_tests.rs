@@ -12,12 +12,12 @@ mod tests {
     mod ci_api;
     #[path = "../device_authorization.rs"]
     mod device_authorization;
+    #[path = "../fixtures.rs"]
+    mod fixtures;
     #[path = "../github_issues_api.rs"]
     mod github_issues_api;
     #[path = "../github_pull_requests_api.rs"]
     mod github_pull_requests_api;
-    #[path = "../issues_api.rs"]
-    mod issues_api;
     #[path = "../issues_ui.rs"]
     mod issues_ui;
     #[path = "../namespace_permissions.rs"]
@@ -26,8 +26,6 @@ mod tests {
     mod namespace_pins;
     #[path = "../personal_access_tokens.rs"]
     mod personal_access_tokens;
-    #[path = "../pull_requests_api.rs"]
-    mod pull_requests_api;
     #[path = "../pull_requests_git.rs"]
     mod pull_requests_git;
     #[path = "../pull_requests_ui.rs"]

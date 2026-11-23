@@ -2,13 +2,12 @@
 //! Enterprise hosts. `GH_HOST=<twig host> gh ...` reaches these paths with no extra
 //! configuration. Responses and errors follow GitHub's REST shapes.
 //!
-//! This module is being built beside the Forgejo routes in `compat`. Issues come first;
-//! pull requests, reviews, and GraphQL follow in later slices.
+//! Issues and pull requests are served here; GraphQL is in `graphql`.
 
 use actix_web::{HttpRequest, HttpResponse, get, http::StatusCode, patch, post, web};
 use serde::{Deserialize, Serialize};
 
-use super::compat::{json::numeric_id, origin};
+use super::shared::{numeric_id, origin};
 use crate::{
     auth::{AuthenticatedPrincipal, NamespacePermission, PermissionSet, TwigContext},
     config,
@@ -361,7 +360,7 @@ fn paging(page: Option<u32>, per_page: Option<u32>) -> (u32, u32) {
 
 /// The `Link` header for `rel="next"`, keeping the caller's other query parameters.
 fn next_link(req: &HttpRequest, next_page: u32) -> String {
-    super::compat::next_page_link(req, next_page)
+    super::shared::next_page_link(req, next_page)
 }
 
 #[derive(Debug, Deserialize)]

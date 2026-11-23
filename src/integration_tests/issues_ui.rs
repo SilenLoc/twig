@@ -1,5 +1,5 @@
-use super::issues_api::add_contributor;
-use super::pull_requests_api::seed_owner_repo;
+use super::fixtures::add_contributor;
+use super::fixtures::seed_owner_repo;
 use super::support::*;
 use super::*;
 

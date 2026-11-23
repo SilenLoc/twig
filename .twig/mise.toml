@@ -1,7 +1,7 @@
-# Twig's CI definition. Twig runs the `ci` task for every branch push and for
-# `fj actions dispatch ci <branch>`. It exports the commit into an empty
-# directory, runs `mise install` and then `mise run ci` there with a cleared
-# environment, and keeps the output as the run's log. No git hook is involved.
+# Twig's CI definition. Twig runs the `ci` task for every branch push that defines
+# it. It exports the commit into an empty directory, runs `mise install` and then
+# `mise run ci` there with a cleared environment, and keeps the output as the run's
+# log. No git hook is involved.
 
 [tools]
 rust = { version = "nightly-2026-10-31" }

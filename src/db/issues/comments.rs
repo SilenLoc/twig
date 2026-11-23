@@ -1,5 +1,4 @@
-//! Conversation comments on an issue. Their API IDs are offset from the row IDs, so
-//! they never collide with pull request comment IDs in the shared comment routes.
+//! Conversation comments on an issue.
 
 use chrono::Utc;
 
@@ -7,19 +6,6 @@ use crate::db::{
     Database,
     sqlite::{self, Connection, Row},
 };
-
-/// Issue comment IDs start at this value. Pull request comment IDs stay far below it.
-pub const ISSUE_COMMENT_ID_BASE: i64 = 1 << 40;
-
-/// The ID a client sees for an issue comment stored at `row_id`.
-pub fn issue_comment_api_id(row_id: i64) -> i64 {
-    ISSUE_COMMENT_ID_BASE + row_id
-}
-
-/// The row an API ID names, or `None` when the ID is in the pull request range.
-pub fn issue_comment_row_id(api_id: i64) -> Option<i64> {
-    (api_id >= ISSUE_COMMENT_ID_BASE).then_some(api_id - ISSUE_COMMENT_ID_BASE)
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IssueComment {
@@ -167,21 +153,5 @@ impl Database {
         .await
         .map_err(|e| e.to_string())?;
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn comment_ids_are_offset_and_round_trip() {
-        assert_eq!(issue_comment_row_id(issue_comment_api_id(7)), Some(7));
-        assert_eq!(
-            issue_comment_row_id(42),
-            None,
-            "pull request comment IDs stay below the base"
-        );
-        assert!(issue_comment_api_id(1) > 1 << 39);
     }
 }

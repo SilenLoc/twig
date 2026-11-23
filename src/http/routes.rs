@@ -20,7 +20,6 @@ pub(crate) fn configure_routes(cfg: &mut web::ServiceConfig) {
         .service(assets::assets)
         .service(api::version_endpoint);
     configure_v1_api_routes(cfg);
-    api::compat::configure(cfg);
     api::github::configure(cfg);
     api::graphql::configure(cfg);
 

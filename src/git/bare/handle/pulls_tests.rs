@@ -181,33 +181,6 @@ fn diff_files_reports_status_counts_and_line_numbers() {
 }
 
 #[test]
-fn commit_patch_and_blob_at_commit_read_one_commit() {
-    let dir = scratch("commit");
-    let repo = Repository::init_bare(&dir.0).expect("init bare");
-    let root = commit(&repo, None, "main", "a.txt", "a");
-    let change = commit(&repo, Some(root), "feature", "b.txt", "b");
-
-    let handle = handle_at(&dir.0);
-    let patch = handle.commit_patch(change).expect("commit patch");
-    assert!(patch.contains("diff --git a/b.txt b/b.txt"));
-    assert!(!patch.contains("a.txt"));
-    let (_, bytes) = handle
-        .blob_at_commit(change, "b.txt")
-        .expect("blob")
-        .expect("present");
-    assert_eq!(bytes, b"b".to_vec());
-    assert!(
-        handle
-            .blob_at_commit(change, "missing.txt")
-            .expect("blob")
-            .is_none()
-    );
-    let summary = handle.commit_summary(change).expect("summary");
-    assert_eq!(summary.parents, vec![root]);
-    assert_eq!(summary.author_email, "twig@example.com");
-}
-
-#[test]
 fn merge_conflicts_name_only_the_files_both_sides_changed() {
     let dir = scratch("conflicts");
     let repo = Repository::init_bare(&dir.0).expect("init bare");

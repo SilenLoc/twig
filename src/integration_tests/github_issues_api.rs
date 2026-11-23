@@ -1,4 +1,4 @@
-use super::pull_requests_api::{seed_owner_repo, token_for, token_header};
+use super::fixtures::{seed_owner_repo, token_for, token_header};
 use super::support::*;
 use super::*;
 use crate::auth::NamespacePermission;

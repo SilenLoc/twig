@@ -7,7 +7,7 @@ for this. A push queues a run after git has accepted it, and the run executes in
 the background, so the push never waits for it.
 
 CI is off until the server operator enables it (see [Settings](#settings)). With
-CI off, Twig accepts pushes as before and lists no runs.
+CI off, Twig accepts pushes as before and queues no runs.
 
 ## Defining CI
 
@@ -27,7 +27,7 @@ run = ['cargo fmt --check', 'cargo clippy --all-targets', 'cargo nextest run']
 - Only `.twig/mise.toml` is read. A `mise.toml` at the repository root is a
   developer's configuration, so Twig never merges it into a run.
 - The `ci` task must exist for a commit to be runnable. A commit without it
-  queues nothing, and a manual dispatch of a commit without it is refused.
+  queues nothing.
 - Tasks run from `.twig/` by default. Set `dir = ".."` to run from the repository
   root, as above.
 - `mise install` installs the `[tools]` before the task runs.
@@ -37,10 +37,6 @@ run = ['cargo fmt --check', 'cargo clippy --all-targets', 'cargo nextest run']
 - **A branch push.** Each branch the push moves to a commit that defines `ci`
   queues one run of that commit. Deleting a branch queues nothing, and a push the
   server rejects queues nothing.
-- **A manual dispatch.** `fj actions dispatch ci <branch>` queues a run of the
-  branch's tip. Inputs pass as `-I NAME=value`.
-- **Pull requests** show the statuses of their head commit. A push to the head
-  branch queues a run as usual.
 
 ## How a run executes
 
@@ -54,7 +50,6 @@ repository:
    - `PATH`, `LANG`, and a private `HOME` (the job's own directory).
    - `CI=true`, `TWIG_CI=1`, `TWIG_CI_EVENT`, `TWIG_CI_REPOSITORY`,
      `TWIG_CI_REF`, and `TWIG_CI_SHA`, describing the run.
-   - `TWIG_INPUT_<NAME>` for each dispatch input.
    - A Git author and committer identity (`Twig CI`), so tests that commit work
      without a global Git configuration.
    - Tool caches under `TWIG_CI_CACHE_DIR`, shared by every run: `MISE_*`,
@@ -96,39 +91,11 @@ The server needs `mise` installed (or `TWIG_CI_PROGRAM` pointing at it). The
 release image does not include it, so a deployment that enables CI on that image
 must add it.
 
-## Forgejo-compatible API
-
-These routes use Forgejo's shapes and the `fj` command. The repository is
-`{owner}/{repo}`, where `owner` is the namespace. Authentication is the same as
-the rest of the [Forgejo-compatible API](pull-requests.md#api).
-
-| Method | Path | Required permission | Purpose |
-|--------|------|---------------------|---------|
-| `GET` | `/api/v1/repos/{o}/{r}/actions/tasks?page=&limit=` | `view_namespace` | Runs, newest first (`fj actions tasks`) |
-| `POST` | `/api/v1/repos/{o}/{r}/actions/workflows/ci/dispatches` | `push_changes` | Queue a run of `ci` on a branch (`fj actions dispatch`) |
-| `GET` | `/api/v1/repos/{o}/{r}/actions/tasks/{id}/log` | `view_namespace` | A run's log, as plain text (Twig's own route) |
-| `GET` | `/api/v1/repos/{o}/{r}/commits/{sha}/status` | `view_namespace` | Combined status of a commit |
-| `GET` | `/api/v1/repos/{o}/{r}/statuses/{sha}` | `view_namespace` | The statuses CI reported for a commit |
-
-- A task lists `id`, `name` and `workflow_id` (both `ci`), `status`,
-  `display_title`, `event` (`push` or `workflow_dispatch`), `head_branch`,
-  `head_sha`, `run_number`, `created_at`, `updated_at`, `run_started_at`, and
-  `url`, the log address. Lists default to 20 items and accept at most 50.
-- `status` is `waiting`, `running`, `success`, or `failure`.
-- Each run is one commit status with context `ci`. Its `state` is `pending` while
-  the run waits or runs, otherwise `success` or `failure`. The combined `state` is
-  `failure` if any run failed, `pending` while a run is unfinished or when there
-  are none, and `success` otherwise.
-- The dispatch body is `{"ref": "<branch>", "inputs": {"NAME": "value"}}`. It
-  answers `204` and does not return run details. Refusals:
-  - `404` when the workflow is not `ci` or CI is off.
-  - `422` for an unknown branch, a commit without the `ci` task, or an input name
-    that is not an identifier.
-  - `403` without `push_changes`.
-
 ## Not supported
 
 - Variables and secrets for runs.
+- Manual dispatch, and inputs passed to a run.
 - Cancelling or re-running a run.
 - Workflows other than the one `ci` task.
-- A web page for runs; read logs through the log route or `fj`.
+- Reading runs over HTTP or on a web page. Run results are stored with their logs
+  on the server, but no route or page shows them yet.

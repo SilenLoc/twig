@@ -38,7 +38,7 @@ pub struct PullRequestComment {
     pub updated_at: Option<String>,
 }
 
-/// One inline comment to store with a review. Positions follow Forgejo: the new
+/// One inline comment to store with a review. Positions are the new
 /// side's line number, or the old side's line number for removed lines.
 pub struct NewReviewComment<'a> {
     pub path: &'a str,

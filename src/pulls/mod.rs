@@ -1,4 +1,4 @@
-//! Pull request rules shared by the compatibility API and the web UI. Handlers
+//! Pull request rules shared by the GitHub-compatible API and the web UI. Handlers
 //! authenticate and parse input; these functions decide what is allowed.
 
 use chrono::Utc;
@@ -668,76 +668,4 @@ pub fn mergeable(handle: &RepoHandle, pull_request: &PullRequest) -> Option<bool
         .merge_conflicts(base, head)
         .ok()
         .map(|paths| paths.is_empty())
-}
-
-/// Merges the base branch into a request's head branch, so the request is up to date.
-/// Pushers only, as on Forgejo. The head branch moves by compare-and-swap.
-pub fn update_branch(
-    handle: &RepoHandle,
-    pull_request: &PullRequest,
-    perms: &PermissionSet,
-    merger: &Merger<'_>,
-) -> Result<String, PullError> {
-    require(perms, NamespacePermission::PushChanges)?;
-    if pull_request.state != PullRequestState::Open {
-        return Err(PullError::Conflict(
-            "Only open pull requests can be updated.".to_string(),
-        ));
-    }
-    let internal = |error: git2::Error| PullError::Internal(error.to_string());
-    let base = handle
-        .branch_tip(&pull_request.base_branch)
-        .map_err(internal)?
-        .ok_or_else(|| {
-            PullError::Invalid(format!(
-                "Base branch '{}' does not exist",
-                pull_request.base_branch
-            ))
-        })?;
-    let head = handle
-        .branch_tip(&pull_request.head_branch)
-        .map_err(internal)?
-        .ok_or_else(|| {
-            PullError::Invalid(format!(
-                "Head branch '{}' does not exist",
-                pull_request.head_branch
-            ))
-        })?;
-    if handle.merge_base(base, head).map_err(internal)? == Some(base) {
-        return Err(PullError::Conflict(
-            "This branch is already up to date with the base branch.".to_string(),
-        ));
-    }
-    let signature = git2::Signature::now(merger.name, merger.email)
-        .map_err(|error| PullError::Internal(format!("Invalid merger identity: {error}")))?;
-    let message = format!(
-        "Merge branch '{}' into {}",
-        pull_request.base_branch, pull_request.head_branch
-    );
-    let tip = match handle
-        .build_merge(MergeStrategy::Merge, head, base, &signature, &message)
-        .map_err(internal)?
-    {
-        MergeBuild::Conflict { paths } => {
-            return Err(PullError::Conflict(format!(
-                "Merge conflicts in: {}",
-                paths.join(", ")
-            )));
-        }
-        MergeBuild::Ready { tip } => tip,
-    };
-    if !handle
-        .move_branch_if_unchanged(
-            &pull_request.head_branch,
-            head,
-            tip,
-            "Update pull request branch in Twig",
-        )
-        .map_err(internal)?
-    {
-        return Err(PullError::Conflict(
-            "The head branch moved while updating. Try again.".to_string(),
-        ));
-    }
-    Ok(tip.to_string())
 }
