@@ -1,6 +1,6 @@
 //! The Commits view of a request: the commits its head adds beyond its base.
 
-use actix_web::{HttpRequest, Result as AwResult, get, web};
+use actix_web::{HttpRequest, Result as AwResult, routes, web};
 use maud::{Markup, html};
 
 use crate::{
@@ -15,7 +15,9 @@ use crate::{
 use super::{request_for_page, request_nav};
 
 /// `GET /{namespace}/{repo}/pulls/{number}/commits`
+#[routes]
 #[get("/{namespace}/{repo}/pulls/{number:\\d+}/commits")]
+#[get("/{namespace}/{repo}/pull/{number:\\d+}/commits")]
 pub async fn commits_handler(
     req: HttpRequest,
     server: web::Data<config::Server>,

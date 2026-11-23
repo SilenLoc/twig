@@ -1,7 +1,7 @@
 //! New pull request: choose base and head branches, review the commits they
 //! differ by, and write the title and description.
 
-use actix_web::{HttpRequest, HttpResponse, Result as AwResult, get, post, web};
+use actix_web::{HttpRequest, HttpResponse, Result as AwResult, post, routes, web};
 use maud::{Markup, html};
 use serde::Deserialize;
 
@@ -106,7 +106,9 @@ fn load(ctx: &RepoContext, query: &CompareQuery) -> Result<Compare, git2::Error>
 }
 
 /// `GET /{namespace}/{repo}/pulls/new`
+#[routes]
 #[get("/{namespace}/{repo}/pulls/new")]
+#[get("/{namespace}/{repo}/pull/new")]
 pub async fn new_pull_page_handler(
     req: HttpRequest,
     server: web::Data<config::Server>,

@@ -17,8 +17,8 @@
 
 use actix_web::{HttpRequest, HttpResponse, post, web};
 use async_graphql::{
-    Context, EmptySubscription, Enum, ErrorExtensions, InputObject, Object, Result, Schema,
-    SimpleObject,
+    Context, EmptySubscription, Enum, ErrorExtensions, InputObject, InputValueError,
+    InputValueResult, Object, Result, Scalar, ScalarType, Schema, SimpleObject, Value,
 };
 
 use super::{
@@ -41,6 +41,24 @@ use crate::{
 };
 
 pub type TwigSchema = Schema<Query, Mutation, EmptySubscription>;
+
+/// A git object name, as GitHub's `GitObjectID` scalar: a hex string.
+#[derive(Clone, Debug)]
+pub struct GitObjectId(pub String);
+
+#[Scalar(name = "GitObjectID")]
+impl ScalarType for GitObjectId {
+    fn parse(value: Value) -> InputValueResult<Self> {
+        match value {
+            Value::String(text) => Ok(Self(text)),
+            other => Err(InputValueError::expected_type(other)),
+        }
+    }
+
+    fn to_value(&self) -> Value {
+        Value::String(self.0.clone())
+    }
+}
 
 /// What every resolver needs: the caller, the database, and where the repositories live.
 pub struct GqlContext {
@@ -281,6 +299,24 @@ macro_rules! connection {
     };
 }
 
+mod mutations;
+mod review;
+
+use mutations::{
+    AddReactionInput, AddReactionPayload, AutoMergePayload, ConvertToDraftInput,
+    ConvertToDraftPayload, DisableAutoMergeInput, EnableAutoMergeInput, FileViewedPayload,
+    MarkFileViewedInput, ReactionNode, ReadyForReviewInput, ReadyForReviewPayload,
+    RemoveReactionInput, RemoveReactionPayload, ResolveThreadInput, ResolveThreadPayload,
+    RevertPullRequestInput, RevertPullRequestPayload, ThreadReplyInput, ThreadReplyPayload,
+    UnmarkFileViewedInput, UnresolveThreadInput, UpdateBranchInput, UpdateBranchPayload,
+    UpdateIssueCommentInput, UpdateIssueCommentPayload, UpdatePullRequestInput,
+    UpdatePullRequestPayload, UpdateRefsInput, UpdateRefsPayload, UpdateReviewCommentInput,
+    UpdateReviewCommentPayload, unsupported,
+};
+use review::empty_groups;
+use review::{Node, Reactable, lookup_node};
+pub use review::{PullRequestReviewThreadConnection, ReactionGroupNode, reaction_groups};
+
 #[derive(Clone)]
 pub struct UserNode {
     login: String,
@@ -373,25 +409,6 @@ pub enum RepositoryPermission {
     Read,
 }
 
-/// Reactions are not stored for issues on Twig; every issue reports none.
-#[derive(Clone)]
-pub struct ReactionGroupNode;
-
-#[Object(name = "ReactionGroup")]
-impl ReactionGroupNode {
-    async fn content(&self) -> &str {
-        "THUMBS_UP"
-    }
-
-    async fn viewer_has_reacted(&self) -> bool {
-        false
-    }
-
-    async fn users(&self) -> ReactionUsersNode {
-        ReactionUsersNode
-    }
-}
-
 /// Milestones are not stored on Twig, so an issue never has one.
 #[derive(Clone)]
 pub struct MilestoneNode;
@@ -415,14 +432,16 @@ impl MilestoneNode {
     }
 }
 
-/// Who reacted in a group; Twig records no reactions on issues, so the count is zero.
+/// Who reacted in a group.
 #[derive(Clone)]
-pub struct ReactionUsersNode;
+pub struct ReactionUsersNode {
+    total: i64,
+}
 
 #[Object(name = "ReactionUsers")]
 impl ReactionUsersNode {
     async fn total_count(&self) -> i64 {
-        0
+        self.total
     }
 }
 
@@ -535,6 +554,27 @@ impl BotNode {
     async fn id(&self) -> String {
         String::new()
     }
+
+    async fn avatar_url(&self, size: Option<i32>) -> &str {
+        let _ = size;
+        ""
+    }
+}
+
+/// A mannequin is a placeholder for an account that no longer exists. Twig has none.
+#[derive(Clone)]
+pub struct MannequinNode;
+
+#[Object(name = "Mannequin")]
+impl MannequinNode {
+    async fn login(&self) -> &str {
+        ""
+    }
+
+    async fn avatar_url(&self, size: Option<i32>) -> &str {
+        let _ = size;
+        ""
+    }
 }
 
 /// A team. Twig has no teams, so none is ever returned.
@@ -556,6 +596,11 @@ impl TeamNode {
     }
 
     async fn combined_slug(&self) -> &str {
+        ""
+    }
+
+    async fn avatar_url(&self, size: Option<i32>) -> &str {
+        let _ = size;
         ""
     }
 
@@ -677,8 +722,30 @@ impl ReviewNode {
         Ok(gql_context(ctx)?.principal.user.id == self.review.author_user_id)
     }
 
-    async fn reaction_groups(&self) -> Vec<ReactionGroupNode> {
-        Vec::new()
+    /// Twig does not record when a review was edited, and reviews are never minimised.
+    async fn last_edited_at(&self) -> Option<&str> {
+        None
+    }
+
+    async fn is_minimized(&self) -> bool {
+        false
+    }
+
+    async fn pull_request(&self, ctx: &Context<'_>) -> Result<Option<PullRequestNode>> {
+        let g = gql_context(ctx)?;
+        let open = open_repo(g, &self.owner, &self.name).await?;
+        let scope = PullScope {
+            repo_id: &open.repo_id,
+        };
+        match pulls::get(&g.db, &scope, self.number).await {
+            Ok(pull) => Ok(Some(PullRequestNode::new(g, &open, pull))),
+            Err(_) => Ok(None),
+        }
+    }
+
+    /// GitHub lets people react to reviews; Twig does not, so every review has none.
+    async fn reaction_groups(&self, _ctx: &Context<'_>) -> Result<Vec<ReactionGroupNode>> {
+        Ok(review::empty_groups())
     }
 }
 
@@ -749,8 +816,13 @@ impl CheckRunNode {
         None
     }
 
-    async fn is_required(&self, pull_request_id: Option<String>) -> bool {
-        let _ = pull_request_id;
+    /// Branch protection is not configurable on Twig, so no check is required.
+    async fn is_required(
+        &self,
+        pull_request_id: Option<String>,
+        pull_request_number: Option<i32>,
+    ) -> bool {
+        let _ = (pull_request_id, pull_request_number);
         false
     }
 }
@@ -780,8 +852,13 @@ impl StatusContextNode {
         None
     }
 
-    async fn is_required(&self, pull_request_id: Option<String>) -> bool {
-        let _ = pull_request_id;
+    /// Branch protection is not configurable on Twig, so no status is required.
+    async fn is_required(
+        &self,
+        pull_request_id: Option<String>,
+        pull_request_number: Option<i32>,
+    ) -> bool {
+        let _ = (pull_request_id, pull_request_number);
         false
     }
 }
@@ -792,7 +869,31 @@ pub enum StatusCheckRollupContext {
     StatusContext(StatusContextNode),
 }
 
-connection!(StatusCheckRollupContextConnection, StatusCheckRollupContext);
+connection!(@def StatusCheckRollupContextConnection, StatusCheckRollupContext,
+    async fn check_run_counts_by_state(&self) -> Vec<StatusCountNode> {
+        Vec::new()
+    }
+
+    async fn status_context_counts_by_state(&self) -> Vec<StatusCountNode> {
+        Vec::new()
+    }
+);
+
+/// The state of a status context, as GitHub names it.
+#[derive(Clone, Copy, PartialEq, Eq, Enum)]
+#[graphql(name = "StatusState")]
+pub enum StatusStateEnum {
+    #[graphql(name = "EXPECTED")]
+    Expected,
+    #[graphql(name = "ERROR")]
+    Error,
+    #[graphql(name = "FAILURE")]
+    Failure,
+    #[graphql(name = "PENDING")]
+    Pending,
+    #[graphql(name = "SUCCESS")]
+    Success,
+}
 
 #[derive(SimpleObject, Clone)]
 pub struct StatusCountNode {
@@ -805,8 +906,22 @@ pub struct StatusCheckRollupNode;
 
 #[Object(name = "StatusCheckRollup")]
 impl StatusCheckRollupNode {
-    async fn contexts(&self, first: Option<i32>) -> StatusCheckRollupContextConnection {
-        paginate(Vec::<StatusCheckRollupContext>::new(), first, None).into()
+    async fn contexts(
+        &self,
+        first: Option<i32>,
+        after: Option<String>,
+    ) -> StatusCheckRollupContextConnection {
+        paginate(
+            Vec::<StatusCheckRollupContext>::new(),
+            first,
+            after.as_deref(),
+        )
+        .into()
+    }
+
+    /// Twig records no checks or statuses, so the rollup has no state.
+    async fn state(&self) -> Option<StatusStateEnum> {
+        None
     }
 
     async fn check_run_count(&self) -> i64 {
@@ -872,9 +987,74 @@ impl AutoMergeRequestNode {
     }
 }
 
+/// A branch of a repository, as GitHub's `Ref` names it.
 pub struct RefNode {
     name: String,
     repo_id: String,
+    origin: String,
+    owner: String,
+    repo: String,
+    root: String,
+}
+
+impl RefNode {
+    fn for_repo(
+        origin: &str,
+        owner: &str,
+        repo: &str,
+        root: &str,
+        repo_id: &str,
+        name: &str,
+    ) -> Self {
+        Self {
+            name: name.to_string(),
+            repo_id: repo_id.to_string(),
+            origin: origin.to_string(),
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            root: root.to_string(),
+        }
+    }
+}
+
+/// How two refs relate, as GitHub's `ComparisonStatus` names it.
+#[derive(Clone, Copy, PartialEq, Eq, Enum)]
+#[graphql(name = "ComparisonStatus")]
+pub enum ComparisonStatusEnum {
+    #[graphql(name = "AHEAD")]
+    Ahead,
+    #[graphql(name = "BEHIND")]
+    Behind,
+    #[graphql(name = "DIVERGED")]
+    Diverged,
+    #[graphql(name = "IDENTICAL")]
+    Identical,
+}
+
+/// The commits that separate a base ref from a head ref.
+pub struct ComparisonNode {
+    ahead_by: i64,
+    behind_by: i64,
+}
+
+#[Object(name = "Comparison")]
+impl ComparisonNode {
+    async fn ahead_by(&self) -> i64 {
+        self.ahead_by
+    }
+
+    async fn behind_by(&self) -> i64 {
+        self.behind_by
+    }
+
+    async fn status(&self) -> ComparisonStatusEnum {
+        match (self.ahead_by > 0, self.behind_by > 0) {
+            (true, true) => ComparisonStatusEnum::Diverged,
+            (true, false) => ComparisonStatusEnum::Ahead,
+            (false, true) => ComparisonStatusEnum::Behind,
+            (false, false) => ComparisonStatusEnum::Identical,
+        }
+    }
 }
 
 #[Object(name = "Ref")]
@@ -892,6 +1072,41 @@ impl RefNode {
 
     async fn prefix(&self) -> &str {
         "refs/heads/"
+    }
+
+    async fn repository(&self, ctx: &Context<'_>) -> Result<RepositoryNode> {
+        let g = gql_context(ctx)?;
+        let open = open_repo(g, &self.owner, &self.repo).await?;
+        Ok(RepositoryNode::from_open(&open, g))
+    }
+
+    /// The commit at the tip of this branch.
+    async fn target(&self) -> Option<CommitNode> {
+        let handle = handle_at(&self.root, &self.owner, &self.repo).ok()?;
+        let oid = handle.branch_tip(&self.name).ok().flatten()?;
+        let summary = handle.commit_summary(oid).ok()?;
+        Some(CommitNode::from_summary(
+            &self.origin,
+            &self.owner,
+            &self.repo,
+            &self.root,
+            &oid.to_string(),
+            summary,
+        ))
+    }
+
+    /// Commits this ref has that `head_ref` lacks, and the reverse. `None` when either
+    /// branch does not exist.
+    async fn compare(&self, head_ref: String) -> Option<ComparisonNode> {
+        let handle = handle_at(&self.root, &self.owner, &self.repo).ok()?;
+        let base = handle.branch_tip(&self.name).ok().flatten()?;
+        let head = handle.branch_tip(&head_ref).ok().flatten()?;
+        let ahead = handle.commit_ids_in_range(base, head).ok()?.len();
+        let behind = handle.commit_ids_in_range(head, base).ok()?.len();
+        Some(ComparisonNode {
+            ahead_by: i64::try_from(ahead).unwrap_or_default(),
+            behind_by: i64::try_from(behind).unwrap_or_default(),
+        })
     }
 
     /// Branch protection is not configurable on Twig.
@@ -1034,9 +1249,15 @@ impl RepositoryNode {
     }
 
     async fn default_branch_ref(&self) -> Option<RefNode> {
-        self.default_branch().map(|name| RefNode {
-            name,
-            repo_id: self.repo_id.clone(),
+        self.default_branch().map(|name| {
+            RefNode::for_repo(
+                &self.origin,
+                &self.owner,
+                &self.name,
+                &self.root,
+                &self.repo_id,
+                &name,
+            )
         })
     }
 
@@ -1058,6 +1279,62 @@ impl RepositoryNode {
 
     async fn delete_branch_on_merge(&self) -> bool {
         false
+    }
+
+    /// Auto-merge is not supported on Twig, so a request can never be set to merge later.
+    async fn auto_merge_allowed(&self) -> bool {
+        false
+    }
+
+    /// Twig has no label catalogue, so the candidate list is empty.
+    async fn labels(
+        &self,
+        first: Option<i32>,
+        after: Option<String>,
+        query: Option<String>,
+        order_by: Option<LabelOrder>,
+    ) -> LabelConnection {
+        let _ = (query, order_by);
+        paginate(Vec::<LabelNode>::new(), first, after.as_deref()).into()
+    }
+
+    /// Twig assigns users without an assignable list, so the candidate list is empty.
+    async fn assignable_users(
+        &self,
+        first: Option<i32>,
+        after: Option<String>,
+        query: Option<String>,
+    ) -> UserConnection {
+        let _ = query;
+        paginate(Vec::<UserNode>::new(), first, after.as_deref()).into()
+    }
+
+    async fn mentionable_users(
+        &self,
+        first: Option<i32>,
+        after: Option<String>,
+        query: Option<String>,
+    ) -> UserConnection {
+        let _ = query;
+        paginate(Vec::<UserNode>::new(), first, after.as_deref()).into()
+    }
+
+    /// A branch by qualified name, such as `refs/heads/main`. `None` when it does not exist.
+    #[graphql(name = "ref")]
+    async fn ref_by_name(&self, qualified_name: String) -> Option<RefNode> {
+        let name = qualified_name
+            .strip_prefix("refs/heads/")
+            .unwrap_or(&qualified_name);
+        let handle = handle_at(&self.root, &self.owner, &self.name).ok()?;
+        handle.branch_tip(name).ok().flatten()?;
+        Some(RefNode::for_repo(
+            &self.origin,
+            &self.owner,
+            &self.name,
+            &self.root,
+            &self.repo_id,
+            name,
+        ))
     }
 
     async fn open_graph_image_url(&self) -> String {
@@ -1476,6 +1753,7 @@ impl IssueNode {
                 origin: self.origin.clone(),
                 owner: self.owner.clone(),
                 name: self.name.clone(),
+                pull_number: None,
             })
             .collect();
         Ok(paginate(last_n(nodes, last), first, None).into())
@@ -1490,6 +1768,49 @@ impl IssueNode {
 
 connection!(IssueConnection, IssueNode, IssueEdge);
 
+impl CommentNode {
+    /// A conversation comment on a request.
+    pub fn for_pull_comment(
+        origin: &str,
+        owner: &str,
+        name: &str,
+        number: i64,
+        comment: crate::db::pull_requests::comments::PullRequestComment,
+    ) -> Self {
+        Self {
+            row_id: comment.id,
+            body: comment.body,
+            author_user_id: comment.author_user_id,
+            created_at: comment.created_at,
+            updated_at: comment.updated_at,
+            origin: origin.to_string(),
+            owner: owner.to_string(),
+            name: name.to_string(),
+            pull_number: Some(number),
+        }
+    }
+
+    /// A comment on an issue.
+    pub fn for_issue_comment(
+        origin: &str,
+        owner: &str,
+        name: &str,
+        comment: crate::db::issues::comments::IssueComment,
+    ) -> Self {
+        Self {
+            row_id: comment.row_id,
+            body: comment.body,
+            author_user_id: comment.author_user_id,
+            created_at: comment.created_at,
+            updated_at: comment.updated_at,
+            origin: origin.to_string(),
+            owner: owner.to_string(),
+            name: name.to_string(),
+            pull_number: None,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct CommentNode {
     row_id: i64,
@@ -1500,18 +1821,22 @@ pub struct CommentNode {
     origin: String,
     owner: String,
     name: String,
+    /// The request a conversation comment belongs to. Issue comments have none, take no
+    /// reactions, and name no request.
+    pull_number: Option<i64>,
 }
 
 #[Object(name = "IssueComment")]
 impl CommentNode {
     async fn id(&self) -> String {
-        format!(
-            "IC_{}",
-            hex_text(&format!(
-                "{}/{}#comment:{}",
-                self.owner, self.name, self.row_id
-            ))
-        )
+        let key = match self.pull_number {
+            Some(number) => format!(
+                "{}/{}#{}#comment:{}",
+                self.owner, self.name, number, self.row_id
+            ),
+            None => format!("{}/{}#comment:{}", self.owner, self.name, self.row_id),
+        };
+        format!("IC_{}", hex_text(&key))
     }
 
     async fn database_id(&self) -> i64 {
@@ -1534,6 +1859,30 @@ impl CommentNode {
         self.updated_at.as_deref()
     }
 
+    async fn last_edited_at(&self) -> Option<&str> {
+        self.updated_at.as_deref()
+    }
+
+    async fn is_minimized(&self) -> bool {
+        false
+    }
+
+    /// The request this comment belongs to, when it is a request's conversation comment.
+    async fn pull_request(&self, ctx: &Context<'_>) -> Result<Option<PullRequestNode>> {
+        let Some(number) = self.pull_number else {
+            return Ok(None);
+        };
+        let g = gql_context(ctx)?;
+        let open = open_repo(g, &self.owner, &self.name).await?;
+        let scope = PullScope {
+            repo_id: &open.repo_id,
+        };
+        match pulls::get(&g.db, &scope, number).await {
+            Ok(pull) => Ok(Some(PullRequestNode::new(g, &open, pull))),
+            Err(_) => Ok(None),
+        }
+    }
+
     async fn author_association(&self) -> &str {
         "NONE"
     }
@@ -1546,16 +1895,16 @@ impl CommentNode {
         false
     }
 
-    async fn is_minimized(&self) -> bool {
-        false
-    }
-
     async fn minimized_reason(&self) -> Option<String> {
         None
     }
 
-    async fn reaction_groups(&self) -> Vec<ReactionGroupNode> {
-        Vec::new()
+    async fn reaction_groups(&self, ctx: &Context<'_>) -> Result<Vec<ReactionGroupNode>> {
+        if self.pull_number.is_none() {
+            return Ok(empty_groups());
+        }
+        let key = crate::db::pull_requests::reactions::comment_key(self.row_id);
+        reaction_groups(gql_context(ctx)?, &key).await
     }
 
     async fn url(&self) -> String {
@@ -1571,6 +1920,77 @@ impl CommentNode {
 }
 
 connection!(CommentConnection, CommentNode);
+
+/// A stack of requests that a request belongs to. Twig does not stack requests.
+#[derive(SimpleObject, Clone)]
+#[graphql(name = "PullRequestStack")]
+pub struct PullRequestStackNode {
+    pub number: i64,
+    pub size: i64,
+    pub base_ref_name: String,
+}
+
+/// A request's place in its stack. Twig does not stack requests.
+#[derive(SimpleObject, Clone)]
+#[graphql(name = "PullRequestStackEntry")]
+pub struct PullRequestStackEntryNode {
+    pub position: i64,
+}
+
+/// The review a dismissal refers to, by ID only.
+#[derive(SimpleObject, Clone)]
+#[graphql(name = "ReviewRef")]
+pub struct ReviewRefNode {
+    pub id: String,
+}
+
+/// A review was dismissed. Twig never dismisses a review, so none is ever listed.
+#[derive(Clone)]
+pub struct ReviewDismissedEventNode;
+
+#[Object(name = "ReviewDismissedEvent")]
+impl ReviewDismissedEventNode {
+    async fn dismissal_message(&self) -> Option<String> {
+        None
+    }
+
+    async fn review(&self) -> Option<ReviewRefNode> {
+        None
+    }
+}
+
+/// A pull request left a merge queue. Twig has no merge queue, so none is ever listed.
+#[derive(Clone)]
+pub struct RemovedFromMergeQueueEventNode;
+
+#[Object(name = "RemovedFromMergeQueueEvent")]
+impl RemovedFromMergeQueueEventNode {
+    async fn id(&self) -> String {
+        String::new()
+    }
+
+    async fn created_at(&self) -> Option<String> {
+        None
+    }
+}
+
+#[derive(async_graphql::Union)]
+pub enum PullRequestTimelineItems {
+    ReviewDismissedEvent(ReviewDismissedEventNode),
+    RemovedFromMergeQueueEvent(RemovedFromMergeQueueEventNode),
+}
+
+connection!(PullRequestTimelineItemConnection, PullRequestTimelineItems);
+
+/// The kinds of timeline event a listing may keep, as GitHub names them.
+#[derive(Clone, Copy, PartialEq, Eq, Enum)]
+#[graphql(name = "PullRequestTimelineItemsItemType")]
+pub enum PullRequestTimelineItemTypeEnum {
+    #[graphql(name = "REVIEW_DISMISSED_EVENT")]
+    ReviewDismissedEvent,
+    #[graphql(name = "REMOVED_FROM_MERGE_QUEUE_EVENT")]
+    RemovedFromMergeQueueEvent,
+}
 
 #[derive(Clone)]
 pub struct PullRequestNode {
@@ -1590,6 +2010,17 @@ impl PullRequestNode {
             root: g.project_root.clone(),
             pull,
         }
+    }
+
+    fn branch_ref(&self, branch: &str) -> RefNode {
+        RefNode::for_repo(
+            &self.origin,
+            &self.owner,
+            &self.name,
+            &self.root,
+            &self.pull.repo_id,
+            branch,
+        )
     }
 
     fn pr_state(&self) -> PullRequestStateEnum {
@@ -1641,6 +2072,8 @@ impl PullRequestNode {
                     origin: self.origin.clone(),
                     owner: self.owner.clone(),
                     name: self.name.clone(),
+                    root: self.root.clone(),
+                    parents: summary.parents.iter().map(ToString::to_string).collect(),
                 },
             });
         }
@@ -1757,6 +2190,7 @@ impl PullRequestNode {
         &self,
         ctx: &Context<'_>,
         first: Option<i32>,
+        after: Option<String>,
     ) -> Result<ReviewConnection> {
         let g = gql_context(ctx)?;
         let rows =
@@ -1773,21 +2207,15 @@ impl PullRequestNode {
                 origin: self.origin.clone(),
             })
             .collect();
-        Ok(paginate(nodes, first, None).into())
+        Ok(paginate(nodes, first, after.as_deref()).into())
     }
 
     async fn base_ref(&self) -> Option<RefNode> {
-        Some(RefNode {
-            name: self.pull.base_branch.clone(),
-            repo_id: self.pull.repo_id.clone(),
-        })
+        Some(self.branch_ref(&self.pull.base_branch))
     }
 
     async fn head_ref(&self) -> Option<RefNode> {
-        Some(RefNode {
-            name: self.pull.head_branch.clone(),
-            repo_id: self.pull.repo_id.clone(),
-        })
+        Some(self.branch_ref(&self.pull.head_branch))
     }
 
     async fn auto_merge_request(&self) -> Option<AutoMergeRequestNode> {
@@ -1798,6 +2226,7 @@ impl PullRequestNode {
         &self,
         ctx: &Context<'_>,
         first: Option<i32>,
+        after: Option<String>,
         last: Option<i32>,
         states: Option<Vec<PullRequestReviewStateEnum>>,
     ) -> Result<ReviewConnection> {
@@ -1822,7 +2251,7 @@ impl PullRequestNode {
                 })
             })
             .collect();
-        Ok(paginate(last_n(nodes, last), first, None).into())
+        Ok(paginate(last_n(nodes, last), first, after.as_deref()).into())
     }
 
     async fn milestone(&self) -> Option<MilestoneNode> {
@@ -1837,8 +2266,39 @@ impl PullRequestNode {
         paginate(Vec::<ProjectV2ItemNode>::new(), first, after.as_deref()).into()
     }
 
-    async fn reaction_groups(&self) -> Vec<ReactionGroupNode> {
-        Vec::new()
+    async fn reaction_groups(&self, ctx: &Context<'_>) -> Result<Vec<ReactionGroupNode>> {
+        let key = crate::db::pull_requests::reactions::pull_key(&self.pull.id);
+        reaction_groups(gql_context(ctx)?, &key).await
+    }
+
+    /// The inline comments on the request's diff, one thread each.
+    async fn review_threads(
+        &self,
+        ctx: &Context<'_>,
+        first: Option<i32>,
+        after: Option<String>,
+    ) -> Result<PullRequestReviewThreadConnection> {
+        let threads = self.review_thread_nodes(gql_context(ctx)?).await?;
+        Ok(paginate(threads, first, after.as_deref()).into())
+    }
+
+    /// Twig does not stack requests, so no request is part of a stack.
+    async fn stack(&self) -> Option<PullRequestStackNode> {
+        None
+    }
+
+    async fn stack_entry(&self) -> Option<PullRequestStackEntryNode> {
+        None
+    }
+
+    /// The default merge body for a merge method. Twig writes its own merge commits and
+    /// offers no default body.
+    async fn viewer_merge_body_text(
+        &self,
+        merge_type: PullRequestMergeMethodEnum,
+    ) -> Option<String> {
+        let _ = merge_type;
+        None
     }
 
     async fn head_repository(&self, ctx: &Context<'_>) -> Result<Option<RepositoryNode>> {
@@ -1901,17 +2361,20 @@ impl PullRequestNode {
         &self,
         ctx: &Context<'_>,
         first: Option<i32>,
+        after: Option<String>,
         last: Option<i32>,
+        order_by: Option<IssueCommentOrder>,
     ) -> Result<CommentConnection> {
         let g = gql_context(ctx)?;
         let rows =
             g.db.list_pull_request_comments(&self.pull.id)
                 .await
                 .map_err(internal)?;
-        let nodes: Vec<CommentNode> = rows
+        let mut nodes: Vec<CommentNode> = rows
             .into_iter()
             .map(|row| CommentNode {
                 row_id: row.id,
+                pull_number: Some(self.pull.number),
                 body: row.body,
                 author_user_id: row.author_user_id,
                 created_at: row.created_at,
@@ -1921,7 +2384,15 @@ impl PullRequestNode {
                 name: self.name.clone(),
             })
             .collect();
-        Ok(paginate(last_n(nodes, last), first, None).into())
+        if let Some(order) = &order_by {
+            // Only `UPDATED_AT` exists. A comment never edited counts as updated when it
+            // was created.
+            nodes.sort_by_key(|node| node.updated_at.clone().unwrap_or(node.created_at.clone()));
+            if order.direction == OrderDirection::Desc {
+                nodes.reverse();
+            }
+        }
+        Ok(paginate(last_n(nodes, last), first, after.as_deref()).into())
     }
 
     async fn repository(&self, ctx: &Context<'_>) -> Result<RepositoryNode> {
@@ -1953,6 +2424,7 @@ impl PullRequestNode {
         &self,
         ctx: &Context<'_>,
         first: Option<i32>,
+        after: Option<String>,
     ) -> Result<ReviewRequestConnection> {
         let g = gql_context(ctx)?;
         let names =
@@ -1967,19 +2439,66 @@ impl PullRequestNode {
                 });
             }
         }
-        Ok(paginate(nodes, first, None).into())
+        Ok(paginate(nodes, first, after.as_deref()).into())
     }
 
     async fn commits(
         &self,
         first: Option<i32>,
+        after: Option<String>,
         last: Option<i32>,
     ) -> Result<PullRequestCommitConnection> {
-        Ok(paginate(last_n(self.commit_nodes()?, last), first, None).into())
+        Ok(paginate(last_n(self.commit_nodes()?, last), first, after.as_deref()).into())
     }
 
-    async fn files(&self, first: Option<i32>) -> Result<PullRequestFileConnection> {
-        Ok(paginate(self.file_nodes()?, first, None).into())
+    async fn files(
+        &self,
+        first: Option<i32>,
+        after: Option<String>,
+    ) -> Result<PullRequestFileConnection> {
+        Ok(paginate(self.file_nodes()?, first, after.as_deref()).into())
+    }
+
+    /// Whether the caller wrote this request.
+    async fn viewer_did_author(&self, ctx: &Context<'_>) -> Result<bool> {
+        Ok(gql_context(ctx)?.principal.user.id == self.pull.author_user_id)
+    }
+
+    /// Whether the caller may change this request: its author, or anyone who may push.
+    async fn viewer_can_update(&self, ctx: &Context<'_>) -> Result<bool> {
+        let g = gql_context(ctx)?;
+        if g.principal.user.id == self.pull.author_user_id {
+            return Ok(true);
+        }
+        Ok(permission(g, &self.owner, NamespacePermission::PushChanges)
+            .await
+            .is_ok())
+    }
+
+    /// Twig has no update-branch operation, so the head is never brought up to date.
+    async fn viewer_can_update_branch(&self) -> bool {
+        false
+    }
+
+    /// Twig has no merge queue.
+    async fn is_merge_queue_enabled(&self) -> bool {
+        false
+    }
+
+    /// Twig records no timeline events that GitHub lists here, so the timeline is empty.
+    async fn timeline_items(
+        &self,
+        first: Option<i32>,
+        after: Option<String>,
+        item_types: Option<Vec<PullRequestTimelineItemTypeEnum>>,
+    ) -> PullRequestTimelineItemConnection {
+        let _ = item_types;
+        paginate(
+            Vec::<PullRequestTimelineItems>::new(),
+            first,
+            after.as_deref(),
+        )
+        .into()
     }
 }
 
@@ -1998,10 +2517,117 @@ pub struct CommitNode {
     origin: String,
     owner: String,
     name: String,
+    root: String,
+    parents: Vec<String>,
+}
+
+impl CommitNode {
+    pub fn from_summary(
+        origin: &str,
+        owner: &str,
+        name: &str,
+        root: &str,
+        oid: &str,
+        summary: crate::git::bare::CommitSummary,
+    ) -> Self {
+        Self {
+            oid: oid.to_string(),
+            headline: summary.summary,
+            body: summary.body,
+            author_name: summary.author_name,
+            author_email: summary.author_email,
+            committed_at: summary.committed_at,
+            origin: origin.to_string(),
+            owner: owner.to_string(),
+            name: name.to_string(),
+            root: root.to_string(),
+            parents: summary.parents.iter().map(ToString::to_string).collect(),
+        }
+    }
+
+    /// Lines added and removed by this commit against its first parent. A root commit
+    /// has no parent to compare with, so it reports none.
+    fn line_stats(&self) -> (i64, i64) {
+        let Some(parent) = self.parents.first() else {
+            return (0, 0);
+        };
+        let (Ok(handle), Ok(from), Ok(to)) = (
+            handle_at(&self.root, &self.owner, &self.name),
+            git2::Oid::from_str(parent),
+            git2::Oid::from_str(&self.oid),
+        ) else {
+            return (0, 0);
+        };
+        match handle.diff_files(from, to) {
+            Ok(files) => files.iter().fold((0, 0), |(add, del), file| {
+                (
+                    add + i64::try_from(file.additions).unwrap_or_default(),
+                    del + i64::try_from(file.deletions).unwrap_or_default(),
+                )
+            }),
+            Err(_) => (0, 0),
+        }
+    }
+
+    fn actor(&self) -> GitActor {
+        GitActor {
+            name: self.author_name.clone(),
+            email: self.author_email.clone(),
+        }
+    }
 }
 
 #[Object(name = "Commit")]
 impl CommitNode {
+    async fn id(&self) -> String {
+        format!(
+            "C_{}",
+            hex_text(&format!("{}/{}@{}", self.owner, self.name, self.oid))
+        )
+    }
+
+    async fn additions(&self) -> i64 {
+        self.line_stats().0
+    }
+
+    async fn deletions(&self) -> i64 {
+        self.line_stats().1
+    }
+
+    /// The commits this one was made on top of.
+    async fn parents(&self, first: Option<i32>, after: Option<String>) -> CommitParentConnection {
+        let Ok(handle) = handle_at(&self.root, &self.owner, &self.name) else {
+            return paginate(Vec::<CommitNode>::new(), first, after.as_deref()).into();
+        };
+        let nodes: Vec<CommitNode> = self
+            .parents
+            .iter()
+            .filter_map(|parent| {
+                let oid = git2::Oid::from_str(parent).ok()?;
+                let summary = handle.commit_summary(oid).ok()?;
+                Some(CommitNode {
+                    oid: parent.clone(),
+                    headline: summary.summary,
+                    body: summary.body,
+                    author_name: summary.author_name,
+                    author_email: summary.author_email,
+                    committed_at: summary.committed_at,
+                    origin: self.origin.clone(),
+                    owner: self.owner.clone(),
+                    name: self.name.clone(),
+                    root: self.root.clone(),
+                    parents: summary.parents.iter().map(ToString::to_string).collect(),
+                })
+            })
+            .collect();
+        paginate(nodes, first, after.as_deref()).into()
+    }
+
+    /// The people who authored this commit. Git records one author per commit.
+    async fn authors(&self, first: Option<i32>, after: Option<String>) -> GitActorConnection {
+        paginate(vec![self.actor()], first, after.as_deref()).into()
+    }
+
     async fn oid(&self) -> &str {
         &self.oid
     }
@@ -2056,6 +2682,9 @@ pub struct GitActor {
     email: String,
 }
 
+connection!(GitActorConnection, GitActor);
+connection!(CommitParentConnection, CommitNode);
+
 #[Object(name = "GitActor")]
 impl GitActor {
     async fn name(&self) -> &str {
@@ -2064,6 +2693,18 @@ impl GitActor {
 
     async fn email(&self) -> &str {
         &self.email
+    }
+
+    /// Git authors have no avatar on Twig.
+    async fn avatar_url(&self, size: Option<i32>) -> &str {
+        let _ = size;
+        ""
+    }
+
+    /// The account that wrote the commit, when git's author email matches one.
+    /// Twig does not map git authors to accounts, so none is known.
+    async fn user(&self) -> Option<UserNode> {
+        None
     }
 }
 
@@ -2086,10 +2727,26 @@ pub struct PullRequestFileNode {
     deletions: i64,
 }
 
+/// Whether the viewer has marked a file as viewed. Twig does not record it.
+#[derive(Clone, Copy, PartialEq, Eq, Enum)]
+#[graphql(name = "FileViewedState")]
+pub enum FileViewedStateEnum {
+    #[graphql(name = "DISMISSED")]
+    Dismissed,
+    #[graphql(name = "UNVIEWED")]
+    Unviewed,
+    #[graphql(name = "VIEWED")]
+    Viewed,
+}
+
 #[Object(name = "PullRequestChangedFile")]
 impl PullRequestFileNode {
     async fn path(&self) -> &str {
         &self.path
+    }
+
+    async fn viewer_viewed_state(&self) -> FileViewedStateEnum {
+        FileViewedStateEnum::Unviewed
     }
 
     async fn additions(&self) -> i64 {
@@ -2135,6 +2792,38 @@ pub enum PullRequestOrderField {
 pub enum OrderDirection {
     Asc,
     Desc,
+}
+
+/// The fields a label listing may sort by.
+#[derive(Clone, Copy, PartialEq, Eq, Enum)]
+#[graphql(name = "LabelOrderField")]
+pub enum LabelOrderField {
+    #[graphql(name = "CREATED_AT")]
+    CreatedAt,
+    #[graphql(name = "NAME")]
+    Name,
+}
+
+#[derive(InputObject)]
+#[graphql(name = "LabelOrder")]
+pub struct LabelOrder {
+    pub field: LabelOrderField,
+    pub direction: OrderDirection,
+}
+
+/// The fields a comment listing may sort by.
+#[derive(Clone, Copy, PartialEq, Eq, Enum)]
+#[graphql(name = "IssueCommentOrderField")]
+pub enum IssueCommentOrderField {
+    #[graphql(name = "UPDATED_AT")]
+    UpdatedAt,
+}
+
+#[derive(InputObject)]
+#[graphql(name = "IssueCommentOrder")]
+pub struct IssueCommentOrder {
+    pub field: IssueCommentOrderField,
+    pub direction: OrderDirection,
 }
 
 #[derive(InputObject)]
@@ -2245,6 +2934,22 @@ pub struct Query;
 
 #[Object]
 impl Query {
+    /// Looks up anything with a global ID: a repository, request, issue, commit, or
+    /// review thread. An ID that names nothing returns `null`.
+    async fn node(&self, ctx: &Context<'_>, id: String) -> Result<Option<Node>> {
+        lookup_node(gql_context(ctx)?, &id).await
+    }
+
+    /// Looks up several global IDs, in the order given.
+    async fn nodes(&self, ctx: &Context<'_>, ids: Vec<String>) -> Result<Vec<Option<Node>>> {
+        let g = gql_context(ctx)?;
+        let mut found = Vec::with_capacity(ids.len());
+        for id in &ids {
+            found.push(lookup_node(g, id).await?);
+        }
+        Ok(found)
+    }
+
     /// Searches issues and pull requests in one repository (`repo:owner/name`). Results
     /// are filtered by `is:`, `author:`, `assignee:`, and `review-requested:`.
     async fn search(
@@ -2704,6 +3409,7 @@ impl Mutation {
                 comment_edge: CommentEdge {
                     node: CommentNode {
                         row_id: comment.id,
+                        pull_number: Some(pull.number),
                         body: comment.body,
                         author_user_id: comment.author_user_id,
                         created_at: comment.created_at,
@@ -2730,6 +3436,7 @@ impl Mutation {
             comment_edge: CommentEdge {
                 node: CommentNode {
                     row_id: comment.row_id,
+                    pull_number: None,
                     body: comment.body,
                     author_user_id: comment.author_user_id,
                     created_at: comment.created_at,
@@ -2855,6 +3562,176 @@ impl Mutation {
                 origin: g.origin.clone(),
             },
         })
+    }
+
+    async fn add_reaction(
+        &self,
+        ctx: &Context<'_>,
+        input: AddReactionInput,
+    ) -> Result<AddReactionPayload> {
+        mutations::react(gql_context(ctx)?, &input.subject_id, input.content, true).await?;
+        Ok(AddReactionPayload {
+            client_mutation_id: input.client_mutation_id,
+            reaction: ReactionNode {
+                content: input.content,
+            },
+        })
+    }
+
+    async fn remove_reaction(
+        &self,
+        ctx: &Context<'_>,
+        input: RemoveReactionInput,
+    ) -> Result<RemoveReactionPayload> {
+        mutations::react(gql_context(ctx)?, &input.subject_id, input.content, false).await?;
+        Ok(RemoveReactionPayload {
+            client_mutation_id: input.client_mutation_id,
+            reaction: ReactionNode {
+                content: input.content,
+            },
+        })
+    }
+
+    async fn update_pull_request(
+        &self,
+        ctx: &Context<'_>,
+        input: UpdatePullRequestInput,
+    ) -> Result<UpdatePullRequestPayload> {
+        let pull_request = mutations::update_pull_request(gql_context(ctx)?, &input).await?;
+        Ok(UpdatePullRequestPayload {
+            client_mutation_id: input.client_mutation_id,
+            pull_request,
+        })
+    }
+
+    async fn mark_pull_request_ready_for_review(
+        &self,
+        ctx: &Context<'_>,
+        input: ReadyForReviewInput,
+    ) -> Result<ReadyForReviewPayload> {
+        let pull_request =
+            mutations::set_draft(gql_context(ctx)?, &input.pull_request_id, false).await?;
+        Ok(ReadyForReviewPayload {
+            client_mutation_id: input.client_mutation_id,
+            pull_request,
+        })
+    }
+
+    async fn convert_pull_request_to_draft(
+        &self,
+        ctx: &Context<'_>,
+        input: ConvertToDraftInput,
+    ) -> Result<ConvertToDraftPayload> {
+        let pull_request =
+            mutations::set_draft(gql_context(ctx)?, &input.pull_request_id, true).await?;
+        Ok(ConvertToDraftPayload {
+            client_mutation_id: input.client_mutation_id,
+            pull_request,
+        })
+    }
+
+    async fn update_pull_request_review_comment(
+        &self,
+        ctx: &Context<'_>,
+        input: UpdateReviewCommentInput,
+    ) -> Result<UpdateReviewCommentPayload> {
+        let comment = mutations::update_review_comment(
+            gql_context(ctx)?,
+            &input.pull_request_review_comment_id,
+            &input.body,
+        )
+        .await?;
+        Ok(UpdateReviewCommentPayload {
+            client_mutation_id: input.client_mutation_id,
+            pull_request_review_comment: comment,
+        })
+    }
+
+    async fn update_issue_comment(
+        &self,
+        ctx: &Context<'_>,
+        input: UpdateIssueCommentInput,
+    ) -> Result<UpdateIssueCommentPayload> {
+        let comment =
+            mutations::update_issue_comment(gql_context(ctx)?, &input.id, &input.body).await?;
+        Ok(UpdateIssueCommentPayload {
+            client_mutation_id: input.client_mutation_id,
+            issue_comment: comment,
+        })
+    }
+
+    async fn enable_pull_request_auto_merge(
+        &self,
+        input: EnableAutoMergeInput,
+    ) -> Result<AutoMergePayload> {
+        let _ = input;
+        Err(unsupported("Auto-merge"))
+    }
+
+    async fn disable_pull_request_auto_merge(
+        &self,
+        input: DisableAutoMergeInput,
+    ) -> Result<AutoMergePayload> {
+        let _ = input;
+        Err(unsupported("Auto-merge"))
+    }
+
+    async fn update_pull_request_branch(
+        &self,
+        input: UpdateBranchInput,
+    ) -> Result<UpdateBranchPayload> {
+        let _ = input;
+        Err(unsupported("Updating a pull request's branch"))
+    }
+
+    async fn revert_pull_request(
+        &self,
+        input: RevertPullRequestInput,
+    ) -> Result<RevertPullRequestPayload> {
+        let _ = input;
+        Err(unsupported("Reverting a pull request"))
+    }
+
+    async fn update_refs(&self, input: UpdateRefsInput) -> Result<UpdateRefsPayload> {
+        let _ = input;
+        Err(unsupported("Changing branches through the API"))
+    }
+
+    async fn add_pull_request_review_thread_reply(
+        &self,
+        input: ThreadReplyInput,
+    ) -> Result<ThreadReplyPayload> {
+        let _ = input;
+        Err(unsupported("Replying to review threads"))
+    }
+
+    async fn resolve_review_thread(
+        &self,
+        input: ResolveThreadInput,
+    ) -> Result<ResolveThreadPayload> {
+        let _ = input;
+        Err(unsupported("Resolving review threads"))
+    }
+
+    async fn unresolve_review_thread(
+        &self,
+        input: UnresolveThreadInput,
+    ) -> Result<ResolveThreadPayload> {
+        let _ = input;
+        Err(unsupported("Resolving review threads"))
+    }
+
+    async fn mark_file_as_viewed(&self, input: MarkFileViewedInput) -> Result<FileViewedPayload> {
+        let _ = input;
+        Err(unsupported("Marking files as viewed"))
+    }
+
+    async fn unmark_file_as_viewed(
+        &self,
+        input: UnmarkFileViewedInput,
+    ) -> Result<FileViewedPayload> {
+        let _ = input;
+        Err(unsupported("Marking files as viewed"))
     }
 
     async fn close_pull_request(
@@ -2992,7 +3869,10 @@ async fn set_pull_state(
 /// Builds the schema. Resolvers read their context from the request, so one schema serves
 /// every request.
 pub fn schema() -> TwigSchema {
-    Schema::build(Query, Mutation, EmptySubscription).finish()
+    // Interfaces are reached only through fragments on them, so they are registered here.
+    Schema::build(Query, Mutation, EmptySubscription)
+        .register_output_type::<Reactable>()
+        .finish()
 }
 
 /// `POST /api/graphql`. Requires a token, as the REST API does. GraphQL errors are

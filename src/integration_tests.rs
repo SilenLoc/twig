@@ -16,6 +16,8 @@ mod tests {
     mod fixtures;
     #[path = "../github_issues_api.rs"]
     mod github_issues_api;
+    #[path = "../github_pull_request_compat.rs"]
+    mod github_pull_request_compat;
     #[path = "../github_pull_requests_api.rs"]
     mod github_pull_requests_api;
     #[path = "../global_issues_ui.rs"]

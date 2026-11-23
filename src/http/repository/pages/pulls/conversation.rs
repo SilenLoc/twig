@@ -1,7 +1,7 @@
 //! One pull request's Conversation page: header, timeline, the composer with
 //! review and close or reopen actions, and the reviewers panel.
 
-use actix_web::{HttpRequest, Result as AwResult, get, web};
+use actix_web::{HttpRequest, HttpResponse, Result as AwResult, http::StatusCode, routes, web};
 use maud::{Markup, html};
 
 use crate::{
@@ -12,7 +12,7 @@ use crate::{
         context::{RepoContext, open_repo},
         tabs::render_tab_response,
     },
-    pulls::{self, RepoRef},
+    pulls::{self, PullError, RepoRef},
 };
 
 use super::signed_in;
@@ -26,23 +26,59 @@ pub(super) struct PullPath {
 }
 
 /// `GET /{namespace}/{repo}/pulls/{number}`
+#[routes]
 #[get("/{namespace}/{repo}/pulls/{number:\\d+}")]
+#[get("/{namespace}/{repo}/pull/{number:\\d+}")]
 pub async fn pull_page_handler(
     req: HttpRequest,
     server: web::Data<config::Server>,
     auth_state: web::Data<TwigContext>,
     path: web::Path<PullPath>,
-) -> AwResult<Markup> {
+) -> AwResult<HttpResponse> {
     let ctx = match open_repo(&req, &server, &auth_state, &path.namespace, &path.repo).await {
         Ok(ctx) => ctx,
-        Err(rendered) => return Ok(rendered),
+        Err(rendered) => return Ok(page(StatusCode::OK, rendered)),
     };
+    // A request that does not exist is `404`, as on GitHub. Storage failures keep the page's
+    // own error notice.
+    if let Some(missing) = missing_request(&ctx, &auth_state, path.number).await {
+        return Ok(page(
+            StatusCode::NOT_FOUND,
+            render_tab_response(&req, &ctx.frame(), "pulls", &missing),
+        ));
+    }
     let viewer = signed_in(&req, &server, &auth_state, &path.namespace).await;
     let body = match load_and_render(&ctx, &auth_state, path.number, viewer.as_ref(), None).await {
         Ok(body) => body,
-        Err(markup) => return Ok(markup),
+        Err(markup) => return Ok(page(StatusCode::OK, markup)),
     };
-    Ok(render_tab_response(&req, &ctx.frame(), "pulls", &body))
+    Ok(page(
+        StatusCode::OK,
+        render_tab_response(&req, &ctx.frame(), "pulls", &body),
+    ))
+}
+
+/// The page body for a request that does not exist, or `None` when it exists or its
+/// lookup failed for another reason.
+async fn missing_request(
+    ctx: &RepoContext,
+    auth_state: &web::Data<TwigContext>,
+    number: i64,
+) -> Option<Markup> {
+    let repo_id = ctx.handle.repo_id().ok()?;
+    match pulls::get(auth_state.db(), &RepoRef { repo_id: &repo_id }, number).await {
+        Err(PullError::NotFound) => Some(crate::http::view::render_error(
+            "Pull request was not found.",
+        )),
+        _ => None,
+    }
+}
+
+/// Wraps a page in an HTML response with the given status.
+fn page(status: StatusCode, markup: Markup) -> HttpResponse {
+    HttpResponse::build(status)
+        .content_type("text/html; charset=utf-8")
+        .body(markup.into_string())
 }
 
 /// Loads the request and everything its page shows, and renders the page body.

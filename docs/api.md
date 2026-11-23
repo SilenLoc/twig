@@ -155,7 +155,7 @@ Supported in this slice:
 - `GET /api/v3/`, `GET /api/v3/user`, `GET /api/v3/repos/{owner}/{repo}`
 - Issues: `GET|POST /api/v3/repos/{owner}/{repo}/issues`, `GET|PATCH .../issues/{number}`
 - Pull requests: `GET|POST .../pulls`, `GET|PATCH .../pulls/{number}`, `GET .../pulls/{number}/merge` (merged?), `PUT .../pulls/{number}/merge` (`merge`, `squash`, or `rebase`; `sha` guards the head), `GET .../pulls/{number}/files`, `GET .../pulls/{number}/commits`, `GET|POST .../pulls/{number}/reviews`, and `GET|POST|DELETE .../pulls/{number}/requested_reviewers`. A pull request's diff comes back with `Accept: application/vnd.github.v3.diff`.
-- GraphQL: `viewer`, `repository` with `issue`, `issues`, `pullRequest`, and `pullRequests`; the mutations `createIssue`, `updateIssue`, `closeIssue`, `reopenIssue`, `addComment`, `createPullRequest`, `addPullRequestReview`, `mergePullRequest`, `closePullRequest`, and `reopenPullRequest`; and `search` for issues and pull requests filtered by `repo:`, `is:`, `author:`, `assignee:`, and `review-requested:`.
+- GraphQL: `viewer`, `repository` with `issue`, `issues`, `pullRequest`, `pullRequests`, and `ref` (branches, with `compare` against another branch), `node` and `nodes` for global IDs, and the request fields a pull request view reads: review threads, reactions, timeline, and the viewer's permissions on the request. The mutations `createIssue`, `updateIssue`, `closeIssue`, `reopenIssue`, `addComment`, `updateIssueComment`, `createPullRequest`, `updatePullRequest`, `markPullRequestReadyForReview`, `convertPullRequestToDraft`, `updatePullRequestReviewComment`, `addPullRequestReview`, `addReaction`, `removeReaction`, `mergePullRequest`, `closePullRequest`, and `reopenPullRequest`; and `search` for issues and pull requests filtered by `repo:`, `is:`, `author:`, `assignee:`, and `review-requested:`. Draft state is the `WIP:` title marker. Operations Twig does not support return an `UNSUPPORTED` error; see [Pull requests](pull-requests.md#what-is-not-supported).
 
 To log in with the `gh` command line, give a hostname with no port, because `gh` refuses ports in `--hostname`, and serve Twig over HTTPS on that host's port 443:
 
@@ -164,6 +164,6 @@ printf %s "$TWIG_TOKEN" | gh auth login --hostname twig.example --with-token
 gh pr list -R twig.example/namespace/repository
 ```
 
-Twig has no labels, milestones, projects, teams, reactions on issues, auto-merge, or check runs. Requests that name them are refused with `422`, or answer with an empty value where GitHub would list nothing.
+Twig has no labels, milestones, projects, teams, reactions on issues, auto-merge, or check runs. Reactions work on requests, conversation comments, and inline comments. Requests that name them are refused with `422`, or answer with an empty value where GitHub would list nothing.
 
 Merged pull requests keep their files and commits: the merge commit names them.

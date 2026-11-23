@@ -2,7 +2,7 @@
 //! Each one checks the session and the rules in `crate::pulls`, then redirects
 //! back to the conversation, so a refresh never repeats the change.
 
-use actix_web::{HttpRequest, HttpResponse, Result as AwResult, get, post, web};
+use actix_web::{HttpRequest, HttpResponse, Result as AwResult, post, routes, web};
 use maud::Markup;
 use serde::Deserialize;
 
@@ -326,7 +326,9 @@ pub async fn state_handler(
 }
 
 /// `GET /{namespace}/{repo}/pulls/{number}/edit`: title and description form.
+#[routes]
 #[get("/{namespace}/{repo}/pulls/{number:\\d+}/edit")]
+#[get("/{namespace}/{repo}/pull/{number:\\d+}/edit")]
 pub async fn edit_form_handler(
     req: HttpRequest,
     server: web::Data<config::Server>,

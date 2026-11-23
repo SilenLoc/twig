@@ -1,7 +1,7 @@
 //! The Files changed view: every file the request changes, hunk by hunk with line
 //! numbers, the inline review comments placed on their lines, and a form to add one.
 
-use actix_web::{HttpRequest, HttpResponse, Result as AwResult, get, post, web};
+use actix_web::{HttpRequest, HttpResponse, Result as AwResult, post, routes, web};
 use maud::{Markup, PreEscaped, html};
 use serde::Deserialize;
 
@@ -36,7 +36,9 @@ pub(super) struct InlineForm {
 }
 
 /// `GET /{namespace}/{repo}/pulls/{number}/files`
+#[routes]
 #[get("/{namespace}/{repo}/pulls/{number:\\d+}/files")]
+#[get("/{namespace}/{repo}/pull/{number:\\d+}/files")]
 pub async fn files_handler(
     req: HttpRequest,
     server: web::Data<config::Server>,

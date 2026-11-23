@@ -27,6 +27,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(list_pulls)
         .service(create_pull)
         .service(get_pull)
+        .service(pull_diff_handler)
         .service(edit_pull)
         .service(get_merge_status)
         .service(merge_pull)
@@ -237,9 +238,9 @@ async fn render(
         requested_teams: Vec::new(),
         head: branch(&pull.head_branch, head_tip, author.clone()),
         base: branch(&pull.base_branch, base_tip, author),
-        html_url: format!("{origin}/{owner}/{repo}/pulls/{}", pull.number),
+        html_url: format!("{origin}/{owner}/{repo}/pull/{}", pull.number),
         url: api.clone(),
-        diff_url: format!("{origin}/{owner}/{repo}/pulls/{}.diff", pull.number),
+        diff_url: format!("{origin}/{owner}/{repo}/pull/{}.diff", pull.number),
         patch_url: format!("{origin}/{owner}/{repo}/pulls/{}.patch", pull.number),
         created_at: pull.created_at.clone(),
         updated_at: pull.updated_at.clone(),
@@ -458,6 +459,56 @@ pub async fn create_pull(
     }
 }
 
+/// The unified diff of a request from its merge base to its head, as plain text.
+fn diff_response(repo: &Repo, pull: &PullRequest) -> HttpResponse {
+    let tips = repo
+        .handle
+        .branch_tip(&pull.base_branch)
+        .ok()
+        .flatten()
+        .zip(repo.handle.branch_tip(&pull.head_branch).ok().flatten());
+    let Some((base, head)) = tips else {
+        return error(StatusCode::NOT_FOUND, "Not Found");
+    };
+    let from = repo
+        .handle
+        .merge_base(base, head)
+        .ok()
+        .flatten()
+        .unwrap_or(base);
+    match repo.handle.diff_patch(from, head) {
+        Ok(text) => HttpResponse::Ok()
+            .content_type("text/plain; charset=utf-8")
+            .body(text),
+        Err(detail) => internal(detail),
+    }
+}
+
+/// `GET /{owner}/{repo}/pull/{number}.diff`: the diff of a request, as GitHub serves it
+/// at this path. The same text `Accept: application/vnd.github.diff` gives on the API.
+#[get("/{owner}/{repo}/pull/{number:\\d+}.diff")]
+pub async fn pull_diff_handler(
+    req: HttpRequest,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<TwigContext>,
+    path: web::Path<IssuePath>,
+) -> HttpResponse {
+    match load_pull(
+        &req,
+        &server,
+        &auth_state,
+        &path.owner,
+        &path.repo,
+        path.number,
+        NamespacePermission::ViewNamespace,
+    )
+    .await
+    {
+        Ok((repo, pull)) => diff_response(&repo, &pull),
+        Err(response) => response,
+    }
+}
+
 /// `GET /api/v3/repos/{owner}/{repo}/pulls/{number}`. With
 /// `Accept: application/vnd.github.diff` it answers the diff as plain text.
 #[get("/api/v3/repos/{owner}/{repo}/pulls/{number}")]
@@ -487,27 +538,7 @@ pub async fn get_pull(
         .and_then(|value| value.to_str().ok())
         .is_some_and(|accept| accept.contains(".diff") || accept.contains(".patch"));
     if wants_diff {
-        let tips = repo
-            .handle
-            .branch_tip(&pull.base_branch)
-            .ok()
-            .flatten()
-            .zip(repo.handle.branch_tip(&pull.head_branch).ok().flatten());
-        let Some((base, head)) = tips else {
-            return error(StatusCode::NOT_FOUND, "Not Found");
-        };
-        let from = repo
-            .handle
-            .merge_base(base, head)
-            .ok()
-            .flatten()
-            .unwrap_or(base);
-        return match repo.handle.diff_patch(from, head) {
-            Ok(text) => HttpResponse::Ok()
-                .content_type("text/plain; charset=utf-8")
-                .body(text),
-            Err(detail) => internal(detail),
-        };
+        return diff_response(&repo, &pull);
     }
     match render(
         auth_state.db(),
@@ -964,7 +995,7 @@ pub async fn list_reviews(
             commit_id: review.commit_oid.clone(),
             submitted_at: review.submitted_at.clone(),
             html_url: format!(
-                "{origin}/{}/{}/pulls/{}#review-{}",
+                "{origin}/{}/{}/pull/{}#review-{}",
                 path.owner, path.repo, pull.number, review.id
             ),
             pull_request_url: format!(
@@ -1104,7 +1135,7 @@ pub async fn submit_review(
                 commit_id: review.commit_oid,
                 submitted_at: review.submitted_at,
                 html_url: format!(
-                    "{origin}/{}/{}/pulls/{}#review-{}",
+                    "{origin}/{}/{}/pull/{}#review-{}",
                     path.owner, path.repo, pull.number, review.id
                 ),
                 pull_request_url: format!(

@@ -14,7 +14,9 @@ and through the GitHub-compatible REST and GraphQL APIs that `gh` uses. See
    **New pull request**. Pick the base and head branches. The page lists the
    commits the head adds and writes the title and description, pre-filled from a
    single commit.
-2. The request opens at `/{namespace}/{repo}/pulls/{number}`. Its three views are
+2. The request opens at `/{namespace}/{repo}/pulls/{number}`. GitHub's address for
+   the same page, `/{namespace}/{repo}/pull/{number}`, opens it too, with its
+   `/files`, `/commits`, and `/edit` sub-pages and `.diff`. Its three views are
    **Conversation**, **Commits**, and **Files changed**.
 3. **Conversation** holds the description and the timeline of comments and
    reviews. Anyone signed in with access can comment and react. The author and
@@ -82,7 +84,12 @@ Requests are numbered within the repository and share their numbers with issues
 - Pull requests from another repository (forks). The head must be a branch of the
   same repository.
 - Labels, milestones, and projects. Issues are supported; see [Issues](issues.md).
-- Resolving review threads and replying to them.
+- Resolving review threads and replying to them. Inline comments are listed as
+  threads of one comment each, and every thread stays unresolved.
+- Auto-merge, updating a request's branch from its base, reverting a request,
+  deleting its branch through the API, and marking files as viewed. The API answers
+  these with an `UNSUPPORTED` error, and reports auto-merge as not allowed.
+- Stacked requests. Requests never belong to a stack.
 - Required status checks: CI results do not gate a merge. See [CI](ci.md).
 - Creating a *private* repository through the API. Privacy is set in `.twig.toml`.
 - Renaming and moving repositories keeps their requests, because requests follow the
