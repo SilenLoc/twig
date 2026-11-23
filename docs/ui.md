@@ -47,6 +47,18 @@ Lists public namespaces and their owners.
   personal to each account and unpinning returns a namespace to the full list.
 - Select a namespace to view its repositories.
 
+### Issues (`/issues`)
+
+Lists issues from every repository the viewer can read, newest first. It is
+reached from the **Issues** link in the masthead.
+
+- Each row names its repository and links to the issue. Repositories you cannot
+  read contribute nothing, not even a count.
+- **Open**, **Closed**, and **All** filter by state, with counts across the
+  repositories you can read. The search box and the author and assignee boxes
+  match as they do on a repository's Issues tab.
+- Fifty issues per page, with **Newer** and **Older** links.
+
 ### Namespace (`/{namespace}`)
 
 Lists public repositories in a namespace. Signed-in users can also see private

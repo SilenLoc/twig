@@ -18,6 +18,11 @@ that is not a change yet. Issues are available in the web UI on the repository's
 5. The list filters by **Open**, **Closed**, or **All**. The search box matches the
    title and the description. The author and assignee boxes take a username.
 
+The **Issues** link in the masthead opens `/issues`, the list of issues across
+every repository you can read. It takes the same filters as a repository's tab.
+Each row names its repository. Repositories you cannot read do not appear, not
+even in the counts.
+
 Issues and pull requests share one number sequence in each repository. `#12` is
 one or the other, never both. An issue's page redirects to its pull request when
 the number is a pull request.
@@ -41,6 +46,7 @@ of returning a wrong result. For example, creating an issue with a label answers
 | Action | Who may do it |
 | --- | --- |
 | See issues and comments | Anyone with `view_namespace` |
+| See the global list at `/issues` | Anyone who can read a repository's issues, for each repository |
 | Open an issue, comment | Anyone with `view_namespace` |
 | Edit the title or description, close, or reopen | The author, or anyone with `push_changes` |
 | Assign or unassign members | Anyone with `push_changes` |

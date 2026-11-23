@@ -340,3 +340,90 @@ async fn replace_issue_assignees_replaces_the_whole_set() {
     );
     let _ = std::fs::remove_file(path);
 }
+
+#[tokio::test]
+async fn list_across_repos_reads_only_the_given_repositories_newest_first() {
+    let (db, path) = database().await;
+    db.create_issue(new_issue("repo-a", "Oldest in a", ""))
+        .await
+        .unwrap();
+    let closed = db
+        .create_issue(new_issue("repo-b", "Closed in b", ""))
+        .await
+        .unwrap();
+    db.create_issue(new_issue("repo-c", "Elsewhere", ""))
+        .await
+        .unwrap();
+    db.create_issue(new_issue("repo-a", "Newest in a", "crash details"))
+        .await
+        .unwrap();
+    db.edit_issue(
+        &closed.id,
+        &IssueEdit {
+            state: Some(IssueState::Closed),
+            ..Default::default()
+        },
+        "2026-11-23T10:00:00Z",
+    )
+    .await
+    .unwrap();
+
+    let visible = vec!["repo-a".to_string(), "repo-b".to_string()];
+    let (items, more) = db
+        .list_issues_in_repos(&visible, &everything())
+        .await
+        .unwrap();
+    let titles: Vec<&str> = items.iter().map(|issue| issue.title.as_str()).collect();
+    assert_eq!(titles, ["Newest in a", "Closed in b", "Oldest in a"]);
+    assert!(!more, "the repository C issue is not listed");
+
+    let open = IssueFilter {
+        state: Some(IssueState::Open),
+        ..everything()
+    };
+    let (items, _) = db.list_issues_in_repos(&visible, &open).await.unwrap();
+    let titles: Vec<&str> = items.iter().map(|issue| issue.title.as_str()).collect();
+    assert_eq!(titles, ["Newest in a", "Oldest in a"]);
+
+    let searched = IssueFilter {
+        query: Some("CRASH".to_string()),
+        ..everything()
+    };
+    let (items, _) = db.list_issues_in_repos(&visible, &searched).await.unwrap();
+    assert_eq!(items.len(), 1, "the search matches the body, ignoring case");
+    assert_eq!(items[0].title, "Newest in a");
+
+    assert_eq!(
+        db.count_issues_by_state_in_repos(&visible).await.unwrap(),
+        (2, 1)
+    );
+    assert_eq!(
+        db.count_issues_by_state_in_repos(&[]).await.unwrap(),
+        (0, 0)
+    );
+    let (none, more) = db.list_issues_in_repos(&[], &everything()).await.unwrap();
+    assert!(none.is_empty() && !more);
+
+    let first_page = IssueFilter {
+        limit: 2,
+        ..Default::default()
+    };
+    let (first, more) = db
+        .list_issues_in_repos(&visible, &first_page)
+        .await
+        .unwrap();
+    assert_eq!(first.len(), 2);
+    assert!(more, "a third issue is on the next page");
+    let second_page = IssueFilter {
+        limit: 2,
+        offset: 2,
+        ..Default::default()
+    };
+    let (second, more) = db
+        .list_issues_in_repos(&visible, &second_page)
+        .await
+        .unwrap();
+    assert_eq!(second.len(), 1);
+    assert!(!more);
+    let _ = std::fs::remove_file(path);
+}

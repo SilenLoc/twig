@@ -82,6 +82,21 @@ pub struct IssueEdit {
 const COLUMNS: &str = "id, repo_id, number, title, body, state, author_user_id, created_at,
     updated_at, closed_at";
 
+/// The filters every issue query shares. `?2`..`?5` are the state, text, author, and
+/// assignee filters, in that order; a NULL parameter filters nothing.
+const MATCHES: &str = "(?2 IS NULL OR state = ?2)
+   AND (?3 IS NULL OR lower(title) LIKE ?3 ESCAPE '\\' OR lower(body) LIKE ?3 ESCAPE '\\')
+   AND (?4 IS NULL OR author_user_id = ?4)
+   AND (?5 IS NULL OR EXISTS (
+        SELECT 1 FROM issue_assignees a
+        WHERE a.issue_id = issues.id AND a.user_id = ?5))";
+
+/// The repository IDs as a JSON array, for `json_each`. IDs are UUIDs, so the encoding
+/// is exact.
+fn repo_ids_json(repo_ids: &[String]) -> Result<String, String> {
+    serde_json::to_string(repo_ids).map_err(|e| e.to_string())
+}
+
 /// The next number in a repository's shared sequence. Pull requests and issues both
 /// draw from it. Callers must hold a `BEGIN IMMEDIATE` transaction.
 pub(crate) async fn next_repo_number(conn: &Connection, repo_id: &str) -> Result<i64, String> {
@@ -102,6 +117,22 @@ pub(crate) async fn next_repo_number(conn: &Connection, repo_id: &str) -> Result
         .ok_or("Repository numbering returned no row")?
         .get(0)
         .map_err(|e| e.to_string())
+}
+
+/// Reads `(state, count)` rows into the open and closed totals.
+async fn tally_states(mut rows: sqlite::Rows) -> Result<(u64, u64), String> {
+    let (mut open, mut closed) = (0u64, 0u64);
+    while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
+        let state: String = row.get(0).map_err(|e| e.to_string())?;
+        let count: i64 = row.get(1).map_err(|e| e.to_string())?;
+        let count = u64::try_from(count).unwrap_or_default();
+        match IssueState::parse(&state) {
+            Some(IssueState::Open) => open = count,
+            Some(IssueState::Closed) => closed = count,
+            None => {}
+        }
+    }
+    Ok((open, closed))
 }
 
 fn from_row(row: &Row) -> Result<Issue, String> {
@@ -298,13 +329,7 @@ impl Database {
             &conn,
             &format!(
                 "SELECT {COLUMNS} FROM issues
-                 WHERE repo_id = ?1
-                   AND (?2 IS NULL OR state = ?2)
-                   AND (?3 IS NULL OR lower(title) LIKE ?3 ESCAPE '\\' OR lower(body) LIKE ?3 ESCAPE '\\')
-                   AND (?4 IS NULL OR author_user_id = ?4)
-                   AND (?5 IS NULL OR EXISTS (
-                        SELECT 1 FROM issue_assignees a
-                        WHERE a.issue_id = issues.id AND a.user_id = ?5))
+                 WHERE repo_id = ?1 AND {MATCHES}
                  ORDER BY number DESC
                  LIMIT ?6 OFFSET ?7"
             ),
@@ -331,14 +356,7 @@ impl Database {
         let pattern = filter.query.as_deref().map(like_pattern);
         let mut rows = conn
             .query(
-                "SELECT COUNT(*) FROM issues
-                 WHERE repo_id = ?1
-                   AND (?2 IS NULL OR state = ?2)
-                   AND (?3 IS NULL OR lower(title) LIKE ?3 ESCAPE '\\' OR lower(body) LIKE ?3 ESCAPE '\\')
-                   AND (?4 IS NULL OR author_user_id = ?4)
-                   AND (?5 IS NULL OR EXISTS (
-                        SELECT 1 FROM issue_assignees a
-                        WHERE a.issue_id = issues.id AND a.user_id = ?5))",
+                &format!("SELECT COUNT(*) FROM issues WHERE repo_id = ?1 AND {MATCHES}"),
                 sqlite::params![
                     repo_id,
                     state,
@@ -362,25 +380,78 @@ impl Database {
     /// Open and closed issue counts, for the tab's filter labels.
     pub async fn count_issues_by_state(&self, repo_id: &str) -> Result<(u64, u64), String> {
         let conn = self.conn().await?;
-        let mut rows = conn
+        let rows = conn
             .query(
                 "SELECT state, COUNT(*) FROM issues WHERE repo_id = ?1 GROUP BY state",
                 sqlite::params![repo_id],
             )
             .await
             .map_err(|e| e.to_string())?;
-        let (mut open, mut closed) = (0u64, 0u64);
-        while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
-            let state: String = row.get(0).map_err(|e| e.to_string())?;
-            let count: i64 = row.get(1).map_err(|e| e.to_string())?;
-            let count = u64::try_from(count).unwrap_or_default();
-            match IssueState::parse(&state) {
-                Some(IssueState::Open) => open = count,
-                Some(IssueState::Closed) => closed = count,
-                None => {}
-            }
+        tally_states(rows).await
+    }
+
+    /// One page of issues across `repo_ids`, newest first, and whether a further page
+    /// exists. The filter means what it means for one repository. Callers pass only
+    /// repositories the viewer may read.
+    pub async fn list_issues_in_repos(
+        &self,
+        repo_ids: &[String],
+        filter: &IssueFilter,
+    ) -> Result<(Vec<Issue>, bool), String> {
+        if repo_ids.is_empty() {
+            return Ok((Vec::new(), false));
         }
-        Ok((open, closed))
+        let conn = self.conn().await?;
+        let ids = repo_ids_json(repo_ids)?;
+        let state = filter.state.map(IssueState::as_str);
+        let pattern = filter.query.as_deref().map(like_pattern);
+        let fetch = i64::from(filter.limit) + 1;
+        // Rowids grow with each insert, so this is the order issues were opened. The
+        // timestamps are not used: their text does not sort reliably across precisions.
+        let mut rows = collect(
+            &conn,
+            &format!(
+                "SELECT {COLUMNS} FROM issues
+                 WHERE repo_id IN (SELECT value FROM json_each(?1)) AND {MATCHES}
+                 ORDER BY rowid DESC
+                 LIMIT ?6 OFFSET ?7"
+            ),
+            sqlite::params![
+                ids,
+                state,
+                pattern.as_deref(),
+                filter.author_user_id.as_deref(),
+                filter.assignee_user_id.as_deref(),
+                fetch,
+                i64::from(filter.offset)
+            ],
+        )
+        .await?;
+        let has_more = rows.len() > filter.limit as usize;
+        rows.truncate(filter.limit as usize);
+        Ok((rows, has_more))
+    }
+
+    /// Open and closed issue counts across `repo_ids`.
+    pub async fn count_issues_by_state_in_repos(
+        &self,
+        repo_ids: &[String],
+    ) -> Result<(u64, u64), String> {
+        if repo_ids.is_empty() {
+            return Ok((0, 0));
+        }
+        let conn = self.conn().await?;
+        let ids = repo_ids_json(repo_ids)?;
+        let rows = conn
+            .query(
+                "SELECT state, COUNT(*) FROM issues
+                 WHERE repo_id IN (SELECT value FROM json_each(?1))
+                 GROUP BY state",
+                sqlite::params![ids],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+        tally_states(rows).await
     }
 
     /// Applies the present fields of `edit`. Reopening clears `closed_at`; closing

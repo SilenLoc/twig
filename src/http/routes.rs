@@ -1,8 +1,8 @@
 use actix_web::{guard, web};
 
 use super::{
-    api, assets, auth, health, info, namespace, overview, repo_edit, repository, settings,
-    test_page, tree,
+    api, assets, auth, global_issues, health, info, namespace, overview, repo_edit, repository,
+    settings, test_page, tree,
 };
 use crate::git;
 
@@ -48,7 +48,9 @@ fn configure_auth_routes(cfg: &mut web::ServiceConfig) {
 }
 
 fn configure_tree_routes(cfg: &mut web::ServiceConfig) {
-    cfg.service(overview::pages::index)
+    // Must precede the `/{namespace}` landing page, which would otherwise take `/issues`.
+    cfg.service(global_issues::issues_page)
+        .service(overview::pages::index)
         .service(tree::pages::tree_page)
         .service(tree::pages::namespaces_page)
         .service(tree::pages::namespace_settings_page)
