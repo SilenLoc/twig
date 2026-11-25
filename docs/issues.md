@@ -23,6 +23,12 @@ every repository you can read. It takes the same filters as a repository's tab.
 Each row names its repository. Repositories you cannot read do not appear, not
 even in the counts.
 
+Signed-in viewers can open an issue from that list with **New issue**. It lists
+the repositories you may open an issue in: the namespaces you belong to, where
+you may view. Pick one and **Continue** opens that repository's New issue form.
+A public repository in someone else's namespace is readable, but you cannot open
+an issue there, so it is not offered.
+
 Issues and pull requests share one number sequence in each repository. `#12` is
 one or the other, never both. An issue's page redirects to its pull request when
 the number is a pull request.

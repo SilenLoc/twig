@@ -50,6 +50,7 @@ fn configure_auth_routes(cfg: &mut web::ServiceConfig) {
 fn configure_tree_routes(cfg: &mut web::ServiceConfig) {
     // Must precede the `/{namespace}` landing page, which would otherwise take `/issues`.
     cfg.service(global_issues::issues_page)
+        .service(global_issues::new_issue_page)
         .service(overview::pages::index)
         .service(tree::pages::tree_page)
         .service(tree::pages::namespaces_page)

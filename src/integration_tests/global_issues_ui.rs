@@ -181,3 +181,100 @@ async fn global_list_filters_by_state_search_and_account() {
     );
     assert!(!unknown.contains("Widget overflow"));
 }
+
+/// A GET request, with the session cookie when one is given.
+fn get_request(uri: &str, session: Option<&str>) -> Request {
+    let mut request = test::TestRequest::get().uri(uri);
+    if let Some(session) = session {
+        request = request.cookie(actix_web::cookie::Cookie::new(
+            "session",
+            session.to_string(),
+        ));
+    }
+    request.to_request()
+}
+
+#[actix_web::test]
+async fn global_new_issue_picker_offers_only_repositories_the_viewer_may_open_issues_in() {
+    let root = format!("/tmp/test_twig_global_new_issue_{}", uuid::Uuid::new_v4());
+    let (app, db) = create_test_service_with_db_in(&root).await;
+    // `pr-team/tooling` is public and `pr-team/secret` is private, both in `pr-team`.
+    let (owner, _, _) = seed_owner_repo(&db, &root).await;
+    init_private_repo(&std::path::Path::new(&root).join("pr-team").join("secret"));
+
+    let drifter = auth::create_user(
+        "drifter".to_string(),
+        "drifter@example.com".to_string(),
+        "password123",
+    )
+    .expect("create drifter");
+    db.create_user(&drifter).await.expect("persist drifter");
+
+    let auth_state = auth::TwigContext::new(db.clone(), "secure".to_string());
+    let owner_session = auth_state
+        .create_session(owner.id.clone())
+        .await
+        .expect("owner session");
+    let drifter_session = auth_state
+        .create_session(drifter.id.clone())
+        .await
+        .expect("drifter session");
+
+    // The New issue button appears on the Issues page only for signed-in visitors.
+    let anonymous_list = page_as(&app, "/issues", None).await;
+    assert!(!anonymous_list.contains("href=\"/issues/new\""));
+    let owner_list = page_as(&app, "/issues", Some(&owner_session)).await;
+    assert!(owner_list.contains("href=\"/issues/new\""));
+    assert!(owner_list.contains(">New issue<"));
+
+    // Anonymous visitors are asked to sign in and get no repository list.
+    let anonymous = page_as(&app, "/issues/new", None).await;
+    assert!(anonymous.contains("Sign in to open an issue."));
+    assert!(!anonymous.contains("<select"));
+
+    // A namespace member can open issues in both of its repositories.
+    let owned = page_as(&app, "/issues/new", Some(&owner_session)).await;
+    assert!(owned.contains("value=\"pr-team/secret\""));
+    assert!(owned.contains("value=\"pr-team/tooling\""));
+
+    // A signed-in visitor outside the namespace reads the public repository but may not
+    // open an issue there, so the picker has nothing to offer.
+    let drifting = page_as(&app, "/issues/new", Some(&drifter_session)).await;
+    assert!(drifting.contains("You cannot open an issue in any repository."));
+    assert!(!drifting.contains("value=\"pr-team/tooling\""));
+
+    // Choosing a repository the viewer may use hands off to its New issue form.
+    let chosen = test::call_service(
+        &app,
+        get_request("/issues/new?repo=pr-team/tooling", Some(&owner_session)),
+    )
+    .await;
+    assert_eq!(chosen.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        chosen
+            .headers()
+            .get("location")
+            .and_then(|value| value.to_str().ok()),
+        Some("/pr-team/tooling/issues/new")
+    );
+    let form = page_as(&app, "/pr-team/tooling/issues/new", Some(&owner_session)).await;
+    assert!(form.contains("Submit new issue"));
+
+    // A name outside the picker is not redirected; the picker says why.
+    let refused = test::call_service(
+        &app,
+        get_request("/issues/new?repo=pr-team/nowhere", Some(&owner_session)),
+    )
+    .await;
+    assert_eq!(refused.status(), StatusCode::OK);
+    let refused_body = String::from_utf8(test::read_body(refused).await.to_vec()).unwrap();
+    assert!(refused_body.contains("Choose a repository you can open an issue in."));
+
+    // The outsider is not sent to a repository they may not open issues in.
+    let outsider = test::call_service(
+        &app,
+        get_request("/issues/new?repo=pr-team/tooling", Some(&drifter_session)),
+    )
+    .await;
+    assert_eq!(outsider.status(), StatusCode::OK);
+}
