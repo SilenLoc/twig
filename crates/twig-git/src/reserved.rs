@@ -19,6 +19,8 @@ const RESERVED_REPO_NAMES: &[&str] = &[
     "auth",
     "init",
     "manage",
+    "issue",
+    "issues",
 ];
 
 /// Whether `name` is reserved. Compared case-insensitively so the check still
@@ -79,6 +81,17 @@ mod tests {
                 "{name} should be reserved"
             );
         }
+    }
+
+    #[test]
+    fn test_issue_names_are_reserved() {
+        for name in ["issue", "issues", "Issues", "ISSUE"] {
+            assert!(
+                validate_repo_name(name).is_err(),
+                "{name} should be reserved"
+            );
+        }
+        assert!(validate_repo_name("issues-archive").is_ok());
     }
 
     #[test]

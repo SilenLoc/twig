@@ -52,6 +52,9 @@ Lists public namespaces and their owners.
 Lists issues from every repository the viewer can read, newest first. It is
 reached from the **Issues** link in the masthead.
 
+- Signed-in visitors see a **New issue** button beside the state tabs. It opens
+  `/issues/new`, which lists the repositories you may open an issue in. Choosing
+  one opens that repository's New issue form.
 - Each row names its repository and links to the issue. Repositories you cannot
   read contribute nothing, not even a count.
 - **Open**, **Closed**, and **All** filter by state, with counts across the

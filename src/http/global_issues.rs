@@ -1,14 +1,17 @@
 //! The global Issues page at `/issues`: issues from every repository the viewer may
 //! read, newest first. It takes the same state, search, and account filters as a
 //! repository's Issues tab. Visibility and every rule come from `crate::issues`.
+//!
+//! `/issues/new` picks the repository a new issue goes in, then hands off to that
+//! repository's own New issue form, which does the opening.
 
 use std::collections::HashMap;
 
-use actix_web::{HttpRequest, Result as AwResult, get, web};
+use actix_web::{HttpRequest, HttpResponse, Result as AwResult, get, http::header::LOCATION, web};
 use maud::{Markup, html};
 
 use crate::{
-    auth::TwigContext,
+    auth::{NamespacePermission, TwigContext, permissions},
     config,
     db::{
         Database,
@@ -99,6 +102,37 @@ struct Listing {
     closed: u64,
 }
 
+/// The signed-in visitor.
+struct Visitor {
+    user_id: String,
+    username: String,
+    is_site_admin: bool,
+}
+
+impl Visitor {
+    /// The visitor behind the request's session, or `None` for an anonymous visitor.
+    async fn from_request(
+        req: &HttpRequest,
+        server: &config::Server,
+        auth_state: &TwigContext,
+    ) -> Option<Self> {
+        let user_id = auth_state.user_id_from_request(req).await?;
+        let user = auth_state.db().get_user_by_id(&user_id).await.ok()??;
+        Some(Self {
+            is_site_admin: server.is_configured_admin(&user.username),
+            user_id: user.id,
+            username: user.username,
+        })
+    }
+
+    fn viewer(&self) -> Viewer<'_> {
+        Viewer {
+            user_id: &self.user_id,
+            is_site_admin: self.is_site_admin,
+        }
+    }
+}
+
 /// `GET /issues`: the global Issues list.
 #[get("/issues")]
 pub async fn issues_page(
@@ -108,29 +142,150 @@ pub async fn issues_page(
     query: web::Query<GlobalIssuesQuery>,
 ) -> AwResult<Markup> {
     let db = auth_state.db();
-    let user = match auth_state.user_id_from_request(&req).await {
-        Some(user_id) => db.get_user_by_id(&user_id).await.ok().flatten(),
-        None => None,
-    };
-    let username = user.as_ref().map(|user| user.username.clone());
-    let viewer_id = user.as_ref().map(|user| user.id.clone());
-    let is_site_admin = user
-        .as_ref()
-        .is_some_and(|user| server.is_configured_admin(&user.username));
-    let viewer = viewer_id.as_deref().map(|user_id| Viewer {
-        user_id,
-        is_site_admin,
-    });
+    let visitor = Visitor::from_request(&req, &server, &auth_state).await;
+    let viewer = visitor.as_ref().map(Visitor::viewer);
     let view = View::from_query(&query);
 
     let content = match load(db, server.project_root(), viewer.as_ref(), &view).await {
-        Ok(listing) => render(&view, &listing),
+        Ok(listing) => render(&view, &listing, visitor.is_some()),
         Err(error) => {
             log::error!("Failed to load the global issue list: {error}");
             render_error("Issues could not be loaded.")
         }
     };
-    Ok(render_layout(&content, username.as_deref(), Some("Issues")))
+    let username = visitor.as_ref().map(|visitor| visitor.username.as_str());
+    Ok(render_layout(&content, username, Some("Issues")))
+}
+
+#[derive(serde::Deserialize)]
+pub struct NewIssueQuery {
+    /// `namespace/repo`, once the visitor has chosen one.
+    repo: Option<String>,
+}
+
+/// `GET /issues/new`: picks the repository a new issue goes in. Naming one the viewer may
+/// open an issue in sends them to that repository's New issue form.
+#[get("/issues/new")]
+pub async fn new_issue_page(
+    req: HttpRequest,
+    server: web::Data<config::Server>,
+    auth_state: web::Data<TwigContext>,
+    query: web::Query<NewIssueQuery>,
+) -> AwResult<HttpResponse> {
+    let db = auth_state.db();
+    let visitor = Visitor::from_request(&req, &server, &auth_state).await;
+    let chosen = query.repo.as_deref().unwrap_or_default().trim().to_string();
+
+    let repos = match &visitor {
+        Some(visitor) => openable_repos(db, server.project_root(), &visitor.viewer()).await,
+        None => Ok(Vec::new()),
+    };
+    let page = match repos {
+        Ok(repos) => {
+            if let Some(repo) = repos.iter().find(|repo| full_name(repo) == chosen) {
+                return Ok(HttpResponse::SeeOther()
+                    .insert_header((
+                        LOCATION,
+                        format!("/{}/{}/issues/new", repo.namespace, repo.repo),
+                    ))
+                    .finish());
+            }
+            let refused = !chosen.is_empty();
+            render_picker(visitor.is_some(), &repos, refused)
+        }
+        Err(error) => {
+            log::error!("Failed to load the repositories for a new issue: {error}");
+            render_error("Issues could not be loaded.")
+        }
+    };
+    let username = visitor.as_ref().map(|visitor| visitor.username.as_str());
+    let html = render_layout(&page, username, Some("New issue")).into_string();
+    Ok(HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html))
+}
+
+/// The repositories the viewer may open an issue in: those they may read, in a namespace
+/// where they may view. A public repository in someone else's namespace is listed on the
+/// Issues page, but opening an issue there is refused, so the picker leaves it out.
+async fn openable_repos(
+    db: &Database,
+    root: &str,
+    viewer: &Viewer<'_>,
+) -> Result<Vec<VisibleRepo>, String> {
+    let repos = issues::visible_repos(db, root, Some(viewer))
+        .await
+        .map_err(|error| format!("{error:?}"))?;
+    let mut may_open: HashMap<String, bool> = HashMap::new();
+    let mut openable = Vec::new();
+    for repo in repos {
+        let allowed = if let Some(allowed) = may_open.get(&repo.namespace).copied() {
+            allowed
+        } else {
+            let allowed = permissions::has(
+                db,
+                viewer.user_id,
+                &repo.namespace,
+                viewer.is_site_admin,
+                NamespacePermission::ViewNamespace,
+            )
+            .await?;
+            may_open.insert(repo.namespace.clone(), allowed);
+            allowed
+        };
+        if allowed {
+            openable.push(repo);
+        }
+    }
+    openable.sort_by_key(full_name);
+    Ok(openable)
+}
+
+/// A repository as the picker names it: `namespace/repo`.
+fn full_name(repo: &VisibleRepo) -> String {
+    format!("{}/{}", repo.namespace, repo.repo)
+}
+
+/// The page that picks a repository for a new issue. A visitor who is not signed in gets
+/// a sign-in notice; one with no repository to open an issue in gets an empty state.
+fn render_picker(signed_in: bool, repos: &[VisibleRepo], refused: bool) -> Markup {
+    html! {
+        section class="twig-pagehead" {
+            h1 class="twig-section" { "New issue" }
+        }
+        div class="twig-stack" {
+            @if !signed_in {
+                div class="twig-empty" {
+                    p class="twig-eyebrow" { "SIGN IN" }
+                    p class="twig-empty-body" { "Sign in to open an issue." }
+                }
+            } @else if repos.is_empty() {
+                div class="twig-empty" {
+                    p class="twig-eyebrow" { "NO REPOSITORIES" }
+                    p class="twig-empty-body" { "You cannot open an issue in any repository." }
+                }
+            } @else {
+                @if refused {
+                    div class="twig-notice twig-notice--danger" role="alert" {
+                        p class="twig-eyebrow" { "ERROR" }
+                        p class="twig-notice-body" { "Choose a repository you can open an issue in." }
+                    }
+                }
+                form class="twig-form" method="get" action="/issues/new" {
+                    label class="twig-label" for="issue-repo" { "Repository" }
+                    select id="issue-repo" class="twig-input twig-input--mono" name="repo" required {
+                        @for repo in repos {
+                            option value=(full_name(repo)) { (full_name(repo)) }
+                        }
+                    }
+                    div class="twig-form-actions" {
+                        button type="submit" class="twig-btn twig-btn--primary" { "Continue" }
+                        a class="twig-btn" href="/issues" { "Cancel" }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Loads the counts and one page of issues across every repository the viewer may read.
@@ -221,7 +376,7 @@ async fn attach_names(db: &Database, repos: &[VisibleRepo], found: Vec<Issue>) -
     rows
 }
 
-fn render(view: &View, listing: &Listing) -> Markup {
+fn render(view: &View, listing: &Listing, signed_in: bool) -> Markup {
     let tab = |value: &str, label: String| {
         html! {
             a class="twig-pr-filter" href=(view.href(value, 1))
@@ -240,6 +395,9 @@ fn render(view: &View, listing: &Listing) -> Markup {
                     (tab("open", format!("{} Open", listing.open)))
                     (tab("closed", format!("{} Closed", listing.closed)))
                     (tab("all", "All".to_string()))
+                }
+                @if signed_in {
+                    a class="twig-btn twig-btn--primary" href="/issues/new" { "New issue" }
                 }
             }
             form class="twig-search twig-issue-filters" role="search" method="get" action="/issues" {
